@@ -15,7 +15,7 @@ let state = {
   permanent_address: '', permanent_postcode: '',
   correspondence_address: '', correspondence_postcode: '',
   tel_residence: '', tel_office: '', mobile_phone: '', email: '',
-  place_of_birth: '', nric_new: '', nric_old: '', citizen: '', marital_status: '',
+  place_of_birth: '', nric_new: '', passport_number: '', citizen: '', marital_status: '',
   date_of_birth: '', age: '', bumiputra: '', race: '',
   epf_no: '', income_tax_no: '', tax_branch: '', socso_no: '', bank_account_no: '',
   cidb_green_card_no: '', cidb_branch: '',
@@ -141,6 +141,7 @@ function render(){
     case 'pdpa': root.innerHTML = tplPdpa(); break;
     case 'final': root.innerHTML = tplFinal(); break;
     case 'done': root.innerHTML = tplDone(); break;
+    case 'onboarding': root.innerHTML = tplOnboarding(); break;
   }
 }
 
@@ -198,7 +199,10 @@ function tplStart(){
               <td>${esc(a.business_unit)}</td>
               <td>${statusBadgeHtml(a.status)}</td>
               <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
-              <td><button class="btn btn-ghost btn-sm" style="padding:5px 11px;font-size:12px;" onclick="openTrackEdit('${a.id}')">View / Edit My Details</button></td>
+              <td>
+                <button class="btn btn-ghost btn-sm" style="padding:5px 11px;font-size:12px;" onclick="openTrackEdit('${a.id}')">View / Edit My Details</button>
+                ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" style="padding:5px 11px;font-size:12px;margin-left:6px;" onclick="openOnboarding('${a.id}')">Complete Onboarding</button>` : ''}
+              </td>
             </tr>
           `).join('')}
         </tbody>
@@ -384,23 +388,33 @@ function tplPersonal(){
 
     <div class="section-title">Identification</div>
     <div class="grid g3">
-      <div class="field"><label>NRIC (New) <span class="req-star">*</span></label><input type="text" value="${esc(state.nric_new)}" oninput="handleNricChange(this.value)"></div>
-      <div class="field"><label>NRIC (Old) <span class="opt-tag">(optional)</span></label><input type="text" value="${esc(state.nric_old)}" oninput="updateField('nric_old', this.value)"></div>
-      <div class="field"><label>Citizen <span class="req-star">*</span></label>
-        <select oninput="updateField('citizen', this.value)">
+      <div class="field">
+        <label>Citizen <span class="req-star">*</span></label>
+        <select onchange="handleCitizenChange(this.value)">
           <option value="">Select</option>
           <option ${state.citizen==='Malaysian'?'selected':''}>Malaysian</option>
           <option ${state.citizen==='Non-Malaysian'?'selected':''}>Non-Malaysian</option>
         </select>
       </div>
+      <div class="field">
+        <label>NRIC No. ${state.citizen==='Malaysian' ? '<span class="req-star">*</span>' : '<span class="opt-tag">(Malaysians only)</span>'}</label>
+        <input type="text" value="${esc(state.nric_new)}" placeholder="e.g. 900101011234" maxlength="14"
+          ${state.citizen==='Non-Malaysian' ? 'disabled style="background:#F2F2F1;"' : ''}
+          oninput="handleNricChange(this.value)">
+        <div id="nricValidationMsg" class="hint"></div>
+      </div>
+      <div class="field">
+        <label>Passport Number ${state.citizen==='Non-Malaysian' ? '<span class="req-star">*</span>' : '<span class="opt-tag">(optional)</span>'}</label>
+        <input type="text" value="${esc(state.passport_number)}" placeholder="e.g. A12345678" oninput="updateField('passport_number', this.value)">
+      </div>
     </div>
     <div class="grid g3">
       <div class="field">
         <label>Date of Birth <span class="req-star">*</span></label>
-        <input type="date" value="${esc(state.date_of_birth)}" onchange="handleDobChange(this.value)" oninput="handleDobChange(this.value)">
-        <div class="hint">Pick a date, or click into the field and type it directly (dd/mm/yyyy).</div>
+        <input type="date" id="dobInput" value="${esc(state.date_of_birth)}" onchange="handleDobChange(this.value)" oninput="handleDobChange(this.value)">
+        <div class="hint">${state.citizen==='Malaysian' ? "Auto-filled from your NRIC — adjust here if it doesn't look right." : 'Pick a date, or click into the field and type it directly (dd/mm/yyyy).'}</div>
       </div>
-      <div class="field"><label>Age</label><input type="number" value="${esc(state.age)}" readonly style="background:#F2F2F2;"></div>
+      <div class="field"><label>Age</label><input type="number" id="ageInput" value="${esc(state.age)}" readonly style="background:#F2F2F2;"></div>
       <div class="field"><label>Marital Status <span class="req-star">*</span></label>
         <select oninput="updateField('marital_status', this.value)">
           <option value="">Select</option>
@@ -452,8 +466,14 @@ function validatePersonalStep(){
   if(!state.mobile_phone.trim()) errs.push('Please enter your mobile phone number.');
   if(!state.email.trim()) errs.push('Please enter your email address.');
   if(!state.place_of_birth.trim()) errs.push('Please enter your place of birth.');
-  if(!state.nric_new.trim()) errs.push('Please enter your NRIC (New).');
   if(!state.citizen) errs.push('Please select your citizenship.');
+  if(state.citizen === 'Malaysian'){
+    const digits = (state.nric_new||'').replace(/[^0-9]/g,'');
+    if(!state.nric_new.trim()) errs.push('Please enter your NRIC number.');
+    else if(digits.length !== 12) errs.push('NRIC number must be exactly 12 digits.');
+  } else if(state.citizen === 'Non-Malaysian'){
+    if(!state.passport_number.trim()) errs.push('Please enter your passport number.');
+  }
   if(!state.date_of_birth) errs.push('Please provide your date of birth.');
   if(!state.marital_status) errs.push('Please select your marital status.');
   if(!state.bumiputra) errs.push('Please answer the Bumiputra question.');
@@ -465,8 +485,380 @@ function validatePersonalStep(){
 // most Malaysian employees the two match. It stays editable — once the person
 // types into the SOCSO field directly, we stop overwriting it from NRIC.
 let socsoManuallyEdited = false;
+
+function tplTp3Section(){
+  const o = onboardingState;
+  const t = o.tp3_data || {};
+  const field = (key, label, placeholder) => `
+    <div class="field"><label>${label}</label><input type="text" placeholder="${placeholder||''}" value="${esc(t[key])}" oninput="updateTp3Field('${key}', this.value)"></div>
+  `;
+  const money = (key, label, limit) => `
+    <div class="field"><label>${label}${limit ? ` <span class="opt-tag">(limit RM${limit})</span>` : ''}</label><input type="text" placeholder="RM" value="${esc(t[key])}" oninput="updateTp3Field('${key}', this.value)"></div>
+  `;
+
+  return `
+    <div class="section-title" style="margin-top:0;">TP3 — Previous Employment Details for PCB (Tax) Purposes</div>
+
+    <div class="section-title" style="margin-top:0;font-size:14px;">Bahagian A: Maklumat Majikan (Previous Employer Information)</div>
+    <div class="grid">
+      ${field('employer1_name', 'Previous Employer Name 1', 'e.g. ABC Sdn Bhd')}
+      ${field('employer1_tin', 'Tax Identification No. (TIN) 1')}
+    </div>
+    <div class="grid">
+      ${field('employer2_name', 'Previous Employer Name 2 (optional)')}
+      ${field('employer2_tin', 'Tax Identification No. (TIN) 2 (optional)')}
+    </div>
+
+    <div class="section-title" style="font-size:14px;">Bahagian C: Maklumat Saraan / KWSP / Zakat / PCB</div>
+    <div class="grid">
+      ${money('c1_gross_remuneration', 'C1: Total gross monthly + additional remuneration (incl. taxable allowances/benefits)')}
+      ${money('c3_epf_total', 'C3: Total EPF/other approved fund contributions')}
+    </div>
+    <div class="section-title" style="font-size:13px;margin-top:10px;">C2: Tax-exempt allowances/perquisites/benefits</div>
+    <div class="grid">
+      ${money('c2i_travel', 'i) Travel/petrol card/petrol allowance for official duties')}
+      ${money('c2ii_childcare', 'ii) Childcare allowance')}
+    </div>
+    <div class="grid">
+      ${money('c2iii_products', 'iii) Employer products given free/at discount')}
+      ${money('c2iv_service_award', 'iv) Long-service/innovation/productivity awards (10+ years service)')}
+    </div>
+    ${money('c2v_other', 'v) Other tax-exempt allowances/perquisites/benefits')}
+    <div class="grid">
+      ${money('c4i_zakat', 'C4(i): Total Zakat')}
+      ${money('c4ii_umrah', 'C4(ii): Umrah/religious travel levy relief (limited to 2x lifetime)')}
+    </div>
+    ${money('c5_total_pcb', 'C5: Total PCB (excluding CP38)')}
+
+    <div class="section-title" style="font-size:14px;">Bahagian D: Potongan Cukai (Tax Relief)</div>
+    <p class="hint" style="margin-top:-6px;">Each item below is a single combined amount, covering all the sub-items listed under it (matching the original paper form's layout).</p>
+
+    ${money('d1_parent_medical', 'D1: Expenses for parents/grandparents — medical treatment, special needs & care services; dental treatment; full medical exam incl. vaccination (limited RM1,000 within this)', '8,000')}
+    ${money('d2_disabled_equipment', 'D2: Basic supporting equipment for disabled self/spouse/child/parent', '6,000')}
+    ${money('d3_course_fees', 'D3: Course fees for self — non-degree (law/accounting/Islamic finance/technical/vocational/industrial/scientific/tech); Masters/PhD any field; skills upgrading courses (limited RM2,000 within this)', '7,000')}
+    ${money('d4_medical_treatment', 'D4: Medical treatment for self/spouse/child — serious disease; fertility treatment; vaccination (RM1,000); dental (RM1,000); full medical/mental health exam (RM1,000); child learning-disability intervention, age ≤18 (RM10,000)', '10,000')}
+    ${money('d5_lifestyle', 'D5: Lifestyle — books/journals/magazines/newspapers; personal computer/smartphone/tablet; internet subscription (own name); skills courses', '2,500')}
+    ${money('d6_sports_lifestyle', 'D6: Lifestyle (sports) — sports equipment under Sports Development Act 1997; facility rental/entry fees; competition registration; gym membership/training fees', '1,000')}
+    ${money('d7_breastfeeding_equipment', 'D7: Breastfeeding equipment (child ≤2 years old, once per 2 assessment years)', '1,000')}
+    ${money('d8_childcare_fees', 'D8: Childcare fees — registered childcare centre/kindergarten (child ≤12 years old)', '3,000')}
+    ${money('d9_ssp1m_savings', 'D9: Net savings in National Education Savings Scheme (SSPN)', '8,000')}
+
+    <div class="section-title" style="font-size:14px;">Bahagian D (continued): D10 to D17</div>
+    ${money('d10_alimony', 'D10: Alimony paid to former wife', '4,000')}
+    <div class="grid">
+      ${money('d11a_kwsp_sukarela', 'D11(a): Voluntary EPF (incl. mandatory EPF)', '4,000')}
+      ${money('d11b_life_insurance', 'D11(b): Life insurance / voluntary EPF', '3,000')}
+    </div>
+    ${money('d12_private_retirement', 'D12: Private retirement scheme & deferred annuity', '3,000')}
+    ${money('d13_insurance_education_medical', 'D13: Education and medical insurance', '4,000')}
+    ${money('d14_perkeso', 'D14: PERKESO/SOCSO contribution', '350')}
+    ${money('d15_ev_compost_cctv', 'D15: EV charging / compost machine / CCTV installation', '2,500')}
+    <div class="grid">
+      ${money('d16a_housing_loan_500k', 'D16(a): Housing loan interest — price up to RM500,000', '7,000')}
+      ${money('d16b_housing_loan_750k', 'D16(b): Housing loan interest — RM500,000 to RM750,000', '5,000')}
+    </div>
+    ${money('d17_tourism', 'D17: Domestic tourism entrance fees', '1,000')}
+
+    ${(() => {
+      const confirmed = o.tp3_confirmed;
+      return `
+        <div class="checkbox-row">
+          <input type="checkbox" id="confirm_tp3" ${confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('tp3')">
+          <label for="confirm_tp3">I declare that all information stated in this TP3 form is true, correct and complete.</label>
+          ${confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(o.tp3_confirmed_at).toLocaleString()}</div>` : ''}
+        </div>
+      `;
+    })()}
+    <button class="btn btn-ghost" onclick="saveOnboarding(true)">Save Progress</button>
+  `;
+}
+
+function tplSalaryCreditingSection(){
+  const o = onboardingState;
+  return `
+    <div class="section-title" style="margin-top:0;">Salary Crediting Requisition</div>
+    <p class="step-desc">Please provide your bank account details for salary crediting.</p>
+    <div class="grid">
+      <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
+      <div class="field"><label>Account No.</label><input type="text" id="ob_salary_account_no" value="${esc(o.salary_account_no)}"></div>
+    </div>
+    <div class="field"><label>IC/Passport No. Submitted During Application</label><input type="text" id="ob_salary_ic" value="${esc(o.salary_ic_submitted || state.nric_new || state.passport_number)}"></div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="confirm_salary_crediting" ${o.salary_crediting_confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('salary_crediting')">
+      <label for="confirm_salary_crediting">I confirm that the information above is correct and understand that any discrepancy resulting in delayed or missed salary crediting is my sole responsibility.</label>
+      ${o.salary_crediting_confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(o.salary_crediting_confirmed_at).toLocaleString()}</div>` : ''}
+    </div>
+    <button class="btn btn-ghost" onclick="saveOnboarding(true)">Save Progress</button>
+  `;
+}
+let onboardingAppId = null;
+let onboardingState = null;
+
+async function openOnboarding(applicationId){
+  showLoading('Loading onboarding forms...');
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_get_my_onboarding', { p_application_id: applicationId });
+    if(error) throw error;
+    onboardingAppId = applicationId;
+    onboardingState = data[0];
+    hideLoading();
+    goStep('onboarding');
+  } catch(e){
+    hideLoading();
+    alert('Could not load onboarding forms: ' + e.message);
+  }
+}
+
+async function saveOnboarding(showAlert){
+  try{
+    const patch = {
+      epf_no: document.getElementById('ob_epf_no')?.value.trim() || '',
+      income_tax_no: document.getElementById('ob_income_tax_no')?.value.trim() || '',
+      tax_branch: document.getElementById('ob_tax_branch')?.value.trim() || '',
+      socso_no: document.getElementById('ob_socso_no')?.value.trim() || '',
+      bank_account_no: document.getElementById('ob_bank_account_no')?.value.trim() || '',
+      cidb_green_card_no: document.getElementById('ob_cidb_green_card_no')?.value.trim() || '',
+      cidb_branch: document.getElementById('ob_cidb_branch')?.value.trim() || '',
+      spouse_name: document.getElementById('ob_spouse_name')?.value.trim() || '',
+      spouse_nric: document.getElementById('ob_spouse_nric')?.value.trim() || '',
+      spouse_date_of_birth: document.getElementById('ob_spouse_dob')?.value || '',
+      spouse_working: document.querySelector('input[name="ob_spouse_working"]:checked')?.value || '',
+      children_below_18: onboardingState.children_below_18,
+      children_18_to_23: onboardingState.children_18_to_23,
+      emergency_contacts: onboardingState.emergency_contacts,
+      beneficiary_name: document.getElementById('ob_beneficiary_name')?.value.trim() || '',
+      beneficiary_relationship: document.getElementById('ob_beneficiary_relationship')?.value.trim() || '',
+      beneficiary_contact: document.getElementById('ob_beneficiary_contact')?.value.trim() || '',
+      tp3_data: onboardingState.tp3_data,
+      salary_bank: document.getElementById('ob_salary_bank')?.value.trim() || '',
+      salary_account_no: document.getElementById('ob_salary_account_no')?.value.trim() || '',
+      salary_ic_submitted: document.getElementById('ob_salary_ic')?.value.trim() || ''
+    };
+    const { data, error } = await supabaseClient.rpc('rpc_save_my_onboarding', { p_application_id: onboardingAppId, p_patch: patch });
+    if(error) throw error;
+    onboardingState = data[0];
+    if(showAlert) alert('Saved.');
+  } catch(e){ alert('Error saving: ' + e.message); }
+}
+
+function updateTp3Field(key, val){ onboardingState.tp3_data = {...onboardingState.tp3_data, [key]: val}; }
+
+function addChildBelow18(){ onboardingState.children_below_18 = [...onboardingState.children_below_18, {name:'',date_of_birth:'',tax_relief:false}]; render(); }
+function removeChildBelow18(i){ onboardingState.children_below_18.splice(i,1); render(); }
+function updateChildBelow18(i, key, val){ onboardingState.children_below_18[i][key] = val; }
+
+function addChild18to23(){ onboardingState.children_18_to_23 = [...onboardingState.children_18_to_23, {name:'',date_of_birth:'',course_name:'',gender:'',nric:'',tax_relief:false}]; render(); }
+function removeChild18to23(i){ onboardingState.children_18_to_23.splice(i,1); render(); }
+function updateChild18to23(i, key, val){ onboardingState.children_18_to_23[i][key] = val; }
+
+function addEmergencyContact(){ onboardingState.emergency_contacts = [...onboardingState.emergency_contacts, {name:'',relationship:'',contact:''}]; render(); }
+function removeEmergencyContact(i){ onboardingState.emergency_contacts.splice(i,1); render(); }
+function updateEmergencyContact(i, key, val){ onboardingState.emergency_contacts[i][key] = val; }
+
+async function confirmOnboardingSection(section){
+  await saveOnboarding(false);
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_confirm_onboarding_section', { p_application_id: onboardingAppId, p_section: section });
+    if(error) throw error;
+    onboardingState = data[0];
+    render();
+  } catch(e){ alert('Error: ' + e.message); }
+}
+
+function backFromOnboarding(){
+  onboardingAppId = null; onboardingState = null;
+  goStep('start');
+}
+
+function tplOnboarding(){
+  const o = onboardingState;
+  const checkboxRow = (confirmed, at, label, section) => `
+    <div class="checkbox-row">
+      <input type="checkbox" id="confirm_${section}" ${confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('${section}')">
+      <label for="confirm_${section}">${label}</label>
+      ${confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(at).toLocaleString()}</div>` : ''}
+    </div>
+  `;
+
+  return `
+    <div class="step-eyebrow">Onboarding</div>
+    <h2>Post-Hire Details</h2>
+    <p class="step-desc">Congratulations on being hired! Please complete the sections below — your personal particulars from the application form don't need to be re-entered.</p>
+
+    <div class="section-title" style="margin-top:0;">Statutory Details</div>
+    <div class="grid">
+      <div class="field"><label>EPF No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_epf_no" value="${esc(o.epf_no)}"></div>
+      <div class="field"><label>Income Tax No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_income_tax_no" value="${esc(o.income_tax_no)}"></div>
+    </div>
+    <div class="grid">
+      <div class="field"><label>Tax Branch <span class="opt-tag">(optional)</span></label><input type="text" id="ob_tax_branch" value="${esc(o.tax_branch)}"></div>
+      <div class="field"><label>SOCSO No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_socso_no" value="${esc(o.socso_no)}"></div>
+    </div>
+    <div class="grid">
+      <div class="field"><label>Bank Account No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_bank_account_no" value="${esc(o.bank_account_no)}"></div>
+      <div class="field"><label>CIDB Green Card No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_cidb_green_card_no" value="${esc(o.cidb_green_card_no)}"></div>
+    </div>
+    <div class="field"><label>CIDB Branch <span class="opt-tag">(optional)</span></label><input type="text" id="ob_cidb_branch" value="${esc(o.cidb_branch)}"></div>
+
+    <div class="section-title">Spouse Information <span class="opt-tag">(if applicable)</span></div>
+    <div class="grid">
+      <div class="field"><label>Name (per NRIC)</label><input type="text" id="ob_spouse_name" value="${esc(o.spouse_name)}"></div>
+      <div class="field"><label>NRIC No.</label><input type="text" id="ob_spouse_nric" value="${esc(o.spouse_nric)}"></div>
+    </div>
+    <div class="grid">
+      <div class="field"><label>Date of Birth</label><input type="date" id="ob_spouse_dob" value="${esc(o.spouse_date_of_birth)}"></div>
+      <div class="field"><label>Working?</label>
+        <div class="radio-row">
+          ${['Yes','No'].map(v=>`<label class="radio-opt"><input type="radio" name="ob_spouse_working" value="${v}" ${o.spouse_working===v?'checked':''}> ${v}</label>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">Children Below 18 Years Old</div>
+    <table class="dyn">
+      <thead><tr><th>Name (per NRIC)</th><th>Date of Birth</th><th>Child Tax Relief</th><th></th></tr></thead>
+      <tbody>
+        ${o.children_below_18.map((c,i)=>`
+          <tr>
+            <td><input type="text" value="${esc(c.name)}" oninput="updateChildBelow18(${i},'name',this.value)"></td>
+            <td><input type="date" value="${esc(c.date_of_birth)}" oninput="updateChildBelow18(${i},'date_of_birth',this.value)"></td>
+            <td style="text-align:center;"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="updateChildBelow18(${i},'tax_relief',this.checked)"></td>
+            <td><button class="remove-x" onclick="removeChildBelow18(${i})">✕</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <button class="add-row-btn" onclick="addChildBelow18()">+ Add child</button>
+
+    <div class="section-title">Children Above 18 Up To 23 <span class="opt-tag">(unmarried &amp; full-time student)</span></div>
+    <table class="dyn">
+      <thead><tr><th>Name</th><th>Gender</th><th>NRIC No.</th><th>Date of Birth</th><th>Course Name</th><th>Tax Relief</th><th></th></tr></thead>
+      <tbody>
+        ${o.children_18_to_23.map((c,i)=>`
+          <tr>
+            <td><input type="text" value="${esc(c.name)}" oninput="updateChild18to23(${i},'name',this.value)"></td>
+            <td>
+              <select onchange="updateChild18to23(${i},'gender',this.value)">
+                <option value="">—</option>
+                <option ${c.gender==='Male'?'selected':''}>Male</option>
+                <option ${c.gender==='Female'?'selected':''}>Female</option>
+              </select>
+            </td>
+            <td><input type="text" value="${esc(c.nric)}" oninput="updateChild18to23(${i},'nric',this.value)"></td>
+            <td><input type="date" value="${esc(c.date_of_birth)}" oninput="updateChild18to23(${i},'date_of_birth',this.value)"></td>
+            <td><input type="text" value="${esc(c.course_name)}" oninput="updateChild18to23(${i},'course_name',this.value)"></td>
+            <td style="text-align:center;"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="updateChild18to23(${i},'tax_relief',this.checked)"></td>
+            <td><button class="remove-x" onclick="removeChild18to23(${i})">✕</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <button class="add-row-btn" onclick="addChild18to23()">+ Add child</button>
+
+    <div class="section-title">Emergency Contact(s)</div>
+    <table class="dyn">
+      <thead><tr><th>Name (per NRIC)</th><th>Relationship</th><th>Phone No.</th><th></th></tr></thead>
+      <tbody>
+        ${o.emergency_contacts.map((c,i)=>`
+          <tr>
+            <td><input type="text" value="${esc(c.name)}" oninput="updateEmergencyContact(${i},'name',this.value)"></td>
+            <td><input type="text" value="${esc(c.relationship)}" oninput="updateEmergencyContact(${i},'relationship',this.value)"></td>
+            <td><input type="tel" placeholder="e.g. 012-345 6789" value="${esc(c.contact)}" oninput="updateEmergencyContact(${i},'contact',this.value)"></td>
+            <td><button class="remove-x" onclick="removeEmergencyContact(${i})">✕</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <button class="add-row-btn" onclick="addEmergencyContact()">+ Add contact</button>
+
+    <div class="section-title">Beneficiary</div>
+    <div class="grid g3">
+      <div class="field"><label>Name</label><input type="text" id="ob_beneficiary_name" value="${esc(o.beneficiary_name)}"></div>
+      <div class="field"><label>Relationship</label><input type="text" id="ob_beneficiary_relationship" value="${esc(o.beneficiary_relationship)}"></div>
+      <div class="field"><label>Contact No.</label><input type="tel" placeholder="e.g. 012-345 6789" id="ob_beneficiary_contact" value="${esc(o.beneficiary_contact)}"></div>
+    </div>
+
+    ${checkboxRow(o.personal_details_confirmed, o.personal_details_confirmed_at, 'I confirm the Personal Details, Spouse, Children, Emergency Contact and Beneficiary information above is true and correct.', 'personal_details')}
+
+    <button class="btn btn-ghost" onclick="saveOnboarding(true)" style="margin-bottom:24px;">Save Progress</button>
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:8px 0 24px;">
+
+    ${tplTp3Section()}
+
+    <hr style="border:none;border-top:1px solid var(--line);margin:24px 0;">
+
+    ${tplSalaryCreditingSection()}
+
+    <div class="btn-row" style="margin-top:30px;">
+      <button class="btn btn-ghost" onclick="backFromOnboarding()">← Back to My Applications</button>
+      <div></div>
+    </div>
+  `;
+}
+
+function handleCitizenChange(val){
+  state.citizen = val;
+  if(val === 'Non-Malaysian'){
+    // NRIC isn't applicable — don't carry over a stale value into a disabled field
+    state.nric_new = '';
+  }
+  render();
+}
+
+// Derives Date of Birth from a Malaysian NRIC's first 6 digits (YYMMDD),
+// using the standard century pivot: if the two-digit year is greater than
+// the current two-digit year, assume 19XX, otherwise 20XX.
+function deriveDobFromNric(nric){
+  const digits = nric.replace(/[^0-9]/g, '');
+  if(digits.length < 6) return null;
+  const yy = parseInt(digits.slice(0,2), 10);
+  const mm = parseInt(digits.slice(2,4), 10);
+  const dd = parseInt(digits.slice(4,6), 10);
+  if(mm < 1 || mm > 12 || dd < 1 || dd > 31) return null; // not a plausible date, skip
+  const currentYY = new Date().getFullYear() % 100;
+  const century = yy > currentYY ? 1900 : 2000;
+  const year = century + yy;
+  const mmStr = String(mm).padStart(2,'0');
+  const ddStr = String(dd).padStart(2,'0');
+  return `${year}-${mmStr}-${ddStr}`;
+}
+
 function handleNricChange(val){
   state.nric_new = val;
+
+  // 12-digit validation (Malaysian NRIC is always exactly 12 digits, no letters)
+  const digits = val.replace(/[^0-9]/g, '');
+  const msgEl = document.getElementById('nricValidationMsg');
+  if(msgEl){
+    if(val.trim() === ''){
+      msgEl.innerHTML = '';
+    } else if(digits.length !== 12){
+      msgEl.innerHTML = `<span style="color:var(--danger);">NRIC must be exactly 12 digits (currently ${digits.length}).</span>`;
+    } else {
+      msgEl.innerHTML = `<span style="color:var(--ok);">✓ Valid format</span>`;
+    }
+  }
+
+  // Auto-derive Date of Birth from the NRIC's first 6 digits, once enough
+  // digits are entered — the candidate can still override it afterward.
+  // Updates fields directly (not via handleDobChange/render) so typing NRIC
+  // doesn't lose focus on every keystroke, same fix as the SOCSO mirroring.
+  const derivedDob = deriveDobFromNric(val);
+  if(derivedDob){
+    state.date_of_birth = derivedDob;
+    const dob = new Date(derivedDob); const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if(m < 0 || (m===0 && today.getDate() < dob.getDate())) age--;
+    state.age = age;
+    const dobEl = document.getElementById('dobInput');
+    const ageEl = document.getElementById('ageInput');
+    if(dobEl) dobEl.value = derivedDob;
+    if(ageEl) ageEl.value = age;
+  }
+
   if(!socsoManuallyEdited){
     state.socso_no = val;
     const socsoEl = document.getElementById('socsoInput');
@@ -937,7 +1329,7 @@ function tplConsentLang(){
     </div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="goStep('review')">← Back</button>
-      <div class="right"><button class="btn btn-primary" ${!state.language_choice?'disabled':''} onclick="goStep('jts')">Continue →</button></div>
+      <div class="right"><button class="btn btn-primary" ${!state.language_choice?'disabled':''} onclick="goStepWithSave('jts')">Continue →</button></div>
     </div>
   `;
 }
