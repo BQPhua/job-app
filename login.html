@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WCT Group — Sign In</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+      :root {
+        --navy: #000000;
+        --navy-2: #262626;
+        --gold: #ed1c24;
+        --gold-light: #c4151b;
+        --cream: #f7f7f6;
+        --paper: #ffffff;
+        --ink: #1a1a1a;
+        --ink-soft: #6e6e6d;
+        --line: #e4e4e3;
+        --danger: #b3423a;
+        --ok: #3d7a5c;
+        font-family: 'Inter', system-ui, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--cream);
+        color: var(--ink);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 30px 16px;
+      }
+      h1,
+      h2 {
+        font-family: 'Source Serif 4', serif;
+        color: var(--navy);
+        margin: 0 0 4px;
+      }
+      .wrap {
+        max-width: 440px;
+        width: 100%;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        justify-content: center;
+        margin-bottom: 26px;
+      }
+      .brand-mark {
+        width: 42px;
+        height: 42px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, var(--gold-light), var(--gold));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Source Serif 4', serif;
+        font-weight: 700;
+        color: var(--navy);
+        font-size: 20px;
+      }
+      .brand-text .name {
+        font-weight: 700;
+        font-size: 15px;
+        color: var(--navy);
+      }
+      .brand-text .sub {
+        font-size: 14.5px;
+        font-weight: 600;
+        color: var(--navy);
+      }
+      .card {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 34px;
+        box-shadow: 0 1px 3px rgba(18, 37, 63, 0.05);
+      }
+      .tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 22px;
+        background: #efeae0;
+        border-radius: 9px;
+        padding: 4px;
+      }
+      .tabs button {
+        flex: 1;
+        padding: 9px;
+        border: none;
+        border-radius: 7px;
+        background: transparent;
+        font-weight: 600;
+        font-size: 13.5px;
+        color: var(--ink-soft);
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .tabs button.active {
+        background: #fff;
+        color: var(--navy);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+      }
+      .oauth-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        padding: 11px;
+        border-radius: 8px;
+        border: 1px solid #cbd3db;
+        background: #fff;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-bottom: 10px;
+        color: var(--ink);
+      }
+      .oauth-btn:hover {
+        background: #f7f7f5;
+      }
+      .oauth-btn svg {
+        width: 18px;
+        height: 18px;
+      }
+      .divider {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 18px 0;
+        color: var(--ink-soft);
+        font-size: 12px;
+      }
+      .divider::before,
+      .divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--line);
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .field label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--navy);
+      }
+      input[type='text'],
+      input[type='email'],
+      input[type='password'] {
+        font-family: inherit;
+        font-size: 14px;
+        padding: 10px 12px;
+        border: 1px solid #cbd3db;
+        border-radius: 7px;
+        width: 100%;
+      }
+      input:focus {
+        outline: 2px solid var(--gold-light);
+        outline-offset: 1px;
+        border-color: var(--gold);
+      }
+      .req {
+        color: var(--danger);
+      }
+      .btn {
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 11px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        width: 100%;
+      }
+      .btn-primary {
+        background: var(--navy);
+        color: #fff;
+        margin-top: 6px;
+      }
+      .btn-primary:hover {
+        background: var(--navy-2);
+      }
+      .btn-primary:disabled {
+        background: #a9b6c4;
+        cursor: not-allowed;
+      }
+      .link-btn {
+        background: none;
+        border: none;
+        color: var(--navy-2);
+        text-decoration: underline;
+        cursor: pointer;
+        font-size: 13px;
+        font-family: inherit;
+        padding: 0;
+      }
+      .row-between {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: -4px 0 14px;
+      }
+      .pw-checklist {
+        list-style: none;
+        padding: 0;
+        margin: 0 0 14px;
+        font-size: 12.5px;
+      }
+      .pw-checklist li {
+        padding: 2px 0;
+        color: var(--ink-soft);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .pw-checklist li.ok {
+        color: var(--ok);
+      }
+      .pw-checklist .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #cbd3db;
+        flex-shrink: 0;
+      }
+      .pw-checklist li.ok .dot {
+        background: var(--ok);
+      }
+      .error-banner {
+        background: #fbeae8;
+        border: 1px solid #ebbab4;
+        color: var(--danger);
+        padding: 10px 14px;
+        border-radius: 7px;
+        font-size: 13px;
+        margin-bottom: 14px;
+      }
+      .success-banner {
+        background: #eaf3ec;
+        border: 1px solid #bedacb;
+        color: var(--ok);
+        padding: 10px 14px;
+        border-radius: 7px;
+        font-size: 13px;
+        margin-bottom: 14px;
+      }
+      .admin-strip {
+        text-align: center;
+        margin-top: 18px;
+        font-size: 13px;
+        color: var(--ink-soft);
+      }
+      .footer-note {
+        text-align: center;
+        font-size: 11.5px;
+        color: var(--ink-soft);
+        margin-top: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <img
+          class="wct-logo-img"
+          alt="WCT Group"
+          style="height: 64px; image-rendering: -webkit-optimize-contrast"
+        />
+        <div class="brand-text">
+          <div class="sub">WCT Employment Application Portal</div>
+        </div>
+      </div>
+
+      <div class="card" id="cardRoot"></div>
+
+      <div class="admin-strip">
+        HR team member? <a href="admin.html">Go to Admin Dashboard →</a>
+      </div>
+      <div class="footer-note">
+        By continuing, you agree that your data will be processed per the WCT
+        Group Personal Data Protection Notice.
+      </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="logo.js"></script>
+    <script>
+      document
+        .querySelectorAll('.wct-logo-img')
+        .forEach((el) => (el.src = WCT_LOGO_DATA_URI));
+    </script>
+    <script>
+      let tab = 'signin'; // signin | register | forgot
+      const root = document.getElementById('cardRoot');
+
+      const GoogleIcon = `<svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.09A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>`;
+      const MsIcon = `<svg viewBox="0 0 23 23"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M12 1h10v10H12z"/><path fill="#00A4EF" d="M1 12h10v10H1z"/><path fill="#FFB900" d="M12 12h10v10H12z"/></svg>`;
+
+      function render() {
+        if (tab === 'signin') root.innerHTML = signinView();
+        else if (tab === 'register') root.innerHTML = registerView();
+        else root.innerHTML = forgotView();
+      }
+      function setTab(t) {
+        tab = t;
+        render();
+      }
+
+      function oauthButtons() {
+        return `
+    <button class="oauth-btn" onclick="signInOAuth('google')">${GoogleIcon} Continue with Google</button>
+    <button class="oauth-btn" onclick="signInOAuth('azure')">${MsIcon} Continue with Microsoft</button>
+    <div class="divider">or</div>
+  `;
+      }
+
+      function signinView() {
+        return `
+    <div class="tabs">
+      <button class="active" onclick="setTab('signin')">Sign In</button>
+      <button onclick="setTab('register')">Create Account</button>
+    </div>
+    ${oauthButtons()}
+    <div id="msg"></div>
+    <div class="field"><label>Email <span class="req">*</span></label><input type="email" id="siEmail"></div>
+    <div class="field"><label>Password <span class="req">*</span></label><input type="password" id="siPassword"></div>
+    <div class="row-between"><span></span><button class="link-btn" onclick="setTab('forgot')">Forgot password?</button></div>
+    <button class="btn btn-primary" onclick="doSignIn()">Sign In</button>
+  `;
+      }
+
+      function registerView() {
+        return `
+    <div class="tabs">
+      <button onclick="setTab('signin')">Sign In</button>
+      <button class="active" onclick="setTab('register')">Create Account</button>
+    </div>
+    ${oauthButtons()}
+    <div id="msg"></div>
+    <div class="field"><label>Full Name <span class="req">*</span></label><input type="text" id="regName"></div>
+    <div class="field"><label>Email <span class="req">*</span></label><input type="email" id="regEmail"></div>
+    <div class="field"><label>Password <span class="req">*</span></label><input type="password" id="regPassword" oninput="checkPasswordStrength(this.value)"></div>
+    <ul class="pw-checklist" id="pwChecklist">
+      <li id="pw-len"><span class="dot"></span> At least 8 characters</li>
+      <li id="pw-upper"><span class="dot"></span> One uppercase letter</li>
+      <li id="pw-lower"><span class="dot"></span> One lowercase letter</li>
+      <li id="pw-num"><span class="dot"></span> One number</li>
+      <li id="pw-special"><span class="dot"></span> One special character</li>
+    </ul>
+    <div class="field"><label>Confirm Password <span class="req">*</span></label><input type="password" id="regConfirm" oninput="checkPasswordMatch()"></div>
+    <div id="matchMsg" style="font-size:12.5px;margin:-8px 0 14px;"></div>
+    <button class="btn btn-primary" id="regSubmitBtn" disabled onclick="doRegister()">Create Account</button>
+  `;
+      }
+
+      function forgotView() {
+        return `
+    <h2 style="font-size:18px;">Reset Your Password</h2>
+    <p style="color:var(--ink-soft);font-size:13px;margin-top:0;">Enter your email and we'll send you a link to reset your password.</p>
+    <div id="msg"></div>
+    <div class="field"><label>Email <span class="req">*</span></label><input type="email" id="forgotEmail"></div>
+    <button class="btn btn-primary" onclick="doForgotPassword()">Send Reset Link</button>
+    <div class="row-between" style="margin-top:14px;justify-content:center;"><button class="link-btn" onclick="setTab('signin')">← Back to Sign In</button></div>
+  `;
+      }
+
+      let pwValid = {
+        len: false,
+        upper: false,
+        lower: false,
+        num: false,
+        special: false,
+      };
+      function checkPasswordStrength(pw) {
+        pwValid.len = pw.length >= 8;
+        pwValid.upper = /[A-Z]/.test(pw);
+        pwValid.lower = /[a-z]/.test(pw);
+        pwValid.num = /[0-9]/.test(pw);
+        pwValid.special = /[^A-Za-z0-9]/.test(pw);
+        document.getElementById('pw-len').className = pwValid.len ? 'ok' : '';
+        document.getElementById('pw-upper').className = pwValid.upper
+          ? 'ok'
+          : '';
+        document.getElementById('pw-lower').className = pwValid.lower
+          ? 'ok'
+          : '';
+        document.getElementById('pw-num').className = pwValid.num ? 'ok' : '';
+        document.getElementById('pw-special').className = pwValid.special
+          ? 'ok'
+          : '';
+        checkPasswordMatch();
+      }
+      function checkPasswordMatch() {
+        const pw = document.getElementById('regPassword').value;
+        const cf = document.getElementById('regConfirm').value;
+        const allValid = Object.values(pwValid).every((v) => v);
+        const matches = pw && cf && pw === cf;
+        document.getElementById('matchMsg').innerHTML = cf
+          ? matches
+            ? '<span style="color:var(--ok);">Passwords match ✓</span>'
+            : '<span style="color:var(--danger);">Passwords do not match</span>'
+          : '';
+        document.getElementById('regSubmitBtn').disabled = !(
+          allValid &&
+          matches &&
+          document.getElementById('regName').value.trim() &&
+          document.getElementById('regEmail').value.trim()
+        );
+      }
+
+      async function signInOAuth(provider) {
+        const options = {
+          redirectTo:
+            window.location.origin +
+            window.location.pathname.replace('login.html', 'index.html'),
+        };
+        // Force an explicit account picker instead of a silent background sign-in
+        // attempt. The silent attempt is what shows "Trying to sign you in" with
+        // no account picker — when the browser's cached session is stale or the
+        // required cookies are blocked (common in sandboxed dev previews), that
+        // silent attempt hangs or retries instead of failing cleanly, which is
+        // the intermittent loop. Prompting explicitly removes that flakiness.
+        if (provider === 'azure') {
+          options.queryParams = { prompt: 'select_account' };
+        } else if (provider === 'google') {
+          options.queryParams = { prompt: 'select_account' };
+        }
+        const { error } = await supabaseClient.auth.signInWithOAuth({
+          provider,
+          options,
+        });
+        if (error) showMsg('error', error.message);
+      }
+
+      async function doSignIn() {
+        const email = document.getElementById('siEmail').value.trim();
+        const password = document.getElementById('siPassword').value;
+        if (!email || !password) {
+          showMsg('error', 'Please enter your email and password.');
+          return;
+        }
+        const { error } = await supabaseClient.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) {
+          showMsg('error', error.message);
+          return;
+        }
+        window.location.href = 'index.html';
+      }
+
+      async function doRegister() {
+        const name = document.getElementById('regName').value.trim();
+        const email = document.getElementById('regEmail').value.trim();
+        const password = document.getElementById('regPassword').value;
+        const { error } = await supabaseClient.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: name } },
+        });
+        if (error) {
+          showMsg('error', error.message);
+          return;
+        }
+        showMsg(
+          'success',
+          'Account created! Check your email to confirm your address, then sign in.'
+        );
+        setTimeout(() => setTab('signin'), 2500);
+      }
+
+      async function doForgotPassword() {
+        const email = document.getElementById('forgotEmail').value.trim();
+        if (!email) {
+          showMsg('error', 'Please enter your email.');
+          return;
+        }
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(
+          email,
+          {
+            redirectTo:
+              window.location.origin +
+              window.location.pathname.replace(
+                'login.html',
+                'reset-password.html'
+              ),
+          }
+        );
+        if (error) {
+          showMsg('error', error.message);
+          return;
+        }
+        showMsg(
+          'success',
+          'If an account exists for that email, a reset link has been sent.'
+        );
+      }
+
+      function showMsg(type, text) {
+        const el = document.getElementById('msg');
+        if (el)
+          el.innerHTML = `<div class="${
+            type === 'error' ? 'error-banner' : 'success-banner'
+          }">${text}</div>`;
+      }
+
+      // If we just bounced back from a failed OAuth attempt (Google/Microsoft),
+      // Supabase appends ?error=...&error_description=... to the URL instead of
+      // silently doing nothing. Show it instead of hiding it.
+      function checkForOAuthError() {
+        const params = new URLSearchParams(
+          window.location.search || window.location.hash.replace('#', '?')
+        );
+        const err = params.get('error_description') || params.get('error');
+        if (err) {
+          showMsg('error', decodeURIComponent(err.replace(/\+/g, ' ')));
+          // clean the URL so refreshing doesn't re-show a stale error
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+        if (params.get('blacklisted') === '1') {
+          showMsg(
+            'error',
+            'This account has been blacklisted and can no longer sign in or submit applications. If you believe this is a mistake, please contact HR directly.'
+          );
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      }
+
+      // If already signed in, skip straight to the app
+      (async function boot() {
+        const {
+          data: { session },
+        } = await supabaseClient.auth.getSession();
+        if (session) {
+          window.location.href = 'index.html';
+          return;
+        }
+        render();
+        checkForOAuthError();
+      })();
+    </script>
+  </body>
+</html>

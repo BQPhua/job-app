@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WCT Group — HR Admin Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --navy:#0A0A0A;
+    --navy-2:#1F1F1F;
+    --gold:#ED1C24;
+    --gold-light:#C4151B;
+    --gold-tint:#FDEDEC;
+    --cream:#F6F6F5;
+    --paper:#FFFFFF;
+    --ink:#17181A;
+    --ink-soft:#6B6D70;
+    --line:#E5E5E4;
+    --danger:#C0392B;
+    --danger-tint:#FBEAE8;
+    --ok:#1E7A46;
+    --ok-tint:#E7F5EC;
+    --warn:#B9770E;
+    --warn-tint:#FDF3E3;
+    --info:#2E5AAC;
+    --info-tint:#EAF0FB;
+    --radius:10px;
+    --shadow-sm:0 1px 2px rgba(10,10,10,.06);
+    --shadow-md:0 4px 14px rgba(10,10,10,.10);
+    --shadow-lg:0 10px 30px rgba(10,10,10,.16);
+    font-family:'Inter',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--cream);color:var(--ink);}
+  h1,h2,h3{font-family:'Source Serif 4',serif;color:var(--navy);margin:0 0 .3em;}
+  a{color:var(--info);}
+
+  .topbar{background:var(--navy);color:#fff;padding:14px 28px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:20;box-shadow:var(--shadow-md);}
+  .topbar .brand{display:flex;align-items:center;gap:12px;}
+  .topbar .sub{font-size:12.5px;color:#B9B9B9;letter-spacing:.02em;}
+  .admin-nav{display:flex;gap:4px;margin-left:18px;padding-left:18px;border-left:1px solid #333;}
+  .admin-nav a{color:#C9C9C9;font-size:13.5px;font-weight:600;text-decoration:none;padding:7px 14px;border-radius:7px;cursor:pointer;transition:background .15s ease, color .15s ease;}
+  .admin-nav a:hover{background:#1F1F1F;color:#fff;}
+  .admin-nav a.active{background:#fff;color:var(--navy);}
+
+  .wrap{max-width:1360px;margin:0 auto;padding:24px 24px 60px;}
+
+  /* ---------- Buttons: real interactivity, not stickers ---------- */
+  .btn{
+    font-family:inherit;font-size:13.5px;font-weight:600;
+    padding:9px 16px;border-radius:8px;border:1px solid transparent;
+    cursor:pointer;transition:transform .08s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+    display:inline-flex;align-items:center;gap:6px;line-height:1.2;
+    box-shadow:var(--shadow-sm);
+  }
+  .btn:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);box-shadow:none;}
+  .btn:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none;}
+  .btn-primary{background:var(--navy);color:#fff;}
+  .btn-primary:hover{background:var(--navy-2);}
+  .btn-danger{background:var(--danger);color:#fff;}
+  .btn-danger:hover{background:#a32e21;}
+  .btn-success{background:var(--ok);color:#fff;}
+  .btn-success:hover{background:#155e35;}
+  .btn-gold{background:var(--gold);color:#fff;}
+  .btn-gold:hover{background:var(--gold-light);}
+  .btn-outline{background:#fff;color:var(--navy);border-color:var(--line);}
+  .btn-outline:hover{background:var(--cream);border-color:#C9C9C8;}
+  .btn-outline-danger{background:#fff;color:var(--danger);border-color:#EBC3BD;}
+  .btn-outline-danger:hover{background:var(--danger-tint);}
+  .btn-sm{padding:6px 12px;font-size:12.5px;}
+  .btn-icon{padding:7px 9px;}
+
+  /* ---------- Layout pieces ---------- */
+  .stat-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;flex:1;min-width:110px;box-shadow:var(--shadow-sm);}
+  .stat .n{font-size:24px;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;}
+  .stat .l{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
+
+  .toolbar{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px;box-shadow:var(--shadow-sm);display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .toolbar input[type=text], .toolbar select{
+    font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;
+  }
+  .toolbar input[type=text]{flex:1;min-width:220px;}
+  .toolbar select{width:auto;}
+
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm);}
+  th{background:var(--navy);color:#fff;text-align:left;padding:11px 14px;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:600;}
+  td{padding:11px 14px;font-size:13.5px;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr.data-row:hover{background:#FAFAF9;}
+  .row-actions{display:flex;gap:6px;flex-wrap:wrap;}
+
+  .badge{display:inline-block;padding:4px 11px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
+  .badge.submitted{background:var(--info-tint);color:var(--info);}
+  .badge.under_review{background:var(--warn-tint);color:var(--warn);}
+  .badge.shortlisted{background:var(--ok-tint);color:var(--ok);}
+  .badge.interview_scheduled{background:#EEE8FB;color:#6A3FC0;}
+  .badge.offer_sent{background:#FCEFE0;color:#B9660E;}
+  .badge.rejected{background:var(--danger-tint);color:var(--danger);}
+  .badge.hired{background:var(--navy);color:#fff;}
+  .badge.withdrawn{background:#EDEDEC;color:var(--ink-soft);}
+  .badge.blacklisted{background:#1a1a1a;color:#fff;}
+
+  select.status-select{font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:#fff;font-weight:600;cursor:pointer;}
+
+  .pagination{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:13px;color:var(--ink-soft);}
+  .pagination .controls{display:flex;gap:6px;align-items:center;}
+
+  .empty-state{text-align:center;padding:60px 20px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:var(--radius);}
+
+  img.pfp{width:44px;height:44px;border-radius:8px;object-fit:cover;background:#eee;flex-shrink:0;}
+  .name-cell{display:flex;align-items:center;gap:10px;}
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{position:fixed;inset:0;background:rgba(10,10,10,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;z-index:50;}
+  .modal{background:#fff;border-radius:14px;max-width:760px;width:100%;padding:32px;box-shadow:var(--shadow-lg);}
+  .modal-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:var(--ink-soft);line-height:1;padding:4px;}
+  .modal-close:hover{color:var(--ink);}
+  .detail-section{margin-bottom:18px;}
+  .detail-section h4{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);margin:0 0 8px;border-top:1px solid var(--line);padding-top:14px;}
+  .detail-section:first-of-type h4{border-top:none;padding-top:0;}
+  .drow{display:flex;font-size:13.5px;padding:3px 0;}
+  .drow .k{width:42%;color:var(--ink-soft);}
+  .drow .v{width:58%;font-weight:500;}
+  .status-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;}
+
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+  .field label{font-size:12.5px;font-weight:600;color:var(--navy);}
+  .field input, .field select{font-family:inherit;font-size:13.5px;padding:9px 11px;border:1px solid var(--line);border-radius:7px;}
+
+  .loading-overlay{position:fixed;inset:0;background:rgba(10,10,10,.5);display:flex;align-items:center;justify-content:center;z-index:99;color:#fff;font-weight:600;}
+  .spinner{width:32px;height:32px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .login-wrap{max-width:380px;margin:80px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:36px;text-align:center;box-shadow:var(--shadow-md);}
+  .login-wrap input{font-family:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;width:100%;margin-top:14px;}
+  .error-banner{background:var(--danger-tint);border:1px solid #EBC3BD;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <img class="wct-logo-img" alt="WCT Group" style="height:32px;background:#fff;border-radius:5px;padding:3px 8px;">
+    <span class="sub">WCT Admin Dashboard</span>
+    <nav class="admin-nav" id="adminNav"></nav>
+  </div>
+  <div id="logoutArea"></div>
+</div>
+
+<div id="root"></div>
+
+<div id="loadingOverlay" class="loading-overlay" style="display:none;">
+  <div style="text-align:center;">
+    <div class="spinner"></div>
+    <div id="loadingText">Working...</div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script src="logo.js"></script>
+<script src="jts-logo.js"></script>
+<script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);</script>
+<script>
+// ============================================================================
+// STATE
+// ============================================================================
+let adminToken = sessionStorage.getItem('wct_admin_token');
+let adminScope = sessionStorage.getItem('wct_admin_scope');
+let applications = [];
+let totalCount = 0;
+let stats = { total: 0, by_status: {} };
+let selectedApp = null;
+let editingApp = false;
+let jobsList = [];
+let currentView = 'home';
+let jobsCurrentPage = 1;
+const JOBS_PAGE_SIZE = 10;
+let searchTerm = '';
+let filterBusinessUnit = '';
+let filterStatus = '';
+let currentPage = 1;
+const PAGE_SIZE = 20;
+let searchDebounceTimer = null;
+
+const STATUS_LABELS = {
+  submitted:'New', under_review:'Under Review', shortlisted:'Shortlisted',
+  interview_scheduled:'Interview Scheduled', offer_sent:'Offer Sent',
+  hired:'Hired', rejected:'Rejected', withdrawn:'Withdrawn', blacklisted:'Blacklisted'
+};
+const STATUS_OPTIONS = ['under_review','shortlisted','interview_scheduled','offer_sent','hired','rejected','withdrawn','blacklisted'];
+
+function esc(v){ if(v===null||v===undefined) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showLoading(text){ document.getElementById('loadingText').innerText = text||'Working...'; document.getElementById('loadingOverlay').style.display='flex'; }
+function hideLoading(){ document.getElementById('loadingOverlay').style.display='none'; }
+
+// ============================================================================
+// RENDER DISPATCH
+// ============================================================================
+function render(){
+  const root = document.getElementById('root');
+  document.getElementById('logoutArea').innerHTML = adminToken
+    ? `<button class="btn btn-outline btn-sm" style="background:transparent;color:#fff;border-color:#444;" onclick="logout()">Log out</button>` : '';
+  const navEl = document.getElementById('adminNav');
+  if(navEl){
+    navEl.innerHTML = adminToken ? `
+      <a class="${currentView==='home'?'active':''}" onclick="setView('home')">Home</a>
+      <a class="${currentView==='jobs'?'active':''}" onclick="setView('jobs')">Job Postings</a>
+    ` : '';
+  }
+  if(!adminToken){ root.innerHTML = loginView(); return; }
+  root.innerHTML = `<div class="wrap">${currentView==='jobs' ? jobsPageView() : dashboardView()}</div>`;
+  if(selectedApp) renderModal();
+}
+async function setView(view){
+  currentView = view;
+  if(view==='jobs'){ jobsCurrentPage = 1; await loadJobsForPage(); }
+  render();
+}
+
+// ============================================================================
+// LOGIN
+// ============================================================================
+function loginView(){
+  return `
+    <div class="login-wrap">
+      <h2>Admin Login</h2>
+      <p style="color:var(--ink-soft);font-size:13px;">Enter the HR admin passcode to view applications.</p>
+      <input type="password" id="passcodeInput" placeholder="Admin passcode" onkeydown="if(event.key==='Enter') doLogin()">
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px;" onclick="doLogin()">Log In</button>
+      <div id="loginErr"></div>
+      <a href="login.html" class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:16px;text-decoration:none;">← Main Site</a>
+    </div>
+  `;
+}
+async function doLogin(){
+  const pass = document.getElementById('passcodeInput').value;
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_login', { p_passcode: pass });
+    if(error) throw error;
+    adminToken = data[0].token;
+    adminScope = data[0].unit_scope;
+    sessionStorage.setItem('wct_admin_token', adminToken);
+    sessionStorage.setItem('wct_admin_scope', adminScope);
+    if(adminScope !== 'ALL') filterBusinessUnit = adminScope;
+    render();
+    loadEverything();
+  } catch(e){
+    document.getElementById('loginErr').innerHTML = `<div class="error-banner">Incorrect passcode.</div>`;
+  }
+}
+function logout(){ sessionStorage.removeItem('wct_admin_token'); sessionStorage.removeItem('wct_admin_scope'); adminToken=null; adminScope=null; render(); }
+
+// ============================================================================
+// DASHBOARD: stats + toolbar + table + pagination
+// ============================================================================
+function dashboardView(){
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+
+  const rows = applications.map(a => `
+    <tr class="data-row">
+      <td>${esc(a.reference_no)}</td>
+      <td>
+        <div class="name-cell">
+          ${a.profile_picture_url ? `<img class="pfp" src="${a.profile_picture_url}">` : ''}
+          <div>
+            <div style="font-weight:600;">${esc(a.name_nric)}</div>
+            <div style="font-size:11.5px;color:var(--ink-soft);">${esc(a.email)}</div>
+          </div>
+        </div>
+      </td>
+      <td><strong>${esc(a.position_applying)}</strong></td>
+      <td>${esc(a.business_unit)}</td>
+      <td>
+        <select class="status-select" onchange="quickUpdateStatus('${a.id}', this.value)">
+          <option value="submitted" ${a.status==='submitted'?'selected':''} disabled>New</option>
+          ${STATUS_OPTIONS.map(s=>`<option value="${s}" ${a.status===s?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
+        </select>
+      </td>
+      <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
+      <td>
+        <div class="row-actions">
+          <button class="btn btn-outline btn-sm" onclick="openDetail('${a.id}')">View</button>
+          <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf('${a.id}')">PDF</button>
+          <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+
+  return `
+    <div class="stat-row">
+      <div class="stat"><div class="n">${stats.total||0}</div><div class="l">Total Applicants</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.submitted||0}</div><div class="l">New</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.under_review||0}</div><div class="l">Under Review</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.rejected||0}</div><div class="l">Rejected</div></div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="Search by name, reference no., email, or phone..." value="${esc(searchTerm)}" oninput="handleSearchInput(this.value)">
+      ${adminScope === 'ALL' ? `
+        <select onchange="setFilter('business_unit', this.value)">
+          <option value="">All Business Units</option>
+          <option value="E&C" ${filterBusinessUnit==='E&C'?'selected':''}>E&amp;C</option>
+          <option value="Land" ${filterBusinessUnit==='Land'?'selected':''}>Land</option>
+          <option value="Mall" ${filterBusinessUnit==='Mall'?'selected':''}>Mall</option>
+        </select>
+      ` : `<span class="badge" style="background:var(--navy);color:#fff;">${esc(adminScope)} ACCESS ONLY</span>`}
+      <select onchange="setFilter('status', this.value)">
+        <option value="">All Statuses</option>
+        <option value="submitted" ${filterStatus==='submitted'?'selected':''}>New</option>
+        ${STATUS_OPTIONS.map(s=>`<option value="${s}" ${filterStatus===s?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="loadEverything()">Refresh</button>
+      <button class="btn btn-outline btn-sm" onclick="exportCsv()">Export CSV</button>
+    </div>
+
+    ${applications.length===0 ? `<div class="empty-state">No applications match your search/filters.</div>` : `
+      <table>
+        <thead><tr><th>Reference</th><th>Candidate</th><th>Position</th><th>Unit</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="pagination">
+        <div>Showing ${(currentPage-1)*PAGE_SIZE + 1}–${Math.min(currentPage*PAGE_SIZE, totalCount)} of ${totalCount}</div>
+        <div class="controls">
+          <button class="btn btn-outline btn-sm" ${currentPage<=1?'disabled':''} onclick="goToPage(currentPage-1)">← Prev</button>
+          <span>Page ${currentPage} of ${totalPages}</span>
+          <button class="btn btn-outline btn-sm" ${currentPage>=totalPages?'disabled':''} onclick="goToPage(currentPage+1)">Next →</button>
+        </div>
+      </div>
+    `}
+  `;
+}
+
+function handleSearchInput(val){
+  searchTerm = val;
+  clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => { currentPage = 1; loadApplications(); }, 350);
+}
+function setFilter(key, val){
+  if(key==='business_unit') filterBusinessUnit = val;
+  if(key==='status') filterStatus = val;
+  currentPage = 1;
+  loadApplications();
+}
+function goToPage(p){ currentPage = p; loadApplications(); }
+
+async function loadEverything(){
+  showLoading('Loading applications...');
+  await Promise.all([loadApplications(), loadStats()]);
+  hideLoading();
+}
+
+async function loadApplications(){
+  // The search input gets destroyed and recreated every time render() runs
+  // (since it rebuilds the whole toolbar HTML) — capture focus/cursor state
+  // first so we can restore it after, otherwise every pause in typing kicks
+  // focus out of the box and the next keystroke is lost.
+  const searchEl = document.getElementById('searchInput');
+  const hadFocus = document.activeElement === searchEl;
+  const cursorPos = hadFocus ? searchEl.selectionStart : null;
+
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_search_applications', {
+      p_token: adminToken,
+      p_search: searchTerm || null,
+      p_business_unit: filterBusinessUnit || null,
+      p_status: filterStatus || null,
+      p_page: currentPage,
+      p_page_size: PAGE_SIZE
+    });
+    if(error) throw error;
+    applications = data.rows || [];
+    totalCount = data.total || 0;
+    render();
+    if(hadFocus){
+      const newSearchEl = document.getElementById('searchInput');
+      if(newSearchEl){
+        newSearchEl.focus();
+        newSearchEl.setSelectionRange(cursorPos, cursorPos);
+      }
+    }
+  } catch(e){
+    if(String(e.message||'').includes('expired')||String(e.message||'').includes('Session')){ logout(); }
+    else alert('Error loading applications: '+e.message);
+  }
+}
+
+async function loadStats(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_get_stats', { p_token: adminToken });
+    if(error) throw error;
+    stats = data;
+    render();
+  } catch(e){ console.error(e); }
+}
+
+async function quickUpdateStatus(id, status){
+  if(status === 'blacklisted' && !confirm('Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email.')){ loadApplications(); return; }
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_update_status', {p_token: adminToken, p_id: id, p_status: status});
+    if(error) throw error;
+    await Promise.all([loadApplications(), loadStats()]);
+  } catch(e){ alert('Error: '+e.message); loadApplications(); }
+}
+
+async function confirmDelete(id, name){
+  if(!confirm(`Permanently delete ${name}'s application? This cannot be undone.`)) return;
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_delete_application', {p_token: adminToken, p_id: id});
+    if(error) throw error;
+    await Promise.all([loadApplications(), loadStats()]);
+  } catch(e){ alert('Error deleting: '+e.message); }
+}
+
+function exportCsv(){
+  const headers = ['Reference','Name','NRIC','Email','Mobile','Business Unit','Position','Status','Submitted'];
+  const rows = applications.map(a=>[
+    a.reference_no, a.name_nric, a.nric_new, a.email, a.mobile_phone,
+    a.business_unit, a.position_applying, a.status,
+    a.submitted_at ? new Date(a.submitted_at).toISOString() : ''
+  ]);
+  const csv = [headers, ...rows].map(row =>
+    row.map(cell => `"${String(cell??'').replace(/"/g,'""')}"`).join(',')
+  ).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `wct-applications-page${currentPage}-${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================================
+// DETAIL MODAL (view / edit / status / delete / export)
+// ============================================================================
+async function openDetail(id){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_get_application', {p_token: adminToken, p_id: id});
+    if(error) throw error;
+    selectedApp = data[0];
+    editingApp = false;
+    render();
+  } catch(e){ alert('Error: '+e.message); }
+}
+function closeDetail(){
+  selectedApp=null; editingApp=false;
+  const existing = document.getElementById('modalRoot');
+  if(existing) existing.remove();
+  render();
+}
+function drow(k,v){ return `<div class="drow"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
+
+// ============================================================================
+// JOB POSTINGS — full page, reached via the header nav
+// ============================================================================
+async function loadJobsForPage(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_list_jobs', { p_token: adminToken });
+    if(error) throw error;
+    jobsList = data || [];
+  } catch(e){ alert('Error loading job postings: '+e.message); jobsList = []; }
+}
+function goToJobsPage(p){ jobsCurrentPage = p; render(); }
+
+function jobsPageView(){
+  const unitOptions = adminScope === 'ALL' ? ['E&C','Land','Mall'] : [adminScope];
+  const totalPages = Math.max(1, Math.ceil(jobsList.length / JOBS_PAGE_SIZE));
+  if(jobsCurrentPage > totalPages) jobsCurrentPage = totalPages;
+  const pageStart = (jobsCurrentPage - 1) * JOBS_PAGE_SIZE;
+  const pageItems = jobsList.slice(pageStart, pageStart + JOBS_PAGE_SIZE);
+
+  const rows = pageItems.map(j=>{
+    const expired = j.expiry_date && new Date(j.expiry_date) < new Date();
+    return `
+      <tr class="data-row">
+        <td><strong>${esc(j.title)}</strong></td>
+        <td>${esc(j.business_unit)}</td>
+        <td>${j.expiry_date ? `<span style="color:${expired?'var(--danger)':'var(--ink)'};">${new Date(j.expiry_date).toLocaleDateString()}${expired?' (expired)':''}</span>` : '<span style="color:var(--ink-soft);">No expiry</span>'}</td>
+        <td>${new Date(j.created_at).toLocaleDateString()}</td>
+        <td><button class="btn btn-outline-danger btn-sm" onclick="deleteJob('${j.id}')">Delete</button></td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="stat-row">
+      <div class="stat" style="flex:none;min-width:auto;">
+        <h2 style="font-size:20px;margin:0;">Job Postings</h2>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Candidates only see postings listed here, and only while unexpired.</div>
+      </div>
+    </div>
+
+    <div class="toolbar" style="align-items:flex-end;">
+      <div class="field" style="margin:0;flex:1;min-width:180px;"><label>Job Title</label><input type="text" id="newJobTitle" placeholder="e.g. Site Engineer"></div>
+      <div class="field" style="margin:0;"><label>Business Unit</label>
+        <select id="newJobUnit">${unitOptions.map(u=>`<option value="${u}">${u}</option>`).join('')}</select>
+      </div>
+      <div class="field" style="margin:0;"><label>Expiry Date (optional)</label><input type="date" id="newJobExpiry"></div>
+      <button class="btn btn-primary btn-sm" onclick="createJob()">Post Job</button>
+    </div>
+    <div id="newJobErr"></div>
+
+    ${jobsList.length===0 ? `<div class="empty-state">No job postings yet — add one above.</div>` : `
+      <table>
+        <thead><tr><th>Title</th><th>Unit</th><th>Expiry</th><th>Posted</th><th>Actions</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="pagination">
+        <div>Showing ${pageStart+1}–${Math.min(pageStart+JOBS_PAGE_SIZE, jobsList.length)} of ${jobsList.length}</div>
+        <div class="controls">
+          <button class="btn btn-outline btn-sm" ${jobsCurrentPage<=1?'disabled':''} onclick="goToJobsPage(jobsCurrentPage-1)">← Prev</button>
+          <span>Page ${jobsCurrentPage} of ${totalPages}</span>
+          <button class="btn btn-outline btn-sm" ${jobsCurrentPage>=totalPages?'disabled':''} onclick="goToJobsPage(jobsCurrentPage+1)">Next →</button>
+        </div>
+      </div>
+    `}
+  `;
+}
+
+async function createJob(){
+  const title = document.getElementById('newJobTitle').value.trim();
+  const unit = document.getElementById('newJobUnit').value;
+  const expiry = document.getElementById('newJobExpiry').value || null;
+  if(!title){ document.getElementById('newJobErr').innerHTML = `<div class="error-banner">Please enter a job title.</div>`; return; }
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_create_job', { p_token: adminToken, p_title: title, p_business_unit: unit, p_expiry_date: expiry });
+    if(error) throw error;
+    await loadJobsForPage();
+    render();
+  } catch(e){ document.getElementById('newJobErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+}
+async function deleteJob(id){
+  if(!confirm('Delete this job posting? Candidates will no longer be able to select it.')) return;
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_delete_job', { p_token: adminToken, p_id: id });
+    if(error) throw error;
+    await loadJobsForPage();
+    render();
+  } catch(e){ alert('Error: '+e.message); }
+}
+
+function renderModal(){
+  const a = selectedApp;
+  const existing = document.getElementById('modalRoot');
+  if(existing) existing.remove();
+  const div = document.createElement('div');
+  div.id = 'modalRoot';
+  div.className = 'modal-overlay';
+  div.onclick = (e)=>{ if(e.target===div) closeDetail(); };
+
+  div.innerHTML = `
+    <div class="modal">
+      <button class="modal-close" onclick="closeDetail()">✕</button>
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">
+        ${a.profile_picture_url?`<img class="pfp" style="width:64px;height:64px;" src="${a.profile_picture_url}">`:''}
+        <div>
+          <h2 style="margin-bottom:2px;">${esc(a.name_nric)}</h2>
+          <div style="color:var(--ink-soft);font-size:13px;">${esc(a.reference_no)} · ${esc(a.business_unit)} · <strong>${esc(a.position_applying)}</strong></div>
+        </div>
+      </div>
+      <span class="badge ${a.status}" style="margin-bottom:16px;display:inline-block;">${STATUS_LABELS[a.status]||a.status}</span>
+
+      ${editingApp ? editFormHtml(a) : viewDetailHtml(a)}
+    </div>
+  `;
+  document.body.appendChild(div);
+}
+
+function viewDetailHtml(a){
+  return `
+      <div class="detail-section">
+        <h4>Contact &amp; Personal Particulars</h4>
+        ${drow('Mobile', a.mobile_phone)}
+        ${drow('Email', a.email)}
+        ${drow('NRIC', a.nric_new)}
+        ${drow('Address', (a.permanent_address||'')+' '+(a.permanent_postcode||''))}
+        ${drow('Date of Birth / Age', `${a.date_of_birth||'—'} / ${a.age||'—'}`)}
+        ${drow('Citizen / Marital Status', `${a.citizen||'—'} / ${a.marital_status||'—'}`)}
+        ${drow('Bumiputra / Race', `${a.bumiputra||'—'} / ${a.race||'—'}`)}
+      </div>
+
+      <div class="detail-section">
+        <h4>Language Ability</h4>
+        ${(a.language_ability||[]).map(l=>drow(l.language, `Spoken: ${l.spoken||'—'} · Written: ${l.written||'—'}`)).join('') || drow('Language Ability','None provided')}
+      </div>
+
+      <div class="detail-section">
+        <h4>Education</h4>
+        ${(a.education||[]).map(e=>drow(e.type, `${e.name} (${e.from_year}–${e.to_year}) — ${e.qualification}`)).join('') || drow('Education','None provided')}
+      </div>
+
+      <div class="detail-section">
+        <h4>Working Experience</h4>
+        ${(a.working_experience||[]).map(e=>drow(e.position||'Position', `${e.employer} (${e.from}–${e.to}) — RM${e.remuneration||'—'}/month`)).join('') || drow('Experience','None provided')}
+      </div>
+
+      <div class="detail-section">
+        <h4>Employment Details</h4>
+        ${drow('Resignation Notice Required', a.resignation_notice_required)}
+        ${drow('Notice Period', a.notice_period)}
+        ${drow('Expected Salary', a.expected_basic_salary)}
+        ${drow('Available From', a.date_available_to_start)}
+        ${drow('Own Transport (Car/Bike)', `${a.own_transport_motorcar||'—'} / ${a.own_transport_motorcycle||'—'}`)}
+        ${drow('Willing Outside Klang Valley', a.willing_based_outside_klang_valley)}
+      </div>
+
+      <div class="detail-section">
+        <h4>Additional Questions</h4>
+        ${drow('Relatives/Friends in Company', a.relatives_in_company)}
+        ${a.relatives_in_company==='Yes' ? drow('Relative Name / Relationship', `${a.relatives_name||'—'} / ${a.relatives_relationship||'—'}`) : ''}
+        ${drow('Physical Defects/Disabilities', a.physical_defects)}
+        ${a.physical_defects==='Yes' ? drow('Please Specify', a.physical_defects_specify) : ''}
+        ${drow('Arrested/Convicted', a.arrested_convicted)}
+        ${a.arrested_convicted==='Yes' ? drow('Please Specify', a.arrested_convicted_specify) : ''}
+      </div>
+
+      <div class="detail-section">
+        <h4>Referees</h4>
+        ${a.referee1?.name ? drow('Referee 1', `${a.referee1.name} — ${a.referee1.designation||''} · ${a.referee1.relationship||''} · ${a.referee1.contact||''}`) : ''}
+        ${a.referee2?.name ? drow('Referee 2', `${a.referee2.name} — ${a.referee2.designation||''} · ${a.referee2.relationship||''} · ${a.referee2.contact||''}`) : ''}
+        ${(!a.referee1?.name && !a.referee2?.name) ? drow('Referees','None provided') : ''}
+      </div>
+
+      <div class="detail-section">
+        <h4>Declarations</h4>
+        ${drow('Lawsuits / Proceedings', a.declaration_lawsuit)}
+        ${drow('Other Matters', a.declaration_other_matters)}
+      </div>
+
+      <div class="detail-section">
+        <h4>Attachments</h4>
+        ${a.attachments && a.attachments.length ? a.attachments.map(f=>{
+          const isImg = f.type && f.type.startsWith('image/');
+          return `<div class="drow" style="align-items:center;">
+            <div class="k" style="width:auto;"></div>
+            <div class="v" style="display:flex;align-items:center;gap:10px;">
+              <span style="width:40px;height:40px;border-radius:6px;background:#EFEEEA;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;overflow:hidden;">
+                ${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;">` : '📄'}
+              </span>
+              <a href="${f.url}" target="_blank">${esc(f.name)}</a>
+            </div>
+          </div>`;
+        }).join('') : drow('Documents','None')}
+      </div>
+
+      <div class="detail-section">
+        <h4>Consent Records</h4>
+        ${drow('Consent Language', a.language_choice==='BM' ? 'Bahasa Melayu' : 'English')}
+        ${drow('JTS Consent Agreed', a.jts_agreed ? `Yes — ${new Date(a.jts_agreed_at).toLocaleString()}` : 'No')}
+        ${drow('PDPA Consent Agreed', a.pdpa_agreed ? `Yes — ${new Date(a.pdpa_agreed_at).toLocaleString()}` : 'No')}
+      </div>
+
+      <div class="detail-section">
+        <h4>Submission Record</h4>
+        ${drow('Submitted', a.submitted_at ? new Date(a.submitted_at).toLocaleString() : 'Not yet submitted')}
+      </div>
+
+      <div class="status-actions">
+        <button class="btn btn-outline btn-sm" onclick="startEdit()">✎ Edit</button>
+        <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf(selectedApp.id)">📄 Export Full PDF</button>
+        <a class="btn btn-outline btn-sm" style="text-decoration:none;" href="mailto:${encodeURIComponent(a.email||'')}?subject=${encodeURIComponent('Regarding your application '+a.reference_no)}&body=${encodeURIComponent('Dear '+(a.name_nric||'Candidate')+',\n\n')}">✉ Email</a>
+        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">🗑 Delete</button>
+      </div>
+      <div class="status-actions">
+        ${STATUS_OPTIONS.map(s => {
+          const styleMap = { hired:'btn-primary', shortlisted:'btn-success', rejected:'btn-danger', blacklisted:'btn-danger' };
+          const cls = styleMap[s] || 'btn-outline';
+          return `<button class="btn ${cls} btn-sm" onclick="updateStatus('${s}')">${STATUS_LABELS[s]}</button>`;
+        }).join('')}
+      </div>
+  `;
+}
+
+function editFormHtml(a){
+  return `
+    <div class="detail-section">
+      <h4>Edit Core Details</h4>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-4px;">Covers the fields most likely to need a correction. Full-record editing isn't available here — for anything else, coordinate directly with the candidate.</p>
+      <div class="field"><label>Name (per NRIC)</label><input type="text" id="editName" value="${esc(a.name_nric)}"></div>
+      <div class="field"><label>Email</label><input type="text" id="editEmail" value="${esc(a.email)}"></div>
+      <div class="field"><label>Mobile Phone</label><input type="text" id="editMobile" value="${esc(a.mobile_phone)}"></div>
+      <div class="field"><label>Position Applying</label><input type="text" id="editPosition" value="${esc(a.position_applying)}"></div>
+      <div class="field"><label>Business Unit</label>
+        <select id="editBusinessUnit">
+          ${['E&C','Land','Mall'].map(o=>`<option value="${o}" ${a.business_unit===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="btn btn-primary btn-sm" onclick="saveEdit()">Save Changes</button>
+        <button class="btn btn-outline btn-sm" onclick="cancelEdit()">Cancel</button>
+      </div>
+    </div>
+  `;
+}
+function startEdit(){ editingApp = true; render(); }
+function cancelEdit(){ editingApp = false; render(); }
+
+async function saveEdit(){
+  const patch = {
+    name_nric: document.getElementById('editName').value.trim(),
+    email: document.getElementById('editEmail').value.trim(),
+    mobile_phone: document.getElementById('editMobile').value.trim(),
+    position_applying: document.getElementById('editPosition').value.trim(),
+    business_unit: document.getElementById('editBusinessUnit').value
+  };
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_update_application', {p_token: adminToken, p_id: selectedApp.id, p_patch: patch});
+    if(error) throw error;
+    editingApp = false;
+    await openDetail(selectedApp.id);
+    await loadApplications();
+  } catch(e){ alert('Error saving: '+e.message); }
+}
+
+async function updateStatus(status){
+  if(status === 'blacklisted' && !confirm('Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email. This can be reversed later by changing their status.')) return;
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_update_status', {p_token: adminToken, p_id: selectedApp.id, p_status: status});
+    if(error) throw error;
+    await openDetail(selectedApp.id);
+    await Promise.all([loadApplications(), loadStats()]);
+  } catch(e){ alert('Error: '+e.message); }
+}
+
+// ============================================================================
+// PDF EXPORT — formal, print-ready HTML replica, saved via the browser's
+// own "Print > Save as PDF" — no third-party service, no cost. Merges the
+// Job Application, JTS Consent Letter, and PDPA Notice into one document,
+// each as its own page, in whichever language the candidate chose.
+// ============================================================================
+function fmt(v){ return (v===null||v===undefined||v==='') ? '—' : esc(String(v)); }
+function fmtDate(v){ if(!v) return '—'; try{ return new Date(v).toLocaleDateString('en-GB'); }catch(e){ return esc(v); } }
+function fmtDateTime(v){ if(!v) return '—'; try{ return new Date(v).toLocaleString('en-GB'); }catch(e){ return esc(v); } }
+
+async function exportCandidatePdf(id){
+  let a = applications.find(x=>x.id===id);
+  if(!a || (selectedApp && a.id !== selectedApp.id)){
+    try{
+      const { data, error } = await supabaseClient.rpc('rpc_admin_get_application', {p_token: adminToken, p_id: id});
+      if(error) throw error;
+      a = data[0];
+    } catch(e){ alert('Could not load record for export: '+e.message); return; }
+  }
+  const html = buildFormalPdfHtml(a);
+  const win = window.open('', '_blank');
+  if(!win){ alert('Please allow pop-ups for this site to generate the PDF.'); return; }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => setTimeout(() => win.print(), 400);
+}
+
+// ---------------------------------------------------------------------------
+// Shared print styles, used by all three merged pages
+// ---------------------------------------------------------------------------
+function pdfSharedStyles(){
+  return `
+  @page{ size:A4; margin:18mm 16mm; }
+  *{box-sizing:border-box;}
+  body{font-family:'Georgia',serif;font-size:11.5px;color:#1a1a1a;margin:0;line-height:1.55;}
+  .doc-page{ }
+  .doc-page + .doc-page{ page-break-before: always; }
+  .letterhead{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #000;padding-bottom:12px;margin-bottom:20px;}
+  .letterhead .brand-row{display:flex;align-items:center;gap:14px;}
+  .letterhead img.logo{height:44px;}
+  .letterhead h1{font-size:19px;margin:0 0 2px;letter-spacing:.02em;}
+  .letterhead .tagline{font-size:10px;color:#666;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.07em;}
+  .letterhead .ref-box{text-align:right;font-family:Arial,sans-serif;}
+  .letterhead .ref-box .big{font-size:14px;font-weight:bold;}
+  .letterhead .ref-box .status{display:inline-block;margin-top:4px;padding:3px 10px;border-radius:12px;background:#eee;font-size:9px;font-weight:bold;text-transform:uppercase;font-family:Arial,sans-serif;}
+  h2.section{font-family:Arial,sans-serif;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#000;padding:5px 10px;margin:20px 0 10px;}
+  h2.section:first-of-type{margin-top:0;}
+  table{width:100%;border-collapse:collapse;margin-bottom:6px;}
+  th{font-family:Arial,sans-serif;font-size:9px;text-transform:uppercase;color:#666;text-align:left;padding:4px 8px;border-bottom:1px solid #ccc;}
+  td{padding:5px 8px;font-size:10.5px;vertical-align:top;}
+  .kv{display:flex;flex-wrap:wrap;gap:0 24px;}
+  .kv .item{width:calc(50% - 12px);padding:3px 0;font-size:11px;}
+  .kv .item.full{width:100%;}
+  .kv .lbl{font-family:Arial,sans-serif;font-size:8.5px;text-transform:uppercase;color:#888;letter-spacing:.04em;display:block;}
+  .photo{width:80px;height:80px;object-fit:cover;border:1px solid #ccc;margin-left:14px;}
+  .footer{margin-top:24px;border-top:1px solid #ccc;padding-top:8px;font-family:Arial,sans-serif;font-size:8.5px;color:#888;display:flex;justify-content:space-between;}
+  .legal-title{font-family:Arial,sans-serif;font-size:15px;font-weight:bold;text-align:center;margin:10px 0 16px;text-decoration:underline;}
+  .legal-body p{margin:0 0 10px;font-size:10.8px;text-align:justify;}
+  .legal-fill{border-bottom:1px solid #666;padding:0 4px;font-weight:bold;}
+  .legal-header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:16px;}
+  .legal-header .company-name{font-size:15px;font-weight:bold;}
+  .legal-header .company-sub{font-size:9px;color:#555;font-family:Arial,sans-serif;}
+  .confirm-box{border:1px solid #999;padding:12px 14px;margin-top:16px;background:#FAFAF9;}
+  .confirm-box .lbl{font-family:Arial,sans-serif;font-size:8.5px;text-transform:uppercase;color:#888;}
+  .small-print{font-size:7.5px;color:#777;font-family:Arial,sans-serif;line-height:1.5;margin-top:14px;}
+  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;}
+  .print-bar button{font-family:Arial,sans-serif;font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
+  @media print{ .print-bar{display:none;} }
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Page 1: Job Application
+// ---------------------------------------------------------------------------
+function buildJobApplicationPageHtml(a){
+  const edu = (a.education||[]).map(e=>`<tr><td>${fmt(e.type)}</td><td>${fmt(e.name)}</td><td>${fmt(e.from_year)}–${fmt(e.to_year)}</td><td>${fmt(e.qualification)}</td></tr>`).join('')
+    || `<tr><td colspan="4" style="text-align:center;color:#999;">No entries provided</td></tr>`;
+  const exp = (a.working_experience||[]).map(w=>`
+    <tr><td>${fmt(w.employer)}</td><td>${fmt(w.position)}</td><td>${fmt(w.from)}–${fmt(w.to)}</td><td>${fmt(w.remuneration)}</td></tr>
+    ${w.responsibilities ? `<tr><td colspan="4" style="color:#555;font-style:italic;padding-top:0;">${fmt(w.responsibilities)}</td></tr>` : ''}
+  `).join('') || `<tr><td colspan="4" style="text-align:center;color:#999;">No entries provided</td></tr>`;
+  const lang = (a.language_ability||[]).map(l=>`<tr><td>${fmt(l.language)}</td><td>${fmt(l.spoken)}</td><td>${fmt(l.written)}</td></tr>`).join('')
+    || `<tr><td colspan="3" style="text-align:center;color:#999;">No entries provided</td></tr>`;
+  const refs = [a.referee1, a.referee2].filter(r => r && r.name);
+
+  return `
+  <div class="doc-page">
+    <div class="letterhead">
+      <div class="brand-row">
+        <img class="logo" src="${WCT_LOGO_DATA_URI}">
+        <div>
+          <h1>WCT Group of Companies</h1>
+          <div class="tagline">Employment Application — Candidate Record</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-end;">
+        <div class="ref-box">
+          <div class="big">${esc(a.reference_no||'')}</div>
+          <div style="font-size:10px;color:#666;">Position: ${fmt(a.position_applying)} · ${fmt(a.business_unit)}</div>
+          <div class="status">${STATUS_LABELS[a.status]||a.status}</div>
+        </div>
+        ${a.profile_picture_url ? `<img class="photo" src="${a.profile_picture_url}">` : ''}
+      </div>
+    </div>
+
+    <h2 class="section">Personal Particulars</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">Name (per NRIC)</span>${fmt(a.name_nric)}</div>
+      <div class="item"><span class="lbl">NRIC</span>${fmt(a.nric_new)}</div>
+      <div class="item"><span class="lbl">Date of Birth / Age</span>${fmtDate(a.date_of_birth)} / ${fmt(a.age)}</div>
+      <div class="item"><span class="lbl">Citizenship / Marital Status</span>${fmt(a.citizen)} / ${fmt(a.marital_status)}</div>
+      <div class="item"><span class="lbl">Bumiputra / Race</span>${fmt(a.bumiputra)} / ${fmt(a.race)}</div>
+      <div class="item"><span class="lbl">Mobile</span>${fmt(a.mobile_phone)}</div>
+      <div class="item"><span class="lbl">Email</span>${fmt(a.email)}</div>
+      <div class="item full"><span class="lbl">Permanent Address</span>${fmt(a.permanent_address)} ${fmt(a.permanent_postcode)}</div>
+    </div>
+
+    <h2 class="section">Language Ability</h2>
+    <table><thead><tr><th>Language</th><th>Spoken</th><th>Written</th></tr></thead><tbody>${lang}</tbody></table>
+
+    <h2 class="section">Education</h2>
+    <table><thead><tr><th>Type</th><th>Institution</th><th>Period</th><th>Qualification</th></tr></thead><tbody>${edu}</tbody></table>
+
+    <h2 class="section">Working Experience</h2>
+    <table><thead><tr><th>Employer</th><th>Position</th><th>Period</th><th>Last Drawn</th></tr></thead><tbody>${exp}</tbody></table>
+
+    <h2 class="section">Employment Details</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">Resignation Notice Required</span>${fmt(a.resignation_notice_required)}</div>
+      <div class="item"><span class="lbl">Notice Period</span>${fmt(a.notice_period)}</div>
+      <div class="item"><span class="lbl">Expected Basic Salary</span>${fmt(a.expected_basic_salary)}</div>
+      <div class="item"><span class="lbl">Available to Start</span>${fmtDate(a.date_available_to_start)}</div>
+      <div class="item"><span class="lbl">Own Transport (Car/Bike)</span>${fmt(a.own_transport_motorcar)} / ${fmt(a.own_transport_motorcycle)}</div>
+      <div class="item"><span class="lbl">Willing Outside Klang Valley</span>${fmt(a.willing_based_outside_klang_valley)}</div>
+    </div>
+
+    <h2 class="section">Additional Questions</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">Relatives/Friends in Company</span>${fmt(a.relatives_in_company)}</div>
+      ${a.relatives_in_company==='Yes' ? `<div class="item"><span class="lbl">Relative Name / Relationship</span>${fmt(a.relatives_name)} / ${fmt(a.relatives_relationship)}</div>` : ''}
+      <div class="item"><span class="lbl">Physical Defects/Disabilities</span>${fmt(a.physical_defects)}</div>
+      ${a.physical_defects==='Yes' ? `<div class="item full"><span class="lbl">Please Specify</span>${fmt(a.physical_defects_specify)}</div>` : ''}
+      <div class="item"><span class="lbl">Arrested/Convicted</span>${fmt(a.arrested_convicted)}</div>
+      ${a.arrested_convicted==='Yes' ? `<div class="item full"><span class="lbl">Please Specify</span>${fmt(a.arrested_convicted_specify)}</div>` : ''}
+    </div>
+
+    ${refs.length ? `
+    <h2 class="section">Referees</h2>
+    <div class="kv">
+      ${refs.map((r,i)=>`<div class="item"><span class="lbl">Referee ${i+1}</span>${fmt(r.name)} — ${fmt(r.designation)}<br>${fmt(r.relationship)} · ${fmt(r.contact)}</div>`).join('')}
+    </div>` : ''}
+
+    <h2 class="section">Declarations</h2>
+    <div class="kv">
+      <div class="item full"><span class="lbl">Lawsuits / Proceedings</span>${fmt(a.declaration_lawsuit)}</div>
+      <div class="item full"><span class="lbl">Other Matters</span>${fmt(a.declaration_other_matters)}</div>
+    </div>
+
+    <h2 class="section">Consent &amp; Submission Record</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">Consent Language</span>${a.language_choice==='BM' ? 'Bahasa Melayu' : 'English'}</div>
+      <div class="item"><span class="lbl">Submitted</span>${fmtDateTime(a.submitted_at)}</div>
+    </div>
+
+    <div class="footer">
+      <span>Reference ${esc(a.reference_no||'')} — Generated ${fmtDateTime(new Date().toISOString())}</span>
+      <span>WCT Group Employment Application Portal</span>
+    </div>
+  </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Page 2: JTS Consent Letter — wording matches the original JTS Checks
+// document, filled with the recorded consent details instead of a blank
+// signature line (consent was captured digitally with a timestamp).
+// ---------------------------------------------------------------------------
+function buildJtsPageHtml(a){
+  const bm = a.language_choice === 'BM';
+  const title = bm ? 'SURAT KEBENARAN DAN PELEPASAN MAKLUMAT CALON' : "CANDIDATE'S CERTIFICATE AND RELEASE";
+  const body = bm ? `
+    <p>Saya, <span class="legal-fill">${fmt(a.jts_agreed_name || a.name_nric)}</span>, No. KP / Pasport: <span class="legal-fill">${fmt(a.jts_agreed_nric || a.nric_new)}</span> dengan ini memberikan kebenaran kepada <strong>JTS CHECKS SDN BHD (1157487-M)</strong>, sebuah syarikat saringan latar belakang untuk menjalankan perkara-perkara berikut bagi tujuan saringan latar belakang sebagai sebahagian daripada proses pengambilan pekerja oleh pelanggan JTS CHECKS SDN BHD ("Syarikat") yang mana saya sedang memohon pekerjaan. Saya juga memberikan kebenaran kepada Syarikat untuk melepaskan Laporan yang mengandungi keputusan saringan kepada Pelanggan.</p>
+    <p>Segala maklumat yang saya berikan bagi menyokong permohonan pekerjaan saya adalah benar dan tepat setakat pengetahuan saya. Saya faham bahawa sebarang penipuan atau maklumat yang tidak lengkap akan menjadi alasan yang mencukupi untuk penolakan permohonan atau pemecatan sekiranya saya diambil bekerja.</p>
+    <p>Saya dengan ini memberikan kebenaran dan kuasa kepada mana-mana bekas majikan, institusi pendidikan, individu, firma, syarikat, agensi pengguna atau agensi laporan kredit, atau agensi kerajaan untuk menjawab sebarang pertanyaan dan memberikan sebarang maklumat yang berada dalam pengetahuan atau rekod mereka, dan saya bersetuju untuk tidak menyalahkan atau menuntut mereka atas sebarang liabiliti berkaitan dengan pelepasan maklumat yang benar yang berada dalam pengetahuan atau rekod mereka. Saya juga bersetuju untuk tidak menyalahkan Syarikat dan membebaskan Syarikat daripada sebarang liabiliti atas penggunaan sebarang maklumat yang diterima daripada pihak-pihak tersebut dalam membuat keputusan pengambilan pekerja terhadap saya.</p>
+    <p>Syarikat diberi kuasa untuk melepaskan keputusan saringan kepada Pelanggan yang berkaitan dengan kebenaran ini. Sekiranya terdapat permintaan saringan latar belakang pada masa hadapan oleh Pelanggan yang sama, kebenaran ini kekal sah melainkan saya menarik balik secara bertulis. Saya bersetuju untuk tidak menyalahkan Syarikat dan membebaskan Syarikat daripada sebarang liabiliti atas penggunaan atau pendedahan maklumat tersebut, selagi ia dilakukan mengikut undang-undang perlindungan data yang berkenaan dan hanya untuk tujuan yang dinyatakan dalam kebenaran ini.</p>
+    <p style="text-align:center;font-weight:bold;text-decoration:underline;margin-top:16px;">PENGAKUAN DAN PELEPASAN</p>
+    <p>Saya mengakui penerimaan surat ini. Saya membebaskan syarikat anda serta pekerja dan ejen anda daripada sebarang liabiliti berkaitan dengan pemerolehan dan penggunaan maklumat tersebut semata-mata untuk tujuan penilaian dalam proses pengambilan pekerja. Saya memberi kuasa kepada semua syarikat, institusi pendidikan, organisasi dan individu lain untuk memberikan maklumat tersebut kepada anda dan ejen anda serta melepaskan mereka daripada sebarang liabiliti berkaitan pemerolehan, pelepasan dan penggunaan maklumat tersebut.</p>
+  ` : `
+    <p>I, <span class="legal-fill">${fmt(a.jts_agreed_name || a.name_nric)}</span>, NRIC No. / Passport: <span class="legal-fill">${fmt(a.jts_agreed_nric || a.nric_new)}</span> hereby grant consent to <strong>JTS CHECKS SDN BHD (1157487-M)</strong>, a background screening company to conduct the following for background screening as part of the recruitment process of JTS CHECKS SDN BHD's ("the Company") client with whom I am seeking employment opportunities with. I hereby grant consent to the Company to release the Report, which consists the screening results to the Client.</p>
+    <p>All information provided by me in support of my application for employment, is true and correct to the best of my knowledge. I understand that misrepresentation or omission will constitute sufficient grounds for rejection or for subsequent dismissal if I am hired.</p>
+    <p>I hereby consent and authorize any former employer, educational institution, person, firm, corporation, consumer or credit reporting agency, or government agency to answer any and all questions and to release or provide any information within their knowledge or record, and I agree to hold any or all of them blameless and free of any liability for releasing any truthful information that is within their knowledge or records. I also agree to hold the Company blameless and free of any liability for using any information received from such parties in making an employment decision regarding me.</p>
+    <p>The Company is authorized to release the screening results to the Client to whom this consent applies. In the event of any future background screening request by the same Client, this authorization shall remain valid unless expressly revoked by me in writing. I agree to hold the Company blameless and free of any liability for using or disclosing such information, provided it is done in accordance with applicable data protection laws and solely for the purpose stated in this consent.</p>
+    <p style="text-align:center;font-weight:bold;text-decoration:underline;margin-top:16px;">ACKNOWLEDGEMENT AND RELEASE</p>
+    <p>I acknowledge receipt of this letter. I release your company and its employees and agents from all liability relating to your obtaining and use of such information solely and only for the purpose of being evaluated for a recruitment position. I authorize all companies, educational institutions, organizations and other persons to provide such information to you and your agents and release them from all liability relating to the obtaining, release and use of such information.</p>
+  `;
+
+  return `
+  <div class="doc-page">
+    <div class="legal-header">
+      <div class="brand-row" style="display:flex;align-items:center;gap:12px;">
+        <img src="${JTS_LOGO_DATA_URI}" style="height:52px;">
+        <div>
+          <div class="company-name">JTS CHECKS SDN BHD</div>
+          <div class="company-sub">JTS CHECKS SDN BHD 1157487-M<br>Unit 3-3-5, Level 3, Tower3, UOA Business Park, Jalan Pengaturcara U1/51A, Kawasan Perindustrian Temasya, 40150, Shah Alam, Malaysia</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legal-title">${title}</div>
+    <div class="legal-body">${body}</div>
+
+    <div class="confirm-box">
+      <div class="lbl">Consent recorded digitally (no wet signature collected)</div>
+      <div class="kv" style="margin-top:6px;">
+        <div class="item"><span class="lbl">${bm?'Nama Calon':'Candidate Name'}</span>${fmt(a.jts_agreed_name)}</div>
+        <div class="item"><span class="lbl">${bm?'No. KP / Pasport':'NRIC / Passport No.'}</span>${fmt(a.jts_agreed_nric)}</div>
+        <div class="item"><span class="lbl">${bm?'No. Telefon Bimbit':'Mobile No.'}</span>${fmt(a.jts_agreed_mobile)}</div>
+        <div class="item"><span class="lbl">${bm?'Tarikh Persetujuan':'Date of Consent'}</span>${fmtDateTime(a.jts_agreed_at)}</div>
+      </div>
+    </div>
+
+    <div class="small-print">Important Note: JTS CHECKS shall endeavor to ensure that all of its Pre-Employment Screening Information is accurate. JTS CHECKS however gives no warranties and makes no representations with respect to the accuracy, currency, or completeness of its Pre Screening Information.</div>
+  </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Page 3: PDPA Notice — wording matches the original WCT PDPA document,
+// filled with the recorded consent details instead of a blank signature.
+// ---------------------------------------------------------------------------
+function buildPdpaPageHtml(a){
+  const bm = a.language_choice === 'BM';
+  const title = bm ? 'Mengizinkan Proses Data Peribadi dan Notis Perlindungan Data Peribadi' : 'Consent to Process Personal Data And Personal Data Protection Notice';
+  const body = bm ? `
+    <p>Notis ini dikeluarkan kepada anda oleh dan/atau bagi pihak WCT Holdings Berhad, syarikat-syarikat yang berkaitan*, ahli-ahli gabungan dan entiti-entiti lain dalam kumpulan syarikat WCT (selepas ini dirujuk sebagai "Kumpulan WCT") selaras dengan Akta Perlindungan Data Peribadi 2010. Dalam notis ini "kami" merujuk kepada mana-mana syarikat dalam Kumpulan WCT.</p>
+    <p><strong>Sumber dan Deskripsi Data Peribadi.</strong> Kami telah mengumpul dan/atau akan mengumpul data peribadi seperti yang dizahirkan oleh/dikumpul daripada anda yang, bergantung kepada maksud yang mana anda menzahirkan data tersebut, mungkin termasuk butir-butir peribadi anda (seperti: nama, tarikh lahir, jantina, bangsa, nombor kad pengenalan/pasport, status perkahwinan, kewarganegaraan), butir-butir hubungan anda serta maklumat pendidikan, profesional, pekerjaan, kewangan, keluarga, perubatan, data biometrik anda dan/atau apa-apa maklumat lain yang anda maklumkan kepada kami.</p>
+    <p><strong>Maksud dan Penzahiran.</strong> Data anda sedang atau akan diproses untuk maksud-maksud yang mana ia telah dizahirkan oleh anda, seperti membolehkan kami membuat pertimbangan untuk memasuki kontrak dengan anda, untuk memenuhi obligasi-obligasi kontrak kami kepada anda dan/atau untuk menawarkan atau membekalkan produk dan/atau perkhidmatan kami kepada anda. Data anda mungkin akan dizahirkan kepada syarikat lain di dalam Kumpulan WCT atau ejen-ejen, wakil-wakil, penasihat-penasihat profesional dan/atau perunding-perunding kami, pemberi perkhidmatan pihak ketiga dan/atau pembekal utiliti, kontraktor, pembekal dan/atau penjual dan juga kepada pihak-pihak berkuasa kerajaan, tempatan, pengawal yang berkaitan.</p>
+    <p><strong>Akses, Pembetulan, Siasatan dan/atau Aduan.</strong> Anda berhak untuk meminta akses kepada Data anda dan untuk meminta untuk mengemaskini atau membetulkan Data anda. Sila hubungi Pengurus Hal Ehwal Korporat di 03-7806688 atau menghantar e-mel kepada pdpa@wct.my.</p>
+    <p><strong>Persetujuan dan Pilihan anda.</strong> Kecuali untuk Data yang perlu bagi kami melaksanakan kontrak antara kami, anda boleh memilih sama ada untuk memberi atau enggan memberi Data anda. Jika anda ingin menarik balik atau menghadkan kebenaran anda, sila melengkapkan Borang Penarikan Balik di laman web kami di www.wct.com.my/pdpa.</p>
+    <p><strong>Pemindahan data peribadi ke tempat di luar Malaysia.</strong> Kami boleh memindahkan Data anda ke tempat di luar Malaysia dan dengan ini anda telahpun bersetuju terhadap pemindahan tersebut.</p>
+  ` : `
+    <p>This Notice is issued to you by and/or on behalf of WCT Holdings Berhad, its related companies*, affiliates and other entities within the WCT group of companies (hereinafter referred to as "WCT Group") pursuant to the Personal Data Protection Act 2010. In this notice "we", "our" and "us" refer to any of the companies within the WCT Group.</p>
+    <p><strong>Source and Description of Personal Data.</strong> We have collected and/or will be collecting personal data as disclosed by / collected from you which, depending on the purpose for which you disclosed the data, may include your personal details (e.g. name, date of birth, gender, race, NRIC / passport no., marital status, nationality), your contact information as well as your educational, professional, occupational, financial, familial, medical details, biometric data and/or any other information which you may provide to us.</p>
+    <p><strong>Purpose and Disclosure.</strong> Your Data is being or will be processed for the purposes for which it was disclosed by you, such as to enable us to consider entering into a contract with you, to fulfil our contractual obligations to you and/or to offer or to deliver products and/or services to you. Your Data may be disclosed to another company within the WCT Group or to our agents, representatives, professional advisors and/or consultants, third party service and/or utility providers, contractors, suppliers and/or vendors as well as to relevant governmental, municipal and/or regulatory authorities.</p>
+    <p><strong>Access, Correction, Inquiry and/or Complaint.</strong> You have the right to request for access to your Data and to request to update or correct the same. Please contact the Corporate Affairs Manager at 03-78066688 or email us at pdpa@wct.my.</p>
+    <p><strong>Consent and Choice.</strong> Save for Data necessary for the performance of contracts between us, you may choose whether or not to provide your Data. If you wish to withdraw or limit your consent, please complete the Withdrawal Form on our website at www.wct.com.my/pdpa.</p>
+    <p><strong>Transfer of personal data to places outside Malaysia.</strong> We may transfer your Data to a place outside Malaysia and you hereby consent to the transfer.</p>
+  `;
+
+  return `
+  <div class="doc-page">
+    <div class="letterhead">
+      <div class="brand-row">
+        <img class="logo" src="${WCT_LOGO_DATA_URI}">
+        <div>
+          <h1 style="font-size:15px;">${title}</h1>
+        </div>
+      </div>
+    </div>
+
+    <div class="legal-body">${body}</div>
+
+    <div class="confirm-box">
+      <div class="lbl">${bm?'PENGESAHAN DAN PERSETUJUAN':'CONFIRMATION AND CONSENT'} — ${bm?'direkodkan secara digital (tiada tandatangan fizikal dikumpul)':'recorded digitally (no wet signature collected)'}</div>
+      <div class="kv" style="margin-top:6px;">
+        <div class="item"><span class="lbl">${bm?'Nama':'Name'}</span>${fmt(a.pdpa_agreed_name)}</div>
+        <div class="item"><span class="lbl">${bm?'No. K/P':'NRIC No.'}</span>${fmt(a.pdpa_agreed_nric)}</div>
+        <div class="item full"><span class="lbl">${bm?'Tarikh Persetujuan':'Date of Consent'}</span>${fmtDateTime(a.pdpa_agreed_at)}</div>
+      </div>
+    </div>
+
+    <div class="small-print">*WCT Holdings Berhad, WCT Berhad, WCT Equity Sdn Bhd, KKKBWCT Joint Venture Sdn Bhd, WCT Overseas Sdn Bhd, WCT Group Sdn Bhd, WCT TSR Sdn Bhd, WCT Construction Sdn Bhd, WCT International Sdn Bhd, Intraxis Engineering Sdn Bhd, WCT Machinery Sdn Bhd, WCT Products Sdn Bhd, W Facade Sdn Bhd, WCT Land Sdn Bhd, WCT Assets Sdn Bhd, WCT Acres Sdn Bhd, Gabungan Efektif Sdn Bhd, WCT Properties Sdn Bhd, Gemilang Waras Sdn Bhd, and other related WCT Group entities.</div>
+  </div>
+  `;
+}
+
+function buildFormalPdfHtml(a){
+  return `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>${esc(a.reference_no||'Application')} — WCT Group</title>
+<style>${pdfSharedStyles()}</style>
+</head>
+<body>
+  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF". Includes the Job Application, JTS Consent Letter, and PDPA Notice (3 pages).</span><button onclick="window.print()">Print / Save as PDF</button></div>
+  ${buildJobApplicationPageHtml(a)}
+  ${buildJtsPageHtml(a)}
+  ${buildPdpaPageHtml(a)}
+</body></html>
+  `;
+}
+
+// ============================================================================
+// BOOT
+// ============================================================================
+if(adminToken && adminScope && adminScope !== 'ALL') filterBusinessUnit = adminScope;
+render();
+if(adminToken) loadEverything();
+</script>
+</body>
+</html>
