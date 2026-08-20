@@ -138,6 +138,7 @@
   .login-wrap{max-width:380px;margin:80px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:36px;text-align:center;box-shadow:var(--shadow-md);}
   .login-wrap input{font-family:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;width:100%;margin-top:14px;}
   .error-banner{background:var(--danger-tint);border:1px solid #EBC3BD;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
+  .success-banner{background:var(--ok-tint);border:1px solid #BEDACB;color:var(--ok);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
 </style>
 </head>
 <body>
@@ -209,15 +210,21 @@ function render(){
     navEl.innerHTML = adminToken ? `
       <a class="${currentView==='home'?'active':''}" onclick="setView('home')">Home</a>
       <a class="${currentView==='jobs'?'active':''}" onclick="setView('jobs')">Job Postings</a>
+      ${adminScope==='ALL' ? `<a class="${currentView==='settings'?'active':''}" onclick="setView('settings')">Manager Settings</a>` : ''}
     ` : '';
   }
   if(!adminToken){ root.innerHTML = loginView(); return; }
-  root.innerHTML = `<div class="wrap">${currentView==='jobs' ? jobsPageView() : dashboardView()}</div>`;
+  let pageContent;
+  if(currentView==='jobs') pageContent = jobsPageView();
+  else if(currentView==='settings') pageContent = settingsPageView();
+  else pageContent = dashboardView();
+  root.innerHTML = `<div class="wrap">${pageContent}</div>`;
   if(selectedApp) renderModal();
 }
 async function setView(view){
   currentView = view;
   if(view==='jobs'){ jobsCurrentPage = 1; await loadJobsForPage(); }
+  if(view==='settings'){ await loadSettingsForPage(); }
   render();
 }
 
@@ -418,23 +425,39 @@ async function confirmDelete(id, name){
   } catch(e){ alert('Error deleting: '+e.message); }
 }
 
-function exportCsv(){
-  const headers = ['Reference','Name','NRIC','Email','Mobile','Business Unit','Position','Status','Submitted'];
-  const rows = applications.map(a=>[
-    a.reference_no, a.name_nric, a.nric_new, a.email, a.mobile_phone,
-    a.business_unit, a.position_applying, a.status,
-    a.submitted_at ? new Date(a.submitted_at).toISOString() : ''
-  ]);
-  const csv = [headers, ...rows].map(row =>
-    row.map(cell => `"${String(cell??'').replace(/"/g,'""')}"`).join(',')
-  ).join('\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `wct-applications-page${currentPage}-${new Date().toISOString().slice(0,10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+async function exportCsv(){
+  showLoading('Preparing full export...');
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_export_all', { p_token: adminToken });
+    if(error) throw error;
+    const headers = [
+      'Reference','Name','NRIC','Email','Mobile','Business Unit','Position','Status','Submitted',
+      'EPF No.','Income Tax No.','SOCSO No.','Bank Account No.','CIDB Green Card No.',
+      'Spouse Name','Spouse NRIC','Spouse Working',
+      'Beneficiary Name','Beneficiary Relationship','Beneficiary Contact',
+      'Salary Bank','Salary Account No.','Onboarding Status'
+    ];
+    const rows = (data||[]).map(a=>[
+      a.reference_no, a.name_nric, a.nric_new, a.email, a.mobile_phone,
+      a.business_unit, a.position_applying, a.status,
+      a.submitted_at ? new Date(a.submitted_at).toISOString() : '',
+      a.ob_epf_no, a.ob_income_tax_no, a.ob_socso_no, a.ob_bank_account_no, a.ob_cidb_green_card_no,
+      a.spouse_name, a.spouse_nric, a.spouse_working,
+      a.beneficiary_name, a.beneficiary_relationship, a.beneficiary_contact,
+      a.salary_bank, a.salary_account_no, a.onboarding_status
+    ]);
+    const csv = [headers, ...rows].map(row =>
+      row.map(cell => `"${String(cell??'').replace(/"/g,'""')}"`).join(',')
+    ).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `wct-applications-full-export-${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch(e){ alert('Error exporting: '+e.message); }
+  hideLoading();
 }
 
 // ============================================================================
@@ -460,6 +483,58 @@ function drow(k,v){ return `<div class="drow"><div class="k">${k}</div><div clas
 // ============================================================================
 // JOB POSTINGS — full page, reached via the header nav
 // ============================================================================
+// ============================================================================
+// MANAGER SETTINGS — All Units admin access only. Stores config that
+// Power Automate (and future features) reads, instead of hardcoding
+// values inside SQL functions.
+// ============================================================================
+let settingsData = {};
+
+async function loadSettingsForPage(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_get_settings', { p_token: adminToken });
+    if(error) throw error;
+    settingsData = data || {};
+  } catch(e){ alert('Error loading settings: '+e.message); settingsData = {}; }
+}
+
+function settingsPageView(){
+  if(adminScope !== 'ALL'){
+    return `<div class="empty-state">Manager Settings is only available to All Units admin access.</div>`;
+  }
+  return `
+    <div class="stat-row">
+      <div class="stat" style="flex:none;min-width:auto;">
+        <h2 style="font-size:20px;margin:0;">Manager Settings</h2>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Notification configuration for Power Automate. Changes here don't require editing any SQL.</div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h4>Notifications</h4>
+      <div class="field"><label>HR Notification Email</label><input type="email" id="set_hr_email" value="${esc(settingsData.hr_notification_email)}" placeholder="hr@wct.my"></div>
+      <div class="field"><label>Power Automate — Submission Webhook URL</label><input type="text" id="set_pa_submit" value="${esc(settingsData.power_automate_submission_url)}" placeholder="https://..."></div>
+      <div class="field"><label>Power Automate — Status Change Webhook URL</label><input type="text" id="set_pa_status" value="${esc(settingsData.power_automate_status_change_url)}" placeholder="https://..."></div>
+      <div id="settingsErr"></div>
+      <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
+    </div>
+  `;
+}
+
+async function saveSettings(){
+  const patch = {
+    hr_notification_email: document.getElementById('set_hr_email').value.trim(),
+    power_automate_submission_url: document.getElementById('set_pa_submit').value.trim(),
+    power_automate_status_change_url: document.getElementById('set_pa_status').value.trim()
+  };
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_update_settings', { p_token: adminToken, p_settings: patch });
+    if(error) throw error;
+    settingsData = data;
+    document.getElementById('settingsErr').innerHTML = `<div class="success-banner">Saved.</div>`;
+  } catch(e){ document.getElementById('settingsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+}
+
 async function loadJobsForPage(){
   try{
     const { data, error } = await supabaseClient.rpc('rpc_admin_list_jobs', { p_token: adminToken });
@@ -665,6 +740,7 @@ function viewDetailHtml(a){
       <div class="status-actions">
         <button class="btn btn-outline btn-sm" onclick="startEdit()">✎ Edit</button>
         <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf(selectedApp.id)">📄 Export Full PDF</button>
+        ${a.status==='hired' ? `<button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">📋 View Onboarding / Statutory Details</button>` : ''}
         <a class="btn btn-outline btn-sm" style="text-decoration:none;" href="mailto:${encodeURIComponent(a.email||'')}?subject=${encodeURIComponent('Regarding your application '+a.reference_no)}&body=${encodeURIComponent('Dear '+(a.name_nric||'Candidate')+',\n\n')}">✉ Email</a>
         <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">🗑 Delete</button>
       </div>
@@ -727,6 +803,285 @@ async function updateStatus(status){
     await openDetail(selectedApp.id);
     await Promise.all([loadApplications(), loadStats()]);
   } catch(e){ alert('Error: '+e.message); }
+}
+
+// ============================================================================
+// ONBOARDING / STATUTORY DETAILS VIEW (post-hire forms)
+// ============================================================================
+let onboardingData = null;
+
+async function openOnboardingView(applicationId){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_get_onboarding', { p_token: adminToken, p_application_id: applicationId });
+    if(error) throw error;
+    onboardingData = data[0];
+    renderOnboardingModal();
+  } catch(e){ alert('Error loading onboarding details: '+e.message); }
+}
+function closeOnboardingModal(){
+  onboardingData = null;
+  const existing = document.getElementById('onboardingModalRoot');
+  if(existing) existing.remove();
+}
+
+function obRow(k, v){ return `<div class="drow"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
+function obConfirmLine(confirmed, at){ return confirmed ? `Confirmed — ${new Date(at).toLocaleString()}` : 'Not yet confirmed'; }
+
+function renderOnboardingModal(){
+  const existing = document.getElementById('onboardingModalRoot');
+  if(existing) existing.remove();
+  const o = onboardingData;
+  if(!o){
+    alert('No onboarding record found for this candidate yet — they may not have started it.');
+    return;
+  }
+  const t = o.tp3_data || {};
+
+  const div = document.createElement('div');
+  div.id = 'onboardingModalRoot';
+  div.className = 'modal-overlay';
+  div.style.zIndex = '70';
+  div.onclick = (e)=>{ if(e.target===div) closeOnboardingModal(); };
+  div.innerHTML = `
+    <div class="modal" style="max-width:760px;">
+      <button class="modal-close" onclick="closeOnboardingModal()">✕</button>
+      <h2>Onboarding / Statutory Details</h2>
+      <p style="color:var(--ink-soft);font-size:13px;margin-top:-6px;">Status: ${o.status==='completed' ? '<strong style="color:var(--ok);">Completed</strong>' : '<strong style="color:var(--warn);">In Progress</strong>'}</p>
+
+      <div class="detail-section">
+        <h4>Statutory Details</h4>
+        ${obRow('EPF No.', o.epf_no)}
+        ${obRow('Income Tax No.', o.income_tax_no)}
+        ${obRow('Tax Branch', o.tax_branch)}
+        ${obRow('SOCSO No.', o.socso_no)}
+        ${obRow('Bank Account No.', o.bank_account_no)}
+        ${obRow('CIDB Green Card No.', o.cidb_green_card_no)}
+        ${obRow('CIDB Branch', o.cidb_branch)}
+      </div>
+
+      <div class="detail-section">
+        <h4>Spouse Information</h4>
+        ${obRow('Name', o.spouse_name)}
+        ${obRow('NRIC', o.spouse_nric)}
+        ${obRow('Date of Birth', o.spouse_date_of_birth)}
+        ${obRow('Working', o.spouse_working)}
+      </div>
+
+      <div class="detail-section">
+        <h4>Children Below 18</h4>
+        ${(o.children_below_18||[]).map(c=>obRow(c.name, `DOB: ${c.date_of_birth||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obRow('Children','None')}
+      </div>
+
+      <div class="detail-section">
+        <h4>Children 18–23 (Unmarried, Full-Time Student)</h4>
+        ${(o.children_18_to_23||[]).map(c=>obRow(c.name, `${c.gender||'—'} · NRIC: ${c.nric||'—'} · DOB: ${c.date_of_birth||'—'} · ${c.course_name||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obRow('Children','None')}
+      </div>
+
+      <div class="detail-section">
+        <h4>Emergency Contacts</h4>
+        ${(o.emergency_contacts||[]).map(c=>obRow(c.name, `${c.relationship||'—'} · ${c.contact||'—'}`)).join('') || obRow('Contacts','None')}
+      </div>
+
+      <div class="detail-section">
+        <h4>Beneficiary</h4>
+        ${obRow('Name', o.beneficiary_name)}
+        ${obRow('Relationship', o.beneficiary_relationship)}
+        ${obRow('Contact', o.beneficiary_contact)}
+      </div>
+
+      <div class="detail-section">
+        <h4>TP3 Tax Form</h4>
+        ${obRow('Previous Employer 1', `${t.employer1_name||'—'} (TIN: ${t.employer1_tin||'—'})`)}
+        ${obRow('Previous Employer 2', `${t.employer2_name||'—'} (TIN: ${t.employer2_tin||'—'})`)}
+        ${obRow('C1 Gross Remuneration', t.c1_gross_remuneration)}
+        ${obRow('C3 EPF Total', t.c3_epf_total)}
+        ${obRow('C5 Total PCB', t.c5_total_pcb)}
+        ${obRow('D1 Parent/Grandparent Medical', t.d1_parent_medical)}
+        ${obRow('D2 Disabled Equipment', t.d2_disabled_equipment)}
+        ${obRow('D3 Course Fees', t.d3_course_fees)}
+        ${obRow('D4 Medical Treatment', t.d4_medical_treatment)}
+        ${obRow('D5 Lifestyle', t.d5_lifestyle)}
+        ${obRow('D6 Lifestyle (Sports)', t.d6_sports_lifestyle)}
+        ${obRow('D7 Breastfeeding Equipment', t.d7_breastfeeding_equipment)}
+        ${obRow('D8 Childcare Fees', t.d8_childcare_fees)}
+        ${obRow('D9 SSPN Net Savings', t.d9_ssp1m_savings)}
+        ${obRow('D10 Alimony', t.d10_alimony)}
+        ${obRow('D11(a)/(b) EPF/Life Insurance', `${t.d11a_kwsp_sukarela||'—'} / ${t.d11b_life_insurance||'—'}`)}
+        ${obRow('D16(a)/(b) Housing Loan Interest', `${t.d16a_housing_loan_500k||'—'} / ${t.d16b_housing_loan_750k||'—'}`)}
+      </div>
+
+      <div class="detail-section">
+        <h4>Salary Crediting</h4>
+        ${obRow('Bank', o.salary_bank)}
+        ${obRow('Account No.', o.salary_account_no)}
+        ${obRow('IC/Passport Submitted', o.salary_ic_submitted)}
+      </div>
+
+      <div class="detail-section">
+        <h4>Confirmation Records</h4>
+        ${obRow('Personal Details Section', obConfirmLine(o.personal_details_confirmed, o.personal_details_confirmed_at))}
+        ${obRow('TP3 Section', obConfirmLine(o.tp3_confirmed, o.tp3_confirmed_at))}
+        ${obRow('Salary Crediting Section', obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at))}
+      </div>
+
+      <div class="status-actions">
+        <button class="btn btn-outline btn-sm" onclick="exportOnboardingPdf()">📄 Export to PDF</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(div);
+}
+
+function exportOnboardingPdf(){
+  if(!onboardingData || !selectedApp){ alert('No onboarding data loaded.'); return; }
+  const html = buildOnboardingPdfHtml(selectedApp, onboardingData);
+  const win = window.open('', '_blank');
+  if(!win){ alert('Please allow pop-ups for this site to generate the PDF.'); return; }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => setTimeout(() => win.print(), 400);
+}
+
+function buildOnboardingPdfHtml(a, o){
+  const t = o.tp3_data || {};
+  const chk = (v) => v ? '☑' : '☐';
+  const childRowsBelow18 = (o.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmtDate(c.date_of_birth)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>`;
+  const childRows18to23 = (o.children_18_to_23||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">None</td></tr>`;
+  const emergencyRows = (o.emergency_contacts||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.relationship)}</td><td>${fmt(c.contact)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>`;
+
+  return `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Onboarding Details — ${esc(a.reference_no)}</title>
+<style>
+  @page{ size:A4; margin:16mm; }
+  *{box-sizing:border-box;}
+  body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;margin:0;line-height:1.5;}
+  .doc-page + .doc-page{ page-break-before: always; }
+  h1{font-size:15px;margin:0 0 4px;}
+  h2{font-size:11px;background:#000;color:#fff;padding:4px 10px;margin:16px 0 8px;text-transform:uppercase;letter-spacing:.04em;}
+  table{width:100%;border-collapse:collapse;margin-bottom:8px;}
+  th,td{border:1px solid #999;padding:4px 7px;font-size:10px;text-align:left;}
+  th{background:#eee;}
+  .kv{display:flex;flex-wrap:wrap;gap:0 20px;}
+  .kv .item{width:calc(50% - 10px);padding:3px 0;}
+  .kv .lbl{font-size:8.5px;text-transform:uppercase;color:#777;display:block;}
+  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}
+  .print-bar button{font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
+  @media print{ .print-bar{display:none;} }
+</style>
+</head>
+<body>
+  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
+
+  <div class="doc-page">
+    <h1>Employee Personal Details Form — Statutory, Spouse, Children, Emergency Contact &amp; Beneficiary</h1>
+    <div style="font-size:10px;color:#666;">Reference: ${esc(a.reference_no)} · ${esc(a.name_nric)}</div>
+
+    <h2>Statutory Details</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">EPF No.</span>${fmt(o.epf_no)}</div>
+      <div class="item"><span class="lbl">Income Tax No.</span>${fmt(o.income_tax_no)}</div>
+      <div class="item"><span class="lbl">Tax Branch</span>${fmt(o.tax_branch)}</div>
+      <div class="item"><span class="lbl">SOCSO No.</span>${fmt(o.socso_no)}</div>
+      <div class="item"><span class="lbl">Bank Account No.</span>${fmt(o.bank_account_no)}</div>
+      <div class="item"><span class="lbl">CIDB Green Card No.</span>${fmt(o.cidb_green_card_no)} (${fmt(o.cidb_branch)})</div>
+    </div>
+
+    <h2>Spouse Information</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">Name</span>${fmt(o.spouse_name)}</div>
+      <div class="item"><span class="lbl">NRIC</span>${fmt(o.spouse_nric)}</div>
+      <div class="item"><span class="lbl">Date of Birth</span>${fmtDate(o.spouse_date_of_birth)}</div>
+      <div class="item"><span class="lbl">Working</span>${fmt(o.spouse_working)}</div>
+    </div>
+
+    <h2>Children Below 18 Years Old</h2>
+    <table><thead><tr><th>Name (per NRIC)</th><th>Date of Birth</th><th>Child Tax Relief</th></tr></thead><tbody>${childRowsBelow18}</tbody></table>
+
+    <h2>Children Above 18 Up To 23 (Unmarried &amp; Full-Time Student)</h2>
+    <table><thead><tr><th>Name</th><th>Gender</th><th>NRIC No.</th><th>Date of Birth</th><th>Course Name</th><th>Tax Relief</th></tr></thead><tbody>${childRows18to23}</tbody></table>
+
+    <h2>Emergency Contact(s)</h2>
+    <table><thead><tr><th>Name (per NRIC)</th><th>Relationship</th><th>Phone No.</th></tr></thead><tbody>${emergencyRows}</tbody></table>
+
+    <h2>Beneficiary</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">Name</span>${fmt(o.beneficiary_name)}</div>
+      <div class="item"><span class="lbl">Relationship</span>${fmt(o.beneficiary_relationship)}</div>
+      <div class="item"><span class="lbl">Contact</span>${fmt(o.beneficiary_contact)}</div>
+    </div>
+    <p style="margin-top:20px;font-size:9.5px;">Confirmed digitally (checkbox recorded, no wet signature): ${obConfirmLine(o.personal_details_confirmed, o.personal_details_confirmed_at)}</p>
+  </div>
+
+  <div class="doc-page">
+    <h1>BORANG PCB/TP3 — Previous Employment Details for PCB Purposes</h1>
+    <div style="font-size:9px;color:#777;">Bahagian A, B, C, and D (D1–D17) as digitized in the online onboarding form.</div>
+
+    <h2>Bahagian A: Maklumat Majikan Terdahulu</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">Previous Employer 1</span>${fmt(t.employer1_name)}</div>
+      <div class="item"><span class="lbl">TIN 1</span>${fmt(t.employer1_tin)}</div>
+      <div class="item"><span class="lbl">Previous Employer 2</span>${fmt(t.employer2_name)}</div>
+      <div class="item"><span class="lbl">TIN 2</span>${fmt(t.employer2_tin)}</div>
+    </div>
+
+    <h2>Bahagian C: Maklumat Saraan / KWSP / Zakat / PCB</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">C1 Gross Remuneration</span>${fmt(t.c1_gross_remuneration)}</div>
+      <div class="item"><span class="lbl">C3 EPF Total</span>${fmt(t.c3_epf_total)}</div>
+      <div class="item"><span class="lbl">C2(i) Travel Allowance</span>${fmt(t.c2i_travel)}</div>
+      <div class="item"><span class="lbl">C2(ii) Childcare Allowance</span>${fmt(t.c2ii_childcare)}</div>
+      <div class="item"><span class="lbl">C2(iii) Products/Discounts</span>${fmt(t.c2iii_products)}</div>
+      <div class="item"><span class="lbl">C2(iv) Service Awards</span>${fmt(t.c2iv_service_award)}</div>
+      <div class="item"><span class="lbl">C2(v) Other Exempt Items</span>${fmt(t.c2v_other)}</div>
+      <div class="item"><span class="lbl">C4(i) Zakat</span>${fmt(t.c4i_zakat)}</div>
+      <div class="item"><span class="lbl">C4(ii) Umrah Levy Relief</span>${fmt(t.c4ii_umrah)}</div>
+      <div class="item"><span class="lbl">C5 Total PCB</span>${fmt(t.c5_total_pcb)}</div>
+    </div>
+
+    <h2>Bahagian D: Potongan Cukai (D1–D9)</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">D1 Parent/Grandparent Medical (limit RM8,000)</span>${fmt(t.d1_parent_medical)}</div>
+      <div class="item"><span class="lbl">D2 Disabled Support Equipment (limit RM6,000)</span>${fmt(t.d2_disabled_equipment)}</div>
+      <div class="item"><span class="lbl">D3 Course Fees for Self (limit RM7,000)</span>${fmt(t.d3_course_fees)}</div>
+      <div class="item"><span class="lbl">D4 Medical Treatment (limit RM10,000)</span>${fmt(t.d4_medical_treatment)}</div>
+      <div class="item"><span class="lbl">D5 Lifestyle (limit RM2,500)</span>${fmt(t.d5_lifestyle)}</div>
+      <div class="item"><span class="lbl">D6 Lifestyle — Sports (limit RM1,000)</span>${fmt(t.d6_sports_lifestyle)}</div>
+      <div class="item"><span class="lbl">D7 Breastfeeding Equipment (limit RM1,000)</span>${fmt(t.d7_breastfeeding_equipment)}</div>
+      <div class="item"><span class="lbl">D8 Childcare Fees (limit RM3,000)</span>${fmt(t.d8_childcare_fees)}</div>
+      <div class="item"><span class="lbl">D9 SSPN Net Savings (limit RM8,000)</span>${fmt(t.d9_ssp1m_savings)}</div>
+    </div>
+
+    <h2>Bahagian D (continued): D10–D17</h2>
+    <div class="kv">
+      <div class="item"><span class="lbl">D10 Alimony (limit RM4,000)</span>${fmt(t.d10_alimony)}</div>
+      <div class="item"><span class="lbl">D11(a) Voluntary EPF (limit RM4,000)</span>${fmt(t.d11a_kwsp_sukarela)}</div>
+      <div class="item"><span class="lbl">D11(b) Life Insurance (limit RM3,000)</span>${fmt(t.d11b_life_insurance)}</div>
+      <div class="item"><span class="lbl">D12 Private Retirement (limit RM3,000)</span>${fmt(t.d12_private_retirement)}</div>
+      <div class="item"><span class="lbl">D13 Education/Medical Insurance (limit RM4,000)</span>${fmt(t.d13_insurance_education_medical)}</div>
+      <div class="item"><span class="lbl">D14 PERKESO (limit RM350)</span>${fmt(t.d14_perkeso)}</div>
+      <div class="item"><span class="lbl">D15 EV/Compost/CCTV (limit RM2,500)</span>${fmt(t.d15_ev_compost_cctv)}</div>
+      <div class="item"><span class="lbl">D16(a) Housing Loan ≤RM500k (limit RM7,000)</span>${fmt(t.d16a_housing_loan_500k)}</div>
+      <div class="item"><span class="lbl">D16(b) Housing Loan RM500k–750k (limit RM5,000)</span>${fmt(t.d16b_housing_loan_750k)}</div>
+      <div class="item"><span class="lbl">D17 Domestic Tourism (limit RM1,000)</span>${fmt(t.d17_tourism)}</div>
+    </div>
+
+    <h2>Bahagian E: Akuan Pekerja</h2>
+    <p style="font-size:9.5px;">Confirmed digitally (checkbox recorded, no wet signature): ${obConfirmLine(o.tp3_confirmed, o.tp3_confirmed_at)}</p>
+  </div>
+
+  <div class="doc-page">
+    <h1>Salary Crediting Requisition Form</h1>
+    <div class="kv">
+      <div class="item"><span class="lbl">Bank</span>${fmt(o.salary_bank)}</div>
+      <div class="item"><span class="lbl">Account No.</span>${fmt(o.salary_account_no)}</div>
+      <div class="item full"><span class="lbl">IC/Passport No. Submitted During Application</span>${fmt(o.salary_ic_submitted)}</div>
+    </div>
+    <p style="margin-top:20px;font-size:9.5px;">Confirmed digitally (checkbox recorded, no wet signature): ${obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at)}</p>
+  </div>
+</body></html>
+  `;
 }
 
 // ============================================================================
