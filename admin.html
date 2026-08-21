@@ -430,22 +430,77 @@ async function exportCsv(){
   try{
     const { data, error } = await supabaseClient.rpc('rpc_admin_export_all', { p_token: adminToken });
     if(error) throw error;
+
+    const jsonCell = (v) => v ? JSON.stringify(v) : '';
+    const dt = (v) => v ? new Date(v).toISOString() : '';
+
     const headers = [
-      'Reference','Name','NRIC','Email','Mobile','Business Unit','Position','Status','Submitted',
-      'EPF No.','Income Tax No.','SOCSO No.','Bank Account No.','CIDB Green Card No.',
-      'Spouse Name','Spouse NRIC','Spouse Working',
-      'Beneficiary Name','Beneficiary Relationship','Beneficiary Contact',
-      'Salary Bank','Salary Account No.','Onboarding Status'
+      // -- Job Application: identity & status --
+      'Reference No.','Status','Business Unit','Position Applying','Submitted At','Created At','Updated At',
+      // -- Personal Particulars --
+      'Name (per NRIC)','Alias','Permanent Address','Permanent Postcode','Correspondence Address','Correspondence Postcode',
+      'Tel Residence','Tel Office','Mobile Phone','Email','Place of Birth',
+      'NRIC No.','Passport No.','Citizen','Marital Status','Date of Birth','Age','Bumiputra','Race',
+      // -- Statutory Details (as collected on the application, if any) --
+      'App EPF No.','App Income Tax No.','App Tax Branch','App SOCSO No.','App Bank Account No.','App CIDB Green Card No.','App CIDB Branch',
+      // -- Language / Education / Experience (JSON) --
+      'Language Ability (JSON)','Education (JSON)','Working Experience (JSON)',
+      // -- Employment Questions --
+      'Resignation Notice Required','Notice Period','Date Available to Start','Expected Basic Salary',
+      'Relatives in Company','Relatives Name','Relatives Relationship',
+      'Own Transport (Car)','Own Transport (Motorcycle)','Willing Outside Klang Valley',
+      'Physical Defects','Physical Defects Specify','Arrested/Convicted','Arrested/Convicted Specify',
+      // -- Referees & Declarations --
+      'Referee 1 (JSON)','Referee 2 (JSON)','Declaration - Lawsuit','Declaration - Other Matters',
+      // -- Attachments & Consent --
+      'Profile Picture URL','Attachments (JSON)','Consent Language',
+      'JTS Agreed','JTS Agreed Name','JTS Agreed NRIC','JTS Agreed Mobile','JTS Agreed At',
+      'PDPA Agreed','PDPA Agreed Name','PDPA Agreed NRIC','PDPA Agreed At',
+      // -- Onboarding: Statutory Details --
+      'Onboarding Status','Onboarding EPF No.','Onboarding Income Tax No.','Onboarding Tax Branch',
+      'Onboarding SOCSO No.','Onboarding Bank Account No.','Onboarding CIDB Green Card No.','Onboarding CIDB Branch',
+      // -- Onboarding: Spouse & Children --
+      'Spouse Name','Spouse NRIC','Spouse Date of Birth','Spouse Working',
+      'Children Below 18 (JSON)','Children 18-23 (JSON)',
+      // -- Onboarding: Emergency & Beneficiary --
+      'Emergency Contacts (JSON)','Beneficiary Name','Beneficiary Relationship','Beneficiary Contact',
+      // -- Onboarding: TP3 --
+      'TP3 Data (JSON)',
+      // -- Onboarding: Salary Crediting --
+      'Salary Company','Salary Bank','Salary Branch','Salary Account No.','Salary IC/Passport Submitted',
+      // -- Onboarding: Confirmation Records --
+      'Personal Details Confirmed','Personal Details Confirmed At',
+      'TP3 Confirmed','TP3 Confirmed At',
+      'Salary Crediting Confirmed','Salary Crediting Confirmed At'
     ];
+
     const rows = (data||[]).map(a=>[
-      a.reference_no, a.name_nric, a.nric_new, a.email, a.mobile_phone,
-      a.business_unit, a.position_applying, a.status,
-      a.submitted_at ? new Date(a.submitted_at).toISOString() : '',
-      a.ob_epf_no, a.ob_income_tax_no, a.ob_socso_no, a.ob_bank_account_no, a.ob_cidb_green_card_no,
-      a.spouse_name, a.spouse_nric, a.spouse_working,
-      a.beneficiary_name, a.beneficiary_relationship, a.beneficiary_contact,
-      a.salary_bank, a.salary_account_no, a.onboarding_status
+      a.reference_no, a.status, a.business_unit, a.position_applying, dt(a.submitted_at), dt(a.created_at), dt(a.updated_at),
+      a.name_nric, a.alias, a.permanent_address, a.permanent_postcode, a.correspondence_address, a.correspondence_postcode,
+      a.tel_residence, a.tel_office, a.mobile_phone, a.email, a.place_of_birth,
+      a.nric_new, a.passport_number, a.citizen, a.marital_status, a.date_of_birth, a.age, a.bumiputra, a.race,
+      a.epf_no, a.income_tax_no, a.tax_branch, a.socso_no, a.bank_account_no, a.cidb_green_card_no, a.cidb_branch,
+      jsonCell(a.language_ability), jsonCell(a.education), jsonCell(a.working_experience),
+      a.resignation_notice_required, a.notice_period, a.date_available_to_start, a.expected_basic_salary,
+      a.relatives_in_company, a.relatives_name, a.relatives_relationship,
+      a.own_transport_motorcar, a.own_transport_motorcycle, a.willing_based_outside_klang_valley,
+      a.physical_defects, a.physical_defects_specify, a.arrested_convicted, a.arrested_convicted_specify,
+      jsonCell(a.referee1), jsonCell(a.referee2), a.declaration_lawsuit, a.declaration_other_matters,
+      a.profile_picture_url, jsonCell(a.attachments), a.language_choice,
+      a.jts_agreed, a.jts_agreed_name, a.jts_agreed_nric, a.jts_agreed_mobile, dt(a.jts_agreed_at),
+      a.pdpa_agreed, a.pdpa_agreed_name, a.pdpa_agreed_nric, dt(a.pdpa_agreed_at),
+      a.ob_status, a.ob_epf_no, a.ob_income_tax_no, a.ob_tax_branch,
+      a.ob_socso_no, a.ob_bank_account_no, a.ob_cidb_green_card_no, a.ob_cidb_branch,
+      a.ob_spouse_name, a.ob_spouse_nric, a.ob_spouse_date_of_birth, a.ob_spouse_working,
+      jsonCell(a.ob_children_below_18), jsonCell(a.ob_children_18_to_23),
+      jsonCell(a.ob_emergency_contacts), a.ob_beneficiary_name, a.ob_beneficiary_relationship, a.ob_beneficiary_contact,
+      jsonCell(a.ob_tp3_data),
+      a.ob_salary_company, a.ob_salary_bank, a.ob_salary_branch, a.ob_salary_account_no, a.ob_salary_ic_submitted,
+      a.ob_personal_details_confirmed, dt(a.ob_personal_details_confirmed_at),
+      a.ob_tp3_confirmed, dt(a.ob_tp3_confirmed_at),
+      a.ob_salary_crediting_confirmed, dt(a.ob_salary_crediting_confirmed_at)
     ]);
+
     const csv = [headers, ...rows].map(row =>
       row.map(cell => `"${String(cell??'').replace(/"/g,'""')}"`).join(',')
     ).join('\n');
@@ -740,10 +795,14 @@ function viewDetailHtml(a){
       <div class="status-actions">
         <button class="btn btn-outline btn-sm" onclick="startEdit()">✎ Edit</button>
         <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf(selectedApp.id)">📄 Export Full PDF</button>
-        ${a.status==='hired' ? `<button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">📋 View Onboarding / Statutory Details</button>` : ''}
         <a class="btn btn-outline btn-sm" style="text-decoration:none;" href="mailto:${encodeURIComponent(a.email||'')}?subject=${encodeURIComponent('Regarding your application '+a.reference_no)}&body=${encodeURIComponent('Dear '+(a.name_nric||'Candidate')+',\n\n')}">✉ Email</a>
         <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">🗑 Delete</button>
       </div>
+      ${a.status==='hired' ? `
+      <div class="status-actions">
+        <button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">📋 View Onboarding / Statutory Details</button>
+      </div>
+      ` : ''}
       <div class="status-actions">
         ${STATUS_OPTIONS.map(s => {
           const styleMap = { hired:'btn-primary', shortlisted:'btn-success', rejected:'btn-danger', blacklisted:'btn-danger' };
