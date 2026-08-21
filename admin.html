@@ -1005,26 +1005,48 @@ function exportOnboardingPdf(){
 function buildOnboardingPdfHtml(a, o){
   const t = o.tp3_data || {};
   const chk = (v) => v ? '☑' : '☐';
-  const childRowsBelow18 = (o.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmtDate(c.date_of_birth)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>`;
-  const childRows18to23 = (o.children_18_to_23||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">None</td></tr>`;
+  const box = (v, w) => `<span style="display:inline-block;border:1px solid #999;padding:2px 8px;min-width:${w||'90px'};font-size:10px;">${fmt(v)}</span>`;
+  const childRowsBelow18 = (o.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmtDate(c.date_of_birth)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">Tiada</td></tr>`;
+  const childRows18to23 = (o.children_18_to_23||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">Tiada</td></tr>`;
   const emergencyRows = (o.emergency_contacts||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.relationship)}</td><td>${fmt(c.contact)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>`;
+  const companies = ['WCT Berhad', 'WCT Construction Sdn Bhd', 'WCT Machinery Sdn Bhd', 'Intraxis Engineering Sdn Bhd'];
 
   return `
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Onboarding Details — ${esc(a.reference_no)}</title>
 <style>
-  @page{ size:A4; margin:16mm; }
+  @page{ size:A4; margin:14mm; }
   *{box-sizing:border-box;}
-  body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;margin:0;line-height:1.5;}
+  body{font-family:Arial,sans-serif;font-size:10px;color:#111;margin:0;line-height:1.45;}
   .doc-page + .doc-page{ page-break-before: always; }
-  h1{font-size:15px;margin:0 0 4px;}
-  h2{font-size:11px;background:#000;color:#fff;padding:4px 10px;margin:16px 0 8px;text-transform:uppercase;letter-spacing:.04em;}
-  table{width:100%;border-collapse:collapse;margin-bottom:8px;}
-  th,td{border:1px solid #999;padding:4px 7px;font-size:10px;text-align:left;}
-  th{background:#eee;}
-  .kv{display:flex;flex-wrap:wrap;gap:0 20px;}
-  .kv .item{width:calc(50% - 10px);padding:3px 0;}
-  .kv .lbl{font-size:8.5px;text-transform:uppercase;color:#777;display:block;}
+
+  /* Form-box style, matching the official documents' bordered layout */
+  .form-title{font-size:14px;font-weight:bold;margin:0 0 2px;}
+  .form-sub{font-size:9px;color:#555;margin-bottom:10px;}
+  table.form-box{width:100%;border-collapse:collapse;margin-bottom:2px;}
+  table.form-box td{border:1px solid #333;padding:5px 8px;font-size:9.5px;vertical-align:top;}
+  table.form-box td.lbl{background:#F0F0EE;font-weight:bold;width:32%;}
+  table.form-box td.section-hdr{background:#333;color:#fff;font-weight:bold;text-transform:uppercase;font-size:9.5px;letter-spacing:.03em;}
+
+  h2.bahagian{font-size:10.5px;background:#000;color:#fff;padding:5px 10px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.03em;}
+  table.data-table{width:100%;border-collapse:collapse;margin-bottom:8px;}
+  table.data-table th,table.data-table td{border:1px solid #999;padding:4px 7px;font-size:9px;text-align:left;}
+  table.data-table th{background:#eee;}
+
+  /* TP3-specific: two-column HAD TAHUNAN / POTONGAN TERKUMPUL, like the original */
+  table.tp3-d{width:100%;border-collapse:collapse;margin-bottom:2px;}
+  table.tp3-d td{border:1px solid #333;padding:5px 7px;font-size:9px;vertical-align:top;}
+  table.tp3-d td.desc{width:58%;}
+  table.tp3-d td.had{width:16%;text-align:center;font-weight:bold;}
+  table.tp3-d td.terkumpul{width:26%;text-align:right;}
+  table.tp3-d tr.hdr td{background:#333;color:#fff;font-weight:bold;text-align:center;font-size:8.5px;text-transform:uppercase;}
+
+  .letterhead{display:flex;align-items:center;gap:14px;border-bottom:3px solid #000;padding-bottom:10px;margin-bottom:16px;}
+  .letterhead img.logo{height:56px;}
+  .letterhead .co-name{font-size:11px;font-weight:bold;letter-spacing:.05em;}
+  .letterhead .form-name{font-size:15px;font-weight:bold;margin-top:2px;}
+
+  .confirm-box{border:1px solid #999;padding:8px 10px;margin-top:10px;background:#FAFAF9;font-size:9px;}
   .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}
   .print-bar button{font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
   @media print{ .print-bar{display:none;} }
@@ -1033,116 +1055,163 @@ function buildOnboardingPdfHtml(a, o){
 <body>
   <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
 
+  <!-- ================= PAGE 1: EMPLOYEE PERSONAL DETAILS FORM ================= -->
   <div class="doc-page">
-    <h1>Employee Personal Details Form — Statutory, Spouse, Children, Emergency Contact &amp; Beneficiary</h1>
-    <div style="font-size:10px;color:#666;">Reference: ${esc(a.reference_no)} · ${esc(a.name_nric)}</div>
+    <div class="form-title">EMPLOYEE PERSONAL DETAILS FORM</div>
+    <div class="form-sub">Reference: ${esc(a.reference_no)} · ${esc(a.name_nric)} — Statutory, Spouse, Children, Emergency Contact &amp; Beneficiary</div>
 
-    <h2>Statutory Details</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">EPF No.</span>${fmt(o.epf_no)}</div>
-      <div class="item"><span class="lbl">Income Tax No.</span>${fmt(o.income_tax_no)}</div>
-      <div class="item"><span class="lbl">Tax Branch</span>${fmt(o.tax_branch)}</div>
-      <div class="item"><span class="lbl">SOCSO No.</span>${fmt(o.socso_no)}</div>
-      <div class="item"><span class="lbl">Bank Account No.</span>${fmt(o.bank_account_no)}</div>
-      <div class="item"><span class="lbl">CIDB Green Card No.</span>${fmt(o.cidb_green_card_no)} (${fmt(o.cidb_branch)})</div>
+    <table class="form-box">
+      <tr><td colspan="2" class="section-hdr">Statutory Details</td></tr>
+      <tr><td class="lbl">EPF No.</td><td>${fmt(o.epf_no)}</td></tr>
+      <tr><td class="lbl">Income Tax File No.</td><td>${fmt(o.income_tax_no)}</td></tr>
+      <tr><td class="lbl">Income Tax File Branch</td><td>${fmt(o.tax_branch)}</td></tr>
+      <tr><td class="lbl">SOCSO No.</td><td>${fmt(o.socso_no)}</td></tr>
+      <tr><td class="lbl">Bank Account No.</td><td>${fmt(o.bank_account_no)}</td></tr>
+      <tr><td class="lbl">CIDB Green Card No.</td><td>${fmt(o.cidb_green_card_no)} ${o.cidb_branch ? '(Branch: '+esc(o.cidb_branch)+')' : ''}</td></tr>
+    </table>
+
+    <table class="form-box">
+      <tr><td colspan="2" class="section-hdr">Spouse Information (if applicable)</td></tr>
+      <tr><td class="lbl">Name (as per NRIC)</td><td>${fmt(o.spouse_name)}</td></tr>
+      <tr><td class="lbl">NRIC No.</td><td>${fmt(o.spouse_nric)}</td></tr>
+      <tr><td class="lbl">Date of Birth</td><td>${fmtDate(o.spouse_date_of_birth)}</td></tr>
+      <tr><td class="lbl">Working</td><td>${chk(o.spouse_working==='Yes')} Yes &nbsp;&nbsp; ${chk(o.spouse_working==='No')} No</td></tr>
+    </table>
+
+    <h2 class="bahagian">Children Information (if applicable)</h2>
+    <p style="font-size:8.5px;color:#666;margin:-2px 0 4px;">Please tick the checkbox if claiming for Child Tax Relief</p>
+    <div style="font-size:9.5px;font-weight:bold;margin-bottom:3px;">Children Below 18 Years Old</div>
+    <table class="data-table"><thead><tr><th>Name (as per NRIC)</th><th>Date of Birth</th><th>Child Tax Relief</th></tr></thead><tbody>${childRowsBelow18}</tbody></table>
+
+    <div style="font-size:9.5px;font-weight:bold;margin-bottom:3px;">Children Above 18 Years Old Up To 23 (Unmarried &amp; Full-Time Student)</div>
+    <table class="data-table"><thead><tr><th>Name</th><th>Gender</th><th>NRIC No.</th><th>Date of Birth</th><th>Course Name</th><th>Tax Relief</th></tr></thead><tbody>${childRows18to23}</tbody></table>
+
+    <h2 class="bahagian">Emergency Contact Person(s)</h2>
+    <table class="data-table"><thead><tr><th>Name (as per NRIC)</th><th>Relationship</th><th>Home/Mobile Phone No.</th></tr></thead><tbody>${emergencyRows}</tbody></table>
+
+    <table class="form-box">
+      <tr><td colspan="2" class="section-hdr">Beneficiary</td></tr>
+      <tr><td class="lbl">Name</td><td>${fmt(o.beneficiary_name)}</td></tr>
+      <tr><td class="lbl">Relationship</td><td>${fmt(o.beneficiary_relationship)}</td></tr>
+      <tr><td class="lbl">Contact No.</td><td>${fmt(o.beneficiary_contact)}</td></tr>
+    </table>
+
+    <div class="confirm-box">
+      Confirmed digitally (checkbox recorded, no wet signature): <strong>${obConfirmLine(o.personal_details_confirmed, o.personal_details_confirmed_at)}</strong>
+    </div>
+  </div>
+
+  <!-- ================= PAGE 2-3: BORANG PCB/TP3 (FULLY IN BAHASA MALAYSIA) ================= -->
+  <div class="doc-page">
+    <div style="text-align:right;font-size:9px;font-weight:bold;">BORANG PCB/TP3 (1/2026)</div>
+    <div style="text-align:center;font-size:12px;font-weight:bold;margin-top:4px;">LEMBAGA HASIL DALAM NEGERI MALAYSIA</div>
+    <div style="text-align:center;font-size:9px;margin-top:2px;">
+      BORANG MAKLUMAT BERKAITAN PENGGAJIAN DENGAN MAJIKAN-MAJIKAN TERDAHULU<br>
+      DALAM TAHUN SEMASA BAGI TUJUAN POTONGAN CUKAI BULANAN (PCB)<br>
+      KAEDAH-KAEDAH CUKAI PENDAPATAN (POTONGAN DARIPADA SARAAN) 1994<br>
+      <em>Borang ini ditetapkan di bawah seksyen 152 Akta Cukai Pendapatan (ACP) 1967</em>
     </div>
 
-    <h2>Spouse Information</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">Name</span>${fmt(o.spouse_name)}</div>
-      <div class="item"><span class="lbl">NRIC</span>${fmt(o.spouse_nric)}</div>
-      <div class="item"><span class="lbl">Date of Birth</span>${fmtDate(o.spouse_date_of_birth)}</div>
-      <div class="item"><span class="lbl">Working</span>${fmt(o.spouse_working)}</div>
-    </div>
+    <h2 class="bahagian">Bahagian A: Maklumat Majikan</h2>
+    <table class="form-box">
+      <tr><td class="lbl">A1 Nama Majikan Terdahulu 1</td><td>${fmt(t.employer1_name)}</td></tr>
+      <tr><td class="lbl">A2 No. Pengenalan Cukai (TIN)</td><td>${fmt(t.employer1_tin)}</td></tr>
+      <tr><td class="lbl">A3 Nama Majikan Terdahulu 2</td><td>${fmt(t.employer2_name)}</td></tr>
+      <tr><td class="lbl">A4 No. Pengenalan Cukai (TIN)</td><td>${fmt(t.employer2_tin)}</td></tr>
+    </table>
 
-    <h2>Children Below 18 Years Old</h2>
-    <table><thead><tr><th>Name (per NRIC)</th><th>Date of Birth</th><th>Child Tax Relief</th></tr></thead><tbody>${childRowsBelow18}</tbody></table>
+    <h2 class="bahagian">Bahagian B: Maklumat Individu</h2>
+    <table class="form-box">
+      <tr><td class="lbl">B1 Nama</td><td>${fmt(t.b1_name || a.name_nric)}</td></tr>
+      <tr><td class="lbl">B2 No. Kad Pengenalan/Pasport</td><td>${fmt(t.b2_ic_passport || a.nric_new || a.passport_number)}</td></tr>
+      <tr><td class="lbl">B3 No. Pengenalan Cukai (TIN)</td><td>${fmt(t.b3_tin)}</td></tr>
+    </table>
 
-    <h2>Children Above 18 Up To 23 (Unmarried &amp; Full-Time Student)</h2>
-    <table><thead><tr><th>Name</th><th>Gender</th><th>NRIC No.</th><th>Date of Birth</th><th>Course Name</th><th>Tax Relief</th></tr></thead><tbody>${childRows18to23}</tbody></table>
-
-    <h2>Emergency Contact(s)</h2>
-    <table><thead><tr><th>Name (per NRIC)</th><th>Relationship</th><th>Phone No.</th></tr></thead><tbody>${emergencyRows}</tbody></table>
-
-    <h2>Beneficiary</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">Name</span>${fmt(o.beneficiary_name)}</div>
-      <div class="item"><span class="lbl">Relationship</span>${fmt(o.beneficiary_relationship)}</div>
-      <div class="item"><span class="lbl">Contact</span>${fmt(o.beneficiary_contact)}</div>
-    </div>
-    <p style="margin-top:20px;font-size:9.5px;">Confirmed digitally (checkbox recorded, no wet signature): ${obConfirmLine(o.personal_details_confirmed, o.personal_details_confirmed_at)}</p>
+    <h2 class="bahagian">Bahagian C: Maklumat Saraan / KWSP / Zakat / PCB</h2>
+    <table class="tp3-d">
+      <tr class="hdr"><td>Perkara</td><td>Amaun Terkumpul (RM)</td></tr>
+      <tr><td class="desc">C1 Jumlah saraan kasar bulanan dan saraan tambahan termasuk elaun/perkuisit/pemberian/manfaat yang dikenakan cukai</td><td class="terkumpul" colspan="2">${fmt(t.c1_gross_remuneration)}</td></tr>
+      <tr><td class="desc">C2(i) Elaun perjalanan, kad petrol atau elaun petrol dan fi tol atas urusan rasmi</td><td class="terkumpul" colspan="2">${fmt(t.c2i_travel)}</td></tr>
+      <tr><td class="desc">C2(ii) Elaun penjagaan anak</td><td class="terkumpul" colspan="2">${fmt(t.c2ii_childcare)}</td></tr>
+      <tr><td class="desc">C2(iii) Produk yang dikeluarkan oleh perniagaan majikan secara percuma/diskaun</td><td class="terkumpul" colspan="2">${fmt(t.c2iii_products)}</td></tr>
+      <tr><td class="desc">C2(iv) Perkuisit tunai/barangan bagi perkhidmatan lalu/anugerah (&gt;10 tahun)</td><td class="terkumpul" colspan="2">${fmt(t.c2iv_service_award)}</td></tr>
+      <tr><td class="desc">C2(v) Lain-lain elaun/perkuisit/pemberian/manfaat yang dikecualikan cukai</td><td class="terkumpul" colspan="2">${fmt(t.c2v_other)}</td></tr>
+      <tr><td class="desc">C3 Jumlah caruman KWSP atau Kumpulan Wang Lain Yang Diluluskan</td><td class="terkumpul" colspan="2">${fmt(t.c3_epf_total)}</td></tr>
+      <tr><td class="desc">C4(i) Jumlah Zakat</td><td class="terkumpul" colspan="2">${fmt(t.c4i_zakat)}</td></tr>
+      <tr><td class="desc">C4(ii) Levi pelepasan perjalanan umrah/keagamaan (Terhad 2x seumur hidup)</td><td class="terkumpul" colspan="2">${fmt(t.c4ii_umrah)}</td></tr>
+      <tr><td class="desc">C5 Jumlah PCB (tidak termasuk CP38)</td><td class="terkumpul" colspan="2">${fmt(t.c5_total_pcb)}</td></tr>
+    </table>
   </div>
 
   <div class="doc-page">
-    <h1>BORANG PCB/TP3 — Previous Employment Details for PCB Purposes</h1>
-    <div style="font-size:9px;color:#777;">Bahagian A, B, C, and D (D1–D17) as digitized in the online onboarding form.</div>
+    <h2 class="bahagian">Bahagian D: Maklumat Potongan</h2>
+    <table class="tp3-d">
+      <tr class="hdr"><td>Perkara</td><td>Had Tahunan (RM)</td><td>Potongan Terkumpul (RM)</td></tr>
+      <tr><td class="desc">D1 Perbelanjaan untuk ibu bapa/datuk nenek (rawatan perubatan, pergigian, pemeriksaan penuh + vaksinasi)</td><td class="had">8,000</td><td class="terkumpul">${fmt(t.d1_parent_medical)}</td></tr>
+      <tr><td class="desc">D2 Peralatan sokongan asas untuk diri sendiri/pasangan/anak/ibu bapa OKU</td><td class="had">6,000</td><td class="terkumpul">${fmt(t.d2_disabled_equipment)}</td></tr>
+      <tr><td class="desc">D3 Yuran pengajian (diri sendiri)</td><td class="had">7,000</td><td class="terkumpul">${fmt(t.d3_course_fees)}</td></tr>
+      <tr><td class="desc">D4 Perbelanjaan rawatan perubatan (penyakit serius, kesuburan, vaksinasi, pergigian, dll.)</td><td class="had">10,000</td><td class="terkumpul">${fmt(t.d4_medical_treatment)}</td></tr>
+      <tr><td class="desc">D5 Gaya hidup (buku, komputer/telefon pintar, internet, kursus kemahiran)</td><td class="had">2,500</td><td class="terkumpul">${fmt(t.d5_lifestyle)}</td></tr>
+      <tr><td class="desc">D6 Gaya hidup — sukan</td><td class="had">1,000</td><td class="terkumpul">${fmt(t.d6_sports_lifestyle)}</td></tr>
+      <tr><td class="desc">D7 Peralatan penyusuan ibu (anak ≤2 tahun)</td><td class="had">1,000</td><td class="terkumpul">${fmt(t.d7_breastfeeding_equipment)}</td></tr>
+      <tr><td class="desc">D8 Yuran penghantaran anak ≤12 tahun ke taska/tadika</td><td class="had">3,000</td><td class="terkumpul">${fmt(t.d8_childcare_fees)}</td></tr>
+      <tr><td class="desc">D9 Tabungan bersih SSPN</td><td class="had">8,000</td><td class="terkumpul">${fmt(t.d9_ssp1m_savings)}</td></tr>
+      <tr><td class="desc">D10 Bayaran alimoni kepada bekas isteri</td><td class="had">4,000</td><td class="terkumpul">${fmt(t.d10_alimony)}</td></tr>
+      <tr><td class="desc">D11(a) KWSP Sukarela (termasuk KWSP wajib)</td><td class="had">4,000</td><td class="terkumpul">${fmt(t.d11a_kwsp_sukarela)}</td></tr>
+      <tr><td class="desc">D11(b) Insurans nyawa/KWSP Sukarela</td><td class="had">3,000</td><td class="terkumpul">${fmt(t.d11b_life_insurance)}</td></tr>
+      <tr><td class="desc">D12 Skim persaraan swasta dan anuiti tertangguh</td><td class="had">3,000</td><td class="terkumpul">${fmt(t.d12_private_retirement)}</td></tr>
+      <tr><td class="desc">D13 Insurans pendidikan dan perubatan</td><td class="had">4,000</td><td class="terkumpul">${fmt(t.d13_insurance_education_medical)}</td></tr>
+      <tr><td class="desc">D14 Caruman PERKESO</td><td class="had">350</td><td class="terkumpul">${fmt(t.d14_perkeso)}</td></tr>
+      <tr><td class="desc">D15 Pengecasan EV / mesin kompos / mesin rincih & CCTV</td><td class="had">2,500</td><td class="terkumpul">${fmt(t.d15_ev_compost_cctv)}</td></tr>
+      <tr><td class="desc">D16(a) Faedah pinjaman rumah — harga ≤RM500,000</td><td class="had">7,000</td><td class="terkumpul">${fmt(t.d16a_housing_loan_500k)}</td></tr>
+      <tr><td class="desc">D16(b) Faedah pinjaman rumah — RM500,000–RM750,000</td><td class="had">5,000</td><td class="terkumpul">${fmt(t.d16b_housing_loan_750k)}</td></tr>
+      <tr><td class="desc">D17 Fi kemasukan pusat pelancongan/kebudayaan dalam negara</td><td class="had">1,000</td><td class="terkumpul">${fmt(t.d17_tourism)}</td></tr>
+    </table>
 
-    <h2>Bahagian A: Maklumat Majikan Terdahulu</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">Previous Employer 1</span>${fmt(t.employer1_name)}</div>
-      <div class="item"><span class="lbl">TIN 1</span>${fmt(t.employer1_tin)}</div>
-      <div class="item"><span class="lbl">Previous Employer 2</span>${fmt(t.employer2_name)}</div>
-      <div class="item"><span class="lbl">TIN 2</span>${fmt(t.employer2_tin)}</div>
+    <h2 class="bahagian">Bahagian E: Akuan Pekerja</h2>
+    <p style="font-size:9px;">Saya mengakui bahawa semua maklumat yang dinyatakan dalam borang ini adalah benar, betul dan lengkap. Sekiranya maklumat yang diberikan tidak benar, tindakan mahkamah boleh diambil ke atas saya di bawah perenggan 113(1)(b) Akta Cukai Pendapatan 1967.</p>
+    <div class="confirm-box">
+      Confirmed digitally (checkbox recorded, no wet signature): <strong>${obConfirmLine(o.tp3_confirmed, o.tp3_confirmed_at)}</strong>
     </div>
-
-    <h2>Bahagian C: Maklumat Saraan / KWSP / Zakat / PCB</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">C1 Gross Remuneration</span>${fmt(t.c1_gross_remuneration)}</div>
-      <div class="item"><span class="lbl">C3 EPF Total</span>${fmt(t.c3_epf_total)}</div>
-      <div class="item"><span class="lbl">C2(i) Travel Allowance</span>${fmt(t.c2i_travel)}</div>
-      <div class="item"><span class="lbl">C2(ii) Childcare Allowance</span>${fmt(t.c2ii_childcare)}</div>
-      <div class="item"><span class="lbl">C2(iii) Products/Discounts</span>${fmt(t.c2iii_products)}</div>
-      <div class="item"><span class="lbl">C2(iv) Service Awards</span>${fmt(t.c2iv_service_award)}</div>
-      <div class="item"><span class="lbl">C2(v) Other Exempt Items</span>${fmt(t.c2v_other)}</div>
-      <div class="item"><span class="lbl">C4(i) Zakat</span>${fmt(t.c4i_zakat)}</div>
-      <div class="item"><span class="lbl">C4(ii) Umrah Levy Relief</span>${fmt(t.c4ii_umrah)}</div>
-      <div class="item"><span class="lbl">C5 Total PCB</span>${fmt(t.c5_total_pcb)}</div>
-    </div>
-
-    <h2>Bahagian D: Potongan Cukai (D1–D9)</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">D1 Parent/Grandparent Medical (limit RM8,000)</span>${fmt(t.d1_parent_medical)}</div>
-      <div class="item"><span class="lbl">D2 Disabled Support Equipment (limit RM6,000)</span>${fmt(t.d2_disabled_equipment)}</div>
-      <div class="item"><span class="lbl">D3 Course Fees for Self (limit RM7,000)</span>${fmt(t.d3_course_fees)}</div>
-      <div class="item"><span class="lbl">D4 Medical Treatment (limit RM10,000)</span>${fmt(t.d4_medical_treatment)}</div>
-      <div class="item"><span class="lbl">D5 Lifestyle (limit RM2,500)</span>${fmt(t.d5_lifestyle)}</div>
-      <div class="item"><span class="lbl">D6 Lifestyle — Sports (limit RM1,000)</span>${fmt(t.d6_sports_lifestyle)}</div>
-      <div class="item"><span class="lbl">D7 Breastfeeding Equipment (limit RM1,000)</span>${fmt(t.d7_breastfeeding_equipment)}</div>
-      <div class="item"><span class="lbl">D8 Childcare Fees (limit RM3,000)</span>${fmt(t.d8_childcare_fees)}</div>
-      <div class="item"><span class="lbl">D9 SSPN Net Savings (limit RM8,000)</span>${fmt(t.d9_ssp1m_savings)}</div>
-    </div>
-
-    <h2>Bahagian D (continued): D10–D17</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">D10 Alimony (limit RM4,000)</span>${fmt(t.d10_alimony)}</div>
-      <div class="item"><span class="lbl">D11(a) Voluntary EPF (limit RM4,000)</span>${fmt(t.d11a_kwsp_sukarela)}</div>
-      <div class="item"><span class="lbl">D11(b) Life Insurance (limit RM3,000)</span>${fmt(t.d11b_life_insurance)}</div>
-      <div class="item"><span class="lbl">D12 Private Retirement (limit RM3,000)</span>${fmt(t.d12_private_retirement)}</div>
-      <div class="item"><span class="lbl">D13 Education/Medical Insurance (limit RM4,000)</span>${fmt(t.d13_insurance_education_medical)}</div>
-      <div class="item"><span class="lbl">D14 PERKESO (limit RM350)</span>${fmt(t.d14_perkeso)}</div>
-      <div class="item"><span class="lbl">D15 EV/Compost/CCTV (limit RM2,500)</span>${fmt(t.d15_ev_compost_cctv)}</div>
-      <div class="item"><span class="lbl">D16(a) Housing Loan ≤RM500k (limit RM7,000)</span>${fmt(t.d16a_housing_loan_500k)}</div>
-      <div class="item"><span class="lbl">D16(b) Housing Loan RM500k–750k (limit RM5,000)</span>${fmt(t.d16b_housing_loan_750k)}</div>
-      <div class="item"><span class="lbl">D17 Domestic Tourism (limit RM1,000)</span>${fmt(t.d17_tourism)}</div>
-    </div>
-
-    <h2>Bahagian E: Akuan Pekerja</h2>
-    <p style="font-size:9.5px;">Confirmed digitally (checkbox recorded, no wet signature): ${obConfirmLine(o.tp3_confirmed, o.tp3_confirmed_at)}</p>
   </div>
 
+  <!-- ================= PAGE 4: SALARY CREDITING REQUISITION FORM ================= -->
   <div class="doc-page">
-    <h1>Salary Crediting Requisition Form</h1>
-    <div class="kv">
-      <div class="item"><span class="lbl">Bank</span>${fmt(o.salary_bank)}</div>
-      <div class="item"><span class="lbl">Account No.</span>${fmt(o.salary_account_no)}</div>
-      <div class="item full"><span class="lbl">IC/Passport No. Submitted During Application</span>${fmt(o.salary_ic_submitted)}</div>
+    <div class="letterhead">
+      <img class="logo" src="${WCT_LOGO_DATA_URI}">
+      <div>
+        <div class="co-name">GROUP OF COMPANIES</div>
+        <div class="form-name">SALARY CREDITING REQUISITION FORM</div>
+      </div>
     </div>
-    <p style="margin-top:20px;font-size:9.5px;">Confirmed digitally (checkbox recorded, no wet signature): ${obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at)}</p>
+
+    <p style="font-size:10px;"><strong>To</strong> &nbsp; : Human Resources Department :-</p>
+    <div style="margin:6px 0 14px 24px;font-size:10px;">
+      ${companies.map(c=>`<div style="margin-bottom:4px;">${chk(o.salary_company===c)} ${c}</div>`).join('')}
+    </div>
+
+    <p style="font-size:10px;">Please be informed that I, ${box(a.name_nric, '220px')} &nbsp; IC/Passport No.: ${box(o.salary_ic_submitted, '150px')}</p>
+    <p style="font-size:10px;">hereby agreed that my salary is to be paid through my bank account as follows:-</p>
+
+    <table class="form-box" style="margin-top:10px;">
+      <tr><td class="lbl">Bank</td><td>${fmt(o.salary_bank)}</td></tr>
+      <tr><td class="lbl">Branch</td><td>${fmt(o.salary_branch)}</td></tr>
+      <tr><td class="lbl">A/C No.</td><td>${fmt(o.salary_account_no)}</td></tr>
+      <tr><td class="lbl">I/C No. submitted during application</td><td>${fmt(o.salary_ic_submitted)}</td></tr>
+    </table>
+
+    <p style="font-size:9.5px;font-weight:bold;margin-top:14px;">I confirm that the information herein is correct and in order. Should there be any discrepancy in the information, of which, will lead to possible delay or inability to credit my salaries, it is my sole responsibility.</p>
+    <p style="font-size:9.5px;font-weight:bold;"><em>Saya mengesahkan maklumat tersebut diatas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</em></p>
+
+    <div class="confirm-box">
+      Confirmed digitally (checkbox recorded, no wet signature): <strong>${obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at)}</strong>
+    </div>
+
+    <div style="font-size:8px;color:#888;margin-top:20px;font-style:italic;">Salary crediting RQ Form — WCT Group Employment Onboarding Portal</div>
   </div>
 </body></html>
   `;
 }
-
 // ============================================================================
 // PDF EXPORT — formal, print-ready HTML replica, saved via the browser's
 // own "Print > Save as PDF" — no third-party service, no cost. Merges the
