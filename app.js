@@ -202,7 +202,7 @@ function tplStart(){
               <td>
                 <div class="history-actions">
                   <button class="btn btn-ghost btn-sm" onclick="openTrackEdit('${a.id}')">Edit Details</button>
-                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding</button>` : ''}
+                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">New Hire Forms</button>` : ''}
                 </div>
               </td>
             </tr>
@@ -236,7 +236,7 @@ function openTrackEdit(id){
   document.getElementById('trackEditBox').innerHTML = `
     <div class="card" style="padding:20px;margin-bottom:20px;background:#FAFAF9;">
       <h3 style="font-size:15px;">Edit Details — ${esc(a.reference_no)}</h3>
-      <p class="hint">Your application has already been submitted, so only contact and statutory details can be updated here. For anything else, please reach out to HR directly.</p>
+      <p class="hint">Your application has already been submitted, so only contact details can be updated here. For anything else, please reach out to HR directly.</p>
 
       <div class="section-title" style="margin-top:14px;">Contact</div>
       <div class="grid">
@@ -245,21 +245,6 @@ function openTrackEdit(id){
       </div>
       <div class="field"><label>Permanent Address</label><textarea id="trackAddress">${esc(a.permanent_address)}</textarea></div>
       <div class="field"><label>Postcode</label><input type="text" id="trackPostcode" value="${esc(a.permanent_postcode)}"></div>
-
-      <div class="section-title">Statutory Details</div>
-      <div class="grid">
-        <div class="field"><label>EPF No. <span class="opt-tag">(optional)</span></label><input type="text" id="trackEpf" value="${esc(a.epf_no)}"></div>
-        <div class="field"><label>Income Tax No. <span class="opt-tag">(optional)</span></label><input type="text" id="trackIncomeTax" value="${esc(a.income_tax_no)}"></div>
-      </div>
-      <div class="grid">
-        <div class="field"><label>Tax Branch <span class="opt-tag">(optional)</span></label><input type="text" id="trackTaxBranch" value="${esc(a.tax_branch)}"></div>
-        <div class="field"><label>SOCSO No. <span class="opt-tag">(optional)</span></label><input type="text" id="trackSocso" value="${esc(a.socso_no)}"></div>
-      </div>
-      <div class="grid">
-        <div class="field"><label>Bank Account No. <span class="opt-tag">(optional)</span></label><input type="text" id="trackBankAccount" value="${esc(a.bank_account_no)}"></div>
-        <div class="field"><label>CIDB Green Card No. <span class="opt-tag">(optional)</span></label><input type="text" id="trackCidb" value="${esc(a.cidb_green_card_no)}"></div>
-      </div>
-      <div class="field"><label>CIDB Branch <span class="opt-tag">(optional)</span></label><input type="text" id="trackCidbBranch" value="${esc(a.cidb_branch)}"></div>
 
       <div id="trackEditErr"></div>
       <div style="display:flex;gap:10px;margin-top:8px;">
@@ -275,14 +260,7 @@ async function saveTrackEdit(id, referenceNo){
     email: document.getElementById('trackEmail').value.trim(),
     mobile_phone: document.getElementById('trackMobile').value.trim(),
     permanent_address: document.getElementById('trackAddress').value.trim(),
-    permanent_postcode: document.getElementById('trackPostcode').value.trim(),
-    epf_no: document.getElementById('trackEpf').value.trim(),
-    income_tax_no: document.getElementById('trackIncomeTax').value.trim(),
-    tax_branch: document.getElementById('trackTaxBranch').value.trim(),
-    socso_no: document.getElementById('trackSocso').value.trim(),
-    bank_account_no: document.getElementById('trackBankAccount').value.trim(),
-    cidb_green_card_no: document.getElementById('trackCidb').value.trim(),
-    cidb_branch: document.getElementById('trackCidbBranch').value.trim()
+    permanent_postcode: document.getElementById('trackPostcode').value.trim()
   };
   try{
     const { error } = await supabaseClient.rpc('rpc_candidate_update_application', { p_id: id, p_reference_no: referenceNo, p_patch: patch });
