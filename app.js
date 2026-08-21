@@ -202,7 +202,7 @@ function tplStart(){
               <td>
                 <div class="history-actions">
                   <button class="btn btn-ghost btn-sm" onclick="openTrackEdit('${a.id}')">Edit Details</button>
-                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding details</button>` : ''}
+                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">New Hire Forms</button>` : ''}
                 </div>
               </td>
             </tr>
