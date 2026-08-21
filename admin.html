@@ -125,6 +125,35 @@
   .drow{display:flex;font-size:13.5px;padding:3px 0;}
   .drow .k{width:42%;color:var(--ink-soft);}
   .drow .v{width:58%;font-weight:500;}
+
+  /* ---------- Manager Settings ---------- */
+  .settings-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;margin-bottom:18px;box-shadow:var(--shadow-sm);}
+  .settings-card h3{font-size:15px;margin:0 0 4px;}
+  .settings-card .settings-desc{font-size:12.5px;color:var(--ink-soft);margin:0 0 18px;}
+  .settings-subgroup{margin-bottom:20px;}
+  .settings-subgroup:last-child{margin-bottom:0;}
+  .settings-subgroup .sg-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--gold);font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+  .settings-card .field label{font-size:12.5px;font-weight:600;color:var(--navy);display:block;margin-bottom:5px;}
+  .settings-card .field{margin-bottom:14px;}
+  .settings-card input[type=text],.settings-card input[type=email]{
+    font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;width:100%;background:var(--cream);
+  }
+  .settings-card input:focus{outline:2px solid var(--gold-light);outline-offset:1px;border-color:var(--gold);background:#fff;}
+  .settings-footer{display:flex;align-items:center;gap:12px;margin-top:6px;}
+  .save-flash{font-size:12.5px;color:var(--ok);opacity:0;transition:opacity .25s ease;}
+  .save-flash.show{opacity:1;}
+
+  .audit-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+  .audit-toolbar select, .audit-toolbar input[type=text]{
+    font-family:inherit;font-size:13px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;background:#fff;
+  }
+  .audit-row td{font-size:12.5px;vertical-align:top;}
+  .audit-actor{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;background:var(--info-tint);color:var(--info);}
+  .audit-actor.admin{background:var(--navy);color:#fff;}
+  .audit-action{font-weight:600;color:var(--navy);}
+  .audit-details{color:var(--ink-soft);font-size:11.5px;margin-top:2px;white-space:pre-wrap;word-break:break-word;max-width:420px;}
+  .audit-ref{color:var(--info);font-weight:600;text-decoration:none;}
+  .audit-empty{text-align:center;padding:30px 20px;color:var(--ink-soft);font-size:13px;}
   .status-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;}
 
   .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
@@ -139,6 +168,16 @@
   .login-wrap input{font-family:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;width:100%;margin-top:14px;}
   .error-banner{background:var(--danger-tint);border:1px solid #EBC3BD;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
   .success-banner{background:var(--ok-tint);border:1px solid #BEDACB;color:var(--ok);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
+
+  /* Some browsers (Edge, some Chrome/Android builds, password managers) inject
+     their own "reveal password" icon inside type=password inputs. That collides
+     with our custom eye toggle button, producing two eye icons stacked together.
+     Hide the native ones so only our custom toggle shows. */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear{ display:none; }
+  input[type="password"]::-webkit-credentials-auto-fill-button,
+  input[type="password"]::-webkit-textfield-decoration-container,
+  input[type="password"]::-webkit-caps-lock-indicator{ visibility:hidden; display:none !important; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -186,6 +225,15 @@ let filterStatus = '';
 let currentPage = 1;
 const PAGE_SIZE = 20;
 let searchDebounceTimer = null;
+
+// Manager Settings — audit log
+let auditLog = [];
+let auditTotalCount = 0;
+let auditPage = 1;
+const AUDIT_PAGE_SIZE = 25;
+let auditActionFilter = '';
+let auditRefFilter = '';
+let auditRefDebounceTimer = null;
 
 const STATUS_LABELS = {
   submitted:'New', under_review:'Under Review', shortlisted:'Shortlisted',
@@ -299,7 +347,6 @@ function dashboardView(){
         <div class="row-actions">
           <button class="btn btn-outline btn-sm" onclick="openDetail('${a.id}')">View</button>
           <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf('${a.id}')">PDF</button>
-          ${a.status==='hired' ? `<button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">New Hire Forms</button>` : ''}
           <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">Delete</button>
         </div>
       </td>
@@ -559,6 +606,25 @@ async function loadSettingsForPage(){
     if(error) throw error;
     settingsData = data || {};
   } catch(e){ alert('Error loading settings: '+e.message); settingsData = {}; }
+  await loadAuditLog();
+}
+
+async function loadAuditLog(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_get_audit_log', {
+      p_token: adminToken,
+      p_page: auditPage,
+      p_page_size: AUDIT_PAGE_SIZE,
+      p_action_filter: auditActionFilter || null,
+      p_reference_search: auditRefFilter || null
+    });
+    if(error) throw error;
+    auditLog = (data && data.rows) || data || [];
+    auditTotalCount = (data && data.total_count) ?? auditLog.length;
+  } catch(e){
+    console.error('Audit log load failed:', e.message);
+    auditLog = []; auditTotalCount = 0;
+  }
 }
 
 function settingsPageView(){
@@ -566,32 +632,92 @@ function settingsPageView(){
     return `<div class="empty-state">Manager Settings is only available to All Units admin access.</div>`;
   }
   return `
-    <div class="stat-row">
-      <div class="stat" style="flex:none;min-width:auto;">
-        <h2 style="font-size:20px;margin:0;">Manager Settings</h2>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Notification configuration for Power Automate. Changes here don't require editing any SQL.</div>
-      </div>
-    </div>
+    <h2 style="font-size:20px;margin:0 0 16px;">Manager Settings</h2>
 
-    <div class="detail-section">
-      <h4>Manager Notification Emails (routed by business unit)</h4>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Each business unit's manager only receives notifications for their own unit's applications.</p>
-      <div class="grid g3">
-        <div class="field"><label>E&amp;C Manager Email</label><input type="email" id="set_mgr_ec" value="${esc(settingsData.manager_email_ec)}" placeholder="ec.manager@wct.my"></div>
-        <div class="field"><label>Mall Manager Email</label><input type="email" id="set_mgr_mall" value="${esc(settingsData.manager_email_mall)}" placeholder="mall.manager@wct.my"></div>
-        <div class="field"><label>Land Manager Email</label><input type="email" id="set_mgr_land" value="${esc(settingsData.manager_email_land)}" placeholder="land.manager@wct.my"></div>
-      </div>
-    </div>
+    <div class="settings-card">
+      <h3>🔔 Notifications</h3>
+      <p class="settings-desc">Routing and webhook configuration for Power Automate. Changes here don't require editing any SQL.</p>
 
-    <div class="detail-section">
-      <h4>Power Automate Webhook URLs</h4>
-      <div class="field"><label>Submission Webhook URL</label><input type="text" id="set_pa_submit" value="${esc(settingsData.power_automate_submission_url)}" placeholder="https://..."></div>
-      <div class="field"><label>Status Change Webhook URL</label><input type="text" id="set_pa_status" value="${esc(settingsData.power_automate_status_change_url)}" placeholder="https://..."></div>
-      <div class="field"><label>New Hire Forms Completed Webhook URL</label><input type="text" id="set_pa_onboarding" value="${esc(settingsData.power_automate_onboarding_complete_url)}" placeholder="https://..."></div>
+      <div class="settings-subgroup">
+        <div class="sg-label">Manager Notification Emails</div>
+        <p style="font-size:12px;color:var(--ink-soft);margin:-6px 0 12px;">Each business unit's manager only receives notifications for their own unit's applications.</p>
+        <div class="grid g3">
+          <div class="field"><label>E&amp;C Manager Email</label><input type="email" id="set_mgr_ec" value="${esc(settingsData.manager_email_ec)}" placeholder="ec.manager@wct.my"></div>
+          <div class="field"><label>Mall Manager Email</label><input type="email" id="set_mgr_mall" value="${esc(settingsData.manager_email_mall)}" placeholder="mall.manager@wct.my"></div>
+          <div class="field"><label>Land Manager Email</label><input type="email" id="set_mgr_land" value="${esc(settingsData.manager_email_land)}" placeholder="land.manager@wct.my"></div>
+        </div>
+      </div>
+
+      <div class="settings-subgroup">
+        <div class="sg-label">Power Automate Webhook URLs</div>
+        <div class="field"><label>Submission Webhook URL</label><input type="text" id="set_pa_submit" value="${esc(settingsData.power_automate_submission_url)}" placeholder="https://..."></div>
+        <div class="field"><label>Status Change Webhook URL</label><input type="text" id="set_pa_status" value="${esc(settingsData.power_automate_status_change_url)}" placeholder="https://..."></div>
+        <div class="field"><label>Onboarding Completed Webhook URL</label><input type="text" id="set_pa_onboarding" value="${esc(settingsData.power_automate_onboarding_complete_url)}" placeholder="https://..."></div>
+      </div>
+
       <div id="settingsErr"></div>
-      <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
+      <div class="settings-footer">
+        <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
+        <span class="save-flash" id="saveFlash">✓ Saved</span>
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>📜 Audit Log</h3>
+      <p class="settings-desc">Recent actions recorded against applications — status changes, edits, deletions, and onboarding activity.</p>
+
+      <div class="audit-toolbar">
+        <input type="text" id="auditRefInput" placeholder="Search by reference no. or name..." value="${esc(auditRefFilter)}" oninput="handleAuditRefInput(this.value)" style="flex:1;min-width:220px;">
+        <select onchange="setAuditActionFilter(this.value)">
+          <option value="">All Actions</option>
+          <option value="status_change" ${auditActionFilter==='status_change'?'selected':''}>Status Change</option>
+          <option value="edit" ${auditActionFilter==='edit'?'selected':''}>Edit</option>
+          <option value="delete" ${auditActionFilter==='delete'?'selected':''}>Delete</option>
+          <option value="onboarding" ${auditActionFilter==='onboarding'?'selected':''}>Onboarding</option>
+          <option value="submission" ${auditActionFilter==='submission'?'selected':''}>Submission</option>
+        </select>
+        <button class="btn btn-outline btn-sm" onclick="loadAuditLog().then(render)">↻ Refresh</button>
+      </div>
+
+      ${auditLog.length ? `
+        <table>
+          <thead><tr><th>When</th><th>Action</th><th>Actor</th><th>Application</th><th>Details</th></tr></thead>
+          <tbody>
+            ${auditLog.map(row => `
+              <tr class="audit-row">
+                <td style="white-space:nowrap;">${row.created_at ? new Date(row.created_at).toLocaleString() : '—'}</td>
+                <td class="audit-action">${esc(row.action)}</td>
+                <td><span class="audit-actor ${row.actor==='admin'?'admin':''}">${esc(row.actor)}</span></td>
+                <td>${row.reference_no ? `<a class="audit-ref" onclick="openDetail('${row.application_id}')">${esc(row.reference_no)}</a>` : '—'}</td>
+                <td>${row.details ? `<div class="audit-details">${esc(typeof row.details==='string'?row.details:JSON.stringify(row.details))}</div>` : '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="pagination">
+          <span>Page ${auditPage} of ${Math.max(1, Math.ceil(auditTotalCount / AUDIT_PAGE_SIZE))} — ${auditTotalCount} record(s)</span>
+          <div class="controls">
+            <button class="btn btn-outline btn-sm" ${auditPage<=1?'disabled':''} onclick="changeAuditPage(-1)">← Prev</button>
+            <button class="btn btn-outline btn-sm" ${auditPage>=Math.ceil(auditTotalCount / AUDIT_PAGE_SIZE)?'disabled':''} onclick="changeAuditPage(1)">Next →</button>
+          </div>
+        </div>
+      ` : `<div class="audit-empty">No audit log entries match your filters.</div>`}
     </div>
   `;
+}
+
+function handleAuditRefInput(v){
+  auditRefFilter = v;
+  clearTimeout(auditRefDebounceTimer);
+  auditRefDebounceTimer = setTimeout(async () => { auditPage = 1; await loadAuditLog(); render(); }, 350);
+}
+async function setAuditActionFilter(v){
+  auditActionFilter = v; auditPage = 1;
+  await loadAuditLog(); render();
+}
+async function changeAuditPage(delta){
+  auditPage += delta;
+  await loadAuditLog(); render();
 }
 
 async function saveSettings(){
@@ -607,7 +733,9 @@ async function saveSettings(){
     const { data, error } = await supabaseClient.rpc('rpc_admin_update_settings', { p_token: adminToken, p_settings: patch });
     if(error) throw error;
     settingsData = data;
-    document.getElementById('settingsErr').innerHTML = `<div class="success-banner">Saved.</div>`;
+    const flash = document.getElementById('saveFlash');
+    if(flash){ flash.classList.add('show'); setTimeout(()=>flash.classList.remove('show'), 2200); }
+    document.getElementById('settingsErr').innerHTML = '';
   } catch(e){ document.getElementById('settingsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
 
@@ -821,7 +949,7 @@ function viewDetailHtml(a){
       </div>
       ${a.status==='hired' ? `
       <div class="status-actions">
-        <button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">📋 New Hire Forms</button>
+        <button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">📋 Onboarding Details</button>
       </div>
       ` : ''}
       <div class="status-actions">
