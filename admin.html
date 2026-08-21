@@ -650,9 +650,14 @@ function settingsPageView(){
 
       <div class="settings-subgroup">
         <div class="sg-label">Power Automate Webhook URLs</div>
-        <div class="field"><label>Submission Webhook URL</label><input type="text" id="set_pa_submit" value="${esc(settingsData.power_automate_submission_url)}" placeholder="https://..."></div>
-        <div class="field"><label>Status Change Webhook URL</label><input type="text" id="set_pa_status" value="${esc(settingsData.power_automate_status_change_url)}" placeholder="https://..."></div>
-        <div class="field"><label>Onboarding Completed Webhook URL</label><input type="text" id="set_pa_onboarding" value="${esc(settingsData.power_automate_onboarding_complete_url)}" placeholder="https://..."></div>
+        <div class="field">
+          <label>Manager Settings / Submission Webhook URL</label>
+          <input type="text" id="set_pa_submit" value="https://defaulte41691d30c4541fd92c76d4d998490.50.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/21/workflows/ffec16fba247417e9dd0dd18f9d86cc4/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=zVOQAFYOUc5trFTlqHvJBUfblu7oNZh_Cg-wy4gfyQQ" placeholder="https://...">
+        </div>
+        <div class="field">
+          <label>Status Change Webhook URL</label>
+          <input type="text" id="set_pa_status" value="https://defaulte41691d30c4541fd92c76d4d998490.50.environment.api.powerplatform.com:443/powerautomate/automations/direct/cu/05/workflows/9a6b6fe2c78b42e09fb06efaba802cd2/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=EmmJCwsV3ucJwDJ9EBjl38K3dSvsmYN9FJ3hkGyJh2Y" placeholder="https://...">
+        </div>
       </div>
 
       <div id="settingsErr"></div>
@@ -726,8 +731,7 @@ async function saveSettings(){
     manager_email_mall: document.getElementById('set_mgr_mall').value.trim(),
     manager_email_land: document.getElementById('set_mgr_land').value.trim(),
     power_automate_submission_url: document.getElementById('set_pa_submit').value.trim(),
-    power_automate_status_change_url: document.getElementById('set_pa_status').value.trim(),
-    power_automate_onboarding_complete_url: document.getElementById('set_pa_onboarding').value.trim()
+    power_automate_status_change_url: document.getElementById('set_pa_status').value.trim()
   };
   try{
     const { data, error } = await supabaseClient.rpc('rpc_admin_update_settings', { p_token: adminToken, p_settings: patch });
