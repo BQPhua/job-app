@@ -236,12 +236,19 @@ function loginView(){
     <div class="login-wrap">
       <h2>Admin Login</h2>
       <p style="color:var(--ink-soft);font-size:13px;">Enter the HR admin passcode to view applications.</p>
-      <input type="password" id="passcodeInput" placeholder="Admin passcode" onkeydown="if(event.key==='Enter') doLogin()">
+      <div style="position:relative;margin-top:14px;">
+        <input type="password" id="passcodeInput" placeholder="Admin passcode" style="padding-right:44px;" onkeydown="if(event.key==='Enter') doLogin()">
+        <button type="button" onclick="togglePasscodeVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:var(--ink-soft);padding:4px;" title="Show/hide passcode">👁</button>
+      </div>
       <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px;" onclick="doLogin()">Log In</button>
       <div id="loginErr"></div>
       <a href="login.html" class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:16px;text-decoration:none;">← Main Site</a>
     </div>
   `;
+}
+function togglePasscodeVisibility(){
+  const el = document.getElementById('passcodeInput');
+  el.type = el.type === 'password' ? 'text' : 'password';
 }
 async function doLogin(){
   const pass = document.getElementById('passcodeInput').value;
@@ -292,6 +299,7 @@ function dashboardView(){
         <div class="row-actions">
           <button class="btn btn-outline btn-sm" onclick="openDetail('${a.id}')">View</button>
           <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf('${a.id}')">PDF</button>
+          ${a.status==='hired' ? `<button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">New Hire Forms</button>` : ''}
           <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">Delete</button>
         </div>
       </td>
@@ -566,10 +574,20 @@ function settingsPageView(){
     </div>
 
     <div class="detail-section">
-      <h4>Notifications</h4>
-      <div class="field"><label>HR Notification Email</label><input type="email" id="set_hr_email" value="${esc(settingsData.hr_notification_email)}" placeholder="hr@wct.my"></div>
-      <div class="field"><label>Power Automate — Submission Webhook URL</label><input type="text" id="set_pa_submit" value="${esc(settingsData.power_automate_submission_url)}" placeholder="https://..."></div>
-      <div class="field"><label>Power Automate — Status Change Webhook URL</label><input type="text" id="set_pa_status" value="${esc(settingsData.power_automate_status_change_url)}" placeholder="https://..."></div>
+      <h4>Manager Notification Emails (routed by business unit)</h4>
+      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Each business unit's manager only receives notifications for their own unit's applications.</p>
+      <div class="grid g3">
+        <div class="field"><label>E&amp;C Manager Email</label><input type="email" id="set_mgr_ec" value="${esc(settingsData.manager_email_ec)}" placeholder="ec.manager@wct.my"></div>
+        <div class="field"><label>Mall Manager Email</label><input type="email" id="set_mgr_mall" value="${esc(settingsData.manager_email_mall)}" placeholder="mall.manager@wct.my"></div>
+        <div class="field"><label>Land Manager Email</label><input type="email" id="set_mgr_land" value="${esc(settingsData.manager_email_land)}" placeholder="land.manager@wct.my"></div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h4>Power Automate Webhook URLs</h4>
+      <div class="field"><label>Submission Webhook URL</label><input type="text" id="set_pa_submit" value="${esc(settingsData.power_automate_submission_url)}" placeholder="https://..."></div>
+      <div class="field"><label>Status Change Webhook URL</label><input type="text" id="set_pa_status" value="${esc(settingsData.power_automate_status_change_url)}" placeholder="https://..."></div>
+      <div class="field"><label>New Hire Forms Completed Webhook URL</label><input type="text" id="set_pa_onboarding" value="${esc(settingsData.power_automate_onboarding_complete_url)}" placeholder="https://..."></div>
       <div id="settingsErr"></div>
       <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
     </div>
@@ -578,9 +596,12 @@ function settingsPageView(){
 
 async function saveSettings(){
   const patch = {
-    hr_notification_email: document.getElementById('set_hr_email').value.trim(),
+    manager_email_ec: document.getElementById('set_mgr_ec').value.trim(),
+    manager_email_mall: document.getElementById('set_mgr_mall').value.trim(),
+    manager_email_land: document.getElementById('set_mgr_land').value.trim(),
     power_automate_submission_url: document.getElementById('set_pa_submit').value.trim(),
-    power_automate_status_change_url: document.getElementById('set_pa_status').value.trim()
+    power_automate_status_change_url: document.getElementById('set_pa_status').value.trim(),
+    power_automate_onboarding_complete_url: document.getElementById('set_pa_onboarding').value.trim()
   };
   try{
     const { data, error } = await supabaseClient.rpc('rpc_admin_update_settings', { p_token: adminToken, p_settings: patch });
@@ -800,7 +821,7 @@ function viewDetailHtml(a){
       </div>
       ${a.status==='hired' ? `
       <div class="status-actions">
-        <button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">📋 View Onboarding / Statutory Details</button>
+        <button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">📋 New Hire Forms</button>
       </div>
       ` : ''}
       <div class="status-actions">
@@ -1510,6 +1531,21 @@ function buildFormalPdfHtml(a){
 if(adminToken && adminScope && adminScope !== 'ALL') filterBusinessUnit = adminScope;
 render();
 if(adminToken) loadEverything();
+
+// ============================================================================
+// AUTO-REFRESH — polls every 20 seconds while on the Home view, so new
+// submissions and status changes appear without needing a manual refresh.
+// (True push-based Supabase Realtime isn't used here since it requires RLS
+// policies permitting SELECT access, which would undo the locked-down
+// table access this whole system was deliberately built around — polling
+// gets the same practical result without that tradeoff.)
+// ============================================================================
+setInterval(() => {
+  if(adminToken && currentView === 'home' && !selectedApp){
+    loadApplications();
+    loadStats();
+  }
+}, 20000);
 </script>
 </body>
 </html>
