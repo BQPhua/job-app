@@ -190,7 +190,7 @@ function tplStart(){
     ${others.length ? `
       <div class="section-title" style="margin-top:${drafts.length?'22px':'0'};">Your Previous Applications</div>
       <table class="history-table">
-        <thead><tr><th>Reference</th><th>Position</th><th>Unit</th><th>Status</th><th>Submitted</th><th></th></tr></thead>
+        <thead><tr><th>Reference</th><th>Position</th><th>Unit</th><th>Status</th><th>Submitted</th><th style="width:160px;">Actions</th></tr></thead>
         <tbody>
           ${others.map(a=>`
             <tr>
@@ -200,8 +200,10 @@ function tplStart(){
               <td>${statusBadgeHtml(a.status)}</td>
               <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
               <td>
-                <button class="btn btn-ghost btn-sm" style="padding:5px 11px;font-size:12px;" onclick="openTrackEdit('${a.id}')">View / Edit My Details</button>
-                ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" style="padding:5px 11px;font-size:12px;margin-left:6px;" onclick="openOnboarding('${a.id}')">Complete Onboarding</button>` : ''}
+                <div class="history-actions">
+                  <button class="btn btn-ghost btn-sm" onclick="openTrackEdit('${a.id}')">Edit Details</button>
+                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding</button>` : ''}
+                </div>
               </td>
             </tr>
           `).join('')}
@@ -233,7 +235,7 @@ function openTrackEdit(id){
   if(!a) return;
   document.getElementById('trackEditBox').innerHTML = `
     <div class="card" style="padding:20px;margin-bottom:20px;background:#FAFAF9;">
-      <h3 style="font-size:15px;">View / Edit My Details — ${esc(a.reference_no)}</h3>
+      <h3 style="font-size:15px;">Edit Details — ${esc(a.reference_no)}</h3>
       <p class="hint">Your application has already been submitted, so only contact and statutory details can be updated here. For anything else, please reach out to HR directly.</p>
 
       <div class="section-title" style="margin-top:14px;">Contact</div>
@@ -486,114 +488,28 @@ function validatePersonalStep(){
 // types into the SOCSO field directly, we stop overwriting it from NRIC.
 let socsoManuallyEdited = false;
 
-function tplTp3Section(){
-  const o = onboardingState;
-  const t = o.tp3_data || {};
-  const field = (key, label, placeholder) => `
-    <div class="field"><label>${label}</label><input type="text" placeholder="${placeholder||''}" value="${esc(t[key])}" oninput="updateTp3Field('${key}', this.value)"></div>
-  `;
-  const money = (key, label, limit) => `
-    <div class="field"><label>${label}${limit ? ` <span class="opt-tag">(limit RM${limit})</span>` : ''}</label><input type="text" placeholder="RM" value="${esc(t[key])}" oninput="updateTp3Field('${key}', this.value)"></div>
-  `;
+// ============================================================================
+// POST-HIRE ONBOARDING — multi-step wizard (one section at a time, matching
+// the main application's UX), full Bahasa Malaysia TP3 form with automatic
+// annual-limit capping, and a Salary Crediting form matching the actual
+// company document exactly.
+// ============================================================================
 
-  return `
-    <div class="section-title" style="margin-top:0;">TP3 — Previous Employment Details for PCB (Tax) Purposes</div>
+const TP3_LIMITS = {
+  d1_parent_medical: 8000, d2_disabled_equipment: 6000, d3_course_fees: 7000,
+  d4_medical_treatment: 10000, d5_lifestyle: 2500, d6_sports_lifestyle: 1000,
+  d7_breastfeeding_equipment: 1000, d8_childcare_fees: 3000, d9_ssp1m_savings: 8000,
+  d10_alimony: 4000, d11a_kwsp_sukarela: 4000, d11b_life_insurance: 3000,
+  d12_private_retirement: 3000, d13_insurance_education_medical: 4000,
+  d14_perkeso: 350, d15_ev_compost_cctv: 2500,
+  d16a_housing_loan_500k: 7000, d16b_housing_loan_750k: 5000, d17_tourism: 1000
+};
 
-    <div class="section-title" style="margin-top:0;font-size:14px;">Bahagian A: Maklumat Majikan (Previous Employer Information)</div>
-    <div class="grid">
-      ${field('employer1_name', 'Previous Employer Name 1', 'e.g. ABC Sdn Bhd')}
-      ${field('employer1_tin', 'Tax Identification No. (TIN) 1')}
-    </div>
-    <div class="grid">
-      ${field('employer2_name', 'Previous Employer Name 2 (optional)')}
-      ${field('employer2_tin', 'Tax Identification No. (TIN) 2 (optional)')}
-    </div>
+const ONBOARDING_STEPS = ['statutory','spouse_children','emergency_beneficiary','tp3_ab_c','tp3_d1_9','tp3_d10_17_declare','salary','review'];
 
-    <div class="section-title" style="font-size:14px;">Bahagian C: Maklumat Saraan / KWSP / Zakat / PCB</div>
-    <div class="grid">
-      ${money('c1_gross_remuneration', 'C1: Total gross monthly + additional remuneration (incl. taxable allowances/benefits)')}
-      ${money('c3_epf_total', 'C3: Total EPF/other approved fund contributions')}
-    </div>
-    <div class="section-title" style="font-size:13px;margin-top:10px;">C2: Tax-exempt allowances/perquisites/benefits</div>
-    <div class="grid">
-      ${money('c2i_travel', 'i) Travel/petrol card/petrol allowance for official duties')}
-      ${money('c2ii_childcare', 'ii) Childcare allowance')}
-    </div>
-    <div class="grid">
-      ${money('c2iii_products', 'iii) Employer products given free/at discount')}
-      ${money('c2iv_service_award', 'iv) Long-service/innovation/productivity awards (10+ years service)')}
-    </div>
-    ${money('c2v_other', 'v) Other tax-exempt allowances/perquisites/benefits')}
-    <div class="grid">
-      ${money('c4i_zakat', 'C4(i): Total Zakat')}
-      ${money('c4ii_umrah', 'C4(ii): Umrah/religious travel levy relief (limited to 2x lifetime)')}
-    </div>
-    ${money('c5_total_pcb', 'C5: Total PCB (excluding CP38)')}
-
-    <div class="section-title" style="font-size:14px;">Bahagian D: Potongan Cukai (Tax Relief)</div>
-    <p class="hint" style="margin-top:-6px;">Each item below is a single combined amount, covering all the sub-items listed under it (matching the original paper form's layout).</p>
-
-    ${money('d1_parent_medical', 'D1: Expenses for parents/grandparents — medical treatment, special needs & care services; dental treatment; full medical exam incl. vaccination (limited RM1,000 within this)', '8,000')}
-    ${money('d2_disabled_equipment', 'D2: Basic supporting equipment for disabled self/spouse/child/parent', '6,000')}
-    ${money('d3_course_fees', 'D3: Course fees for self — non-degree (law/accounting/Islamic finance/technical/vocational/industrial/scientific/tech); Masters/PhD any field; skills upgrading courses (limited RM2,000 within this)', '7,000')}
-    ${money('d4_medical_treatment', 'D4: Medical treatment for self/spouse/child — serious disease; fertility treatment; vaccination (RM1,000); dental (RM1,000); full medical/mental health exam (RM1,000); child learning-disability intervention, age ≤18 (RM10,000)', '10,000')}
-    ${money('d5_lifestyle', 'D5: Lifestyle — books/journals/magazines/newspapers; personal computer/smartphone/tablet; internet subscription (own name); skills courses', '2,500')}
-    ${money('d6_sports_lifestyle', 'D6: Lifestyle (sports) — sports equipment under Sports Development Act 1997; facility rental/entry fees; competition registration; gym membership/training fees', '1,000')}
-    ${money('d7_breastfeeding_equipment', 'D7: Breastfeeding equipment (child ≤2 years old, once per 2 assessment years)', '1,000')}
-    ${money('d8_childcare_fees', 'D8: Childcare fees — registered childcare centre/kindergarten (child ≤12 years old)', '3,000')}
-    ${money('d9_ssp1m_savings', 'D9: Net savings in National Education Savings Scheme (SSPN)', '8,000')}
-
-    <div class="section-title" style="font-size:14px;">Bahagian D (continued): D10 to D17</div>
-    ${money('d10_alimony', 'D10: Alimony paid to former wife', '4,000')}
-    <div class="grid">
-      ${money('d11a_kwsp_sukarela', 'D11(a): Voluntary EPF (incl. mandatory EPF)', '4,000')}
-      ${money('d11b_life_insurance', 'D11(b): Life insurance / voluntary EPF', '3,000')}
-    </div>
-    ${money('d12_private_retirement', 'D12: Private retirement scheme & deferred annuity', '3,000')}
-    ${money('d13_insurance_education_medical', 'D13: Education and medical insurance', '4,000')}
-    ${money('d14_perkeso', 'D14: PERKESO/SOCSO contribution', '350')}
-    ${money('d15_ev_compost_cctv', 'D15: EV charging / compost machine / CCTV installation', '2,500')}
-    <div class="grid">
-      ${money('d16a_housing_loan_500k', 'D16(a): Housing loan interest — price up to RM500,000', '7,000')}
-      ${money('d16b_housing_loan_750k', 'D16(b): Housing loan interest — RM500,000 to RM750,000', '5,000')}
-    </div>
-    ${money('d17_tourism', 'D17: Domestic tourism entrance fees', '1,000')}
-
-    ${(() => {
-      const confirmed = o.tp3_confirmed;
-      return `
-        <div class="checkbox-row">
-          <input type="checkbox" id="confirm_tp3" ${confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('tp3')">
-          <label for="confirm_tp3">I declare that all information stated in this TP3 form is true, correct and complete.</label>
-          ${confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(o.tp3_confirmed_at).toLocaleString()}</div>` : ''}
-        </div>
-      `;
-    })()}
-    <button class="btn btn-ghost" onclick="saveOnboarding(true)">Save Progress</button>
-  `;
-}
-
-function tplSalaryCreditingSection(){
-  const o = onboardingState;
-  return `
-    <div class="section-title" style="margin-top:0;">Salary Crediting Requisition</div>
-    <p class="step-desc">Please provide your bank account details for salary crediting.</p>
-    <div class="grid">
-      <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
-      <div class="field"><label>Account No.</label><input type="text" id="ob_salary_account_no" value="${esc(o.salary_account_no)}"></div>
-    </div>
-    <div class="field"><label>IC/Passport No. Submitted During Application</label><input type="text" id="ob_salary_ic" value="${esc(o.salary_ic_submitted || state.nric_new || state.passport_number)}"></div>
-
-    <div class="checkbox-row">
-      <input type="checkbox" id="confirm_salary_crediting" ${o.salary_crediting_confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('salary_crediting')">
-      <label for="confirm_salary_crediting">I confirm that the information above is correct and understand that any discrepancy resulting in delayed or missed salary crediting is my sole responsibility.</label>
-      ${o.salary_crediting_confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(o.salary_crediting_confirmed_at).toLocaleString()}</div>` : ''}
-    </div>
-    <button class="btn btn-ghost" onclick="saveOnboarding(true)">Save Progress</button>
-  `;
-}
 let onboardingAppId = null;
 let onboardingState = null;
+let onboardingStep = 'statutory';
 
 async function openOnboarding(applicationId){
   showLoading('Loading onboarding forms...');
@@ -602,6 +518,7 @@ async function openOnboarding(applicationId){
     if(error) throw error;
     onboardingAppId = applicationId;
     onboardingState = data[0];
+    onboardingStep = onboardingState.status === 'completed' ? 'review' : 'statutory';
     hideLoading();
     goStep('onboarding');
   } catch(e){
@@ -631,7 +548,9 @@ async function saveOnboarding(showAlert){
       beneficiary_relationship: document.getElementById('ob_beneficiary_relationship')?.value.trim() || '',
       beneficiary_contact: document.getElementById('ob_beneficiary_contact')?.value.trim() || '',
       tp3_data: onboardingState.tp3_data,
+      salary_company: document.querySelector('input[name="ob_salary_company"]:checked')?.value || onboardingState.salary_company || '',
       salary_bank: document.getElementById('ob_salary_bank')?.value.trim() || '',
+      salary_branch: document.getElementById('ob_salary_branch')?.value.trim() || '',
       salary_account_no: document.getElementById('ob_salary_account_no')?.value.trim() || '',
       salary_ic_submitted: document.getElementById('ob_salary_ic')?.value.trim() || ''
     };
@@ -639,10 +558,34 @@ async function saveOnboarding(showAlert){
     if(error) throw error;
     onboardingState = data[0];
     if(showAlert) alert('Saved.');
-  } catch(e){ alert('Error saving: ' + e.message); }
+    return true;
+  } catch(e){ alert('Error saving: ' + e.message); return false; }
 }
 
-function updateTp3Field(key, val){ onboardingState.tp3_data = {...onboardingState.tp3_data, [key]: val}; }
+async function onboardingGoStep(step){
+  const ok = await saveOnboarding(false);
+  if(ok){ onboardingStep = step; render(); window.scrollTo(0,0); }
+}
+
+// Applies the annual limit cap live as the candidate types, updating the
+// field in place (no full re-render) so typing doesn't lose focus.
+function updateTp3Field(key, val){
+  let numeric = parseFloat(String(val).replace(/[^0-9.]/g,''));
+  const limit = TP3_LIMITS[key];
+  let capMsg = '';
+  let finalVal = val;
+  if(limit && !isNaN(numeric) && numeric > limit){
+    finalVal = String(limit);
+    capMsg = `Melebihi had tahunan — dihadkan kepada RM${limit.toLocaleString()}`;
+  }
+  onboardingState.tp3_data = {...onboardingState.tp3_data, [key]: finalVal};
+  const msgEl = document.getElementById('capmsg_'+key);
+  if(msgEl) msgEl.innerHTML = capMsg ? `<span style="color:#B9770E;">${capMsg}</span>` : '';
+  if(capMsg){
+    const inputEl = document.getElementById('tp3_'+key);
+    if(inputEl) inputEl.value = finalVal;
+  }
+}
 
 function addChildBelow18(){ onboardingState.children_below_18 = [...onboardingState.children_below_18, {name:'',date_of_birth:'',tax_relief:false}]; render(); }
 function removeChildBelow18(i){ onboardingState.children_below_18.splice(i,1); render(); }
@@ -662,46 +605,80 @@ async function confirmOnboardingSection(section){
     const { data, error } = await supabaseClient.rpc('rpc_confirm_onboarding_section', { p_application_id: onboardingAppId, p_section: section });
     if(error) throw error;
     onboardingState = data[0];
+    if(onboardingState.status === 'completed') onboardingStep = 'review';
     render();
   } catch(e){ alert('Error: ' + e.message); }
 }
 
 function backFromOnboarding(){
-  onboardingAppId = null; onboardingState = null;
+  onboardingAppId = null; onboardingState = null; onboardingStep = 'statutory';
   goStep('start');
 }
 
-function tplOnboarding(){
-  const o = onboardingState;
-  const checkboxRow = (confirmed, at, label, section) => `
-    <div class="checkbox-row">
-      <input type="checkbox" id="confirm_${section}" ${confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('${section}')">
-      <label for="confirm_${section}">${label}</label>
-      ${confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(at).toLocaleString()}</div>` : ''}
-    </div>
-  `;
+function obProgressBar(){
+  const visible = ONBOARDING_STEPS.filter(s=>s!=='review');
+  const idx = visible.indexOf(onboardingStep);
+  return `<div class="progress" style="margin-bottom:22px;">${visible.map((s,i)=>{
+    let cls='seg'; if(i<idx) cls+=' done'; if(i===idx) cls+=' active';
+    return `<div class="${cls}"></div>`;
+  }).join('')}</div>`;
+}
 
+function tplOnboarding(){
+  if(onboardingStep === 'review') return tplObReview();
+  const stepMap = {
+    statutory: tplObStatutory,
+    spouse_children: tplObSpouseChildren,
+    emergency_beneficiary: tplObEmergencyBeneficiary,
+    tp3_ab_c: tplObTp3AbC,
+    tp3_d1_9: tplObTp3D1to9,
+    tp3_d10_17_declare: tplObTp3D10to17Declare,
+    salary: tplObSalary
+  };
   return `
     <div class="step-eyebrow">Onboarding</div>
     <h2>Post-Hire Details</h2>
-    <p class="step-desc">Congratulations on being hired! Please complete the sections below — your personal particulars from the application form don't need to be re-entered.</p>
+    ${obProgressBar()}
+    ${stepMap[onboardingStep]()}
+  `;
+}
 
+// ---------------------------------------------------------------------------
+// STEP 1: Statutory Details
+// ---------------------------------------------------------------------------
+function tplObStatutory(){
+  const o = onboardingState;
+  return `
+    <div class="step-desc">Congratulations on being hired! Let's get your onboarding details sorted, one section at a time.</div>
     <div class="section-title" style="margin-top:0;">Statutory Details</div>
     <div class="grid">
-      <div class="field"><label>EPF No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_epf_no" value="${esc(o.epf_no)}"></div>
-      <div class="field"><label>Income Tax No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_income_tax_no" value="${esc(o.income_tax_no)}"></div>
+      <div class="field"><label>EPF No.</label><input type="text" id="ob_epf_no" value="${esc(o.epf_no)}"></div>
+      <div class="field"><label>Income Tax No.</label><input type="text" id="ob_income_tax_no" value="${esc(o.income_tax_no)}"></div>
     </div>
     <div class="grid">
-      <div class="field"><label>Tax Branch <span class="opt-tag">(optional)</span></label><input type="text" id="ob_tax_branch" value="${esc(o.tax_branch)}"></div>
-      <div class="field"><label>SOCSO No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_socso_no" value="${esc(o.socso_no)}"></div>
+      <div class="field"><label>Tax Branch</label><input type="text" id="ob_tax_branch" value="${esc(o.tax_branch)}"></div>
+      <div class="field"><label>SOCSO No.</label><input type="text" id="ob_socso_no" value="${esc(o.socso_no)}"></div>
     </div>
     <div class="grid">
-      <div class="field"><label>Bank Account No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_bank_account_no" value="${esc(o.bank_account_no)}"></div>
-      <div class="field"><label>CIDB Green Card No. <span class="opt-tag">(optional)</span></label><input type="text" id="ob_cidb_green_card_no" value="${esc(o.cidb_green_card_no)}"></div>
+      <div class="field"><label>Bank Account No.</label><input type="text" id="ob_bank_account_no" value="${esc(o.bank_account_no)}"></div>
+      <div class="field"><label>CIDB Green Card No.</label><input type="text" id="ob_cidb_green_card_no" value="${esc(o.cidb_green_card_no)}"></div>
     </div>
-    <div class="field"><label>CIDB Branch <span class="opt-tag">(optional)</span></label><input type="text" id="ob_cidb_branch" value="${esc(o.cidb_branch)}"></div>
+    <div class="field"><label>CIDB Branch</label><input type="text" id="ob_cidb_branch" value="${esc(o.cidb_branch)}"></div>
 
-    <div class="section-title">Spouse Information <span class="opt-tag">(if applicable)</span></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="backFromOnboarding()">← Back to My Applications</button>
+      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('spouse_children')">Next →</button></div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// STEP 2: Spouse + Children
+// ---------------------------------------------------------------------------
+function tplObSpouseChildren(){
+  const o = onboardingState;
+  return `
+    <div class="section-title" style="margin-top:0;">Spouse Information <span class="opt-tag">(if applicable)</span></div>
     <div class="grid">
       <div class="field"><label>Name (per NRIC)</label><input type="text" id="ob_spouse_name" value="${esc(o.spouse_name)}"></div>
       <div class="field"><label>NRIC No.</label><input type="text" id="ob_spouse_nric" value="${esc(o.spouse_nric)}"></div>
@@ -756,7 +733,20 @@ function tplOnboarding(){
     </table>
     <button class="add-row-btn" onclick="addChild18to23()">+ Add child</button>
 
-    <div class="section-title">Emergency Contact(s)</div>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="onboardingGoStep('statutory')">← Back</button>
+      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('emergency_beneficiary')">Next →</button></div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// STEP 3: Emergency Contact(s) + Beneficiary + confirm
+// ---------------------------------------------------------------------------
+function tplObEmergencyBeneficiary(){
+  const o = onboardingState;
+  return `
+    <div class="section-title" style="margin-top:0;">Emergency Contact(s)</div>
     <table class="dyn">
       <thead><tr><th>Name (per NRIC)</th><th>Relationship</th><th>Phone No.</th><th></th></tr></thead>
       <tbody>
@@ -779,24 +769,254 @@ function tplOnboarding(){
       <div class="field"><label>Contact No.</label><input type="tel" placeholder="e.g. 012-345 6789" id="ob_beneficiary_contact" value="${esc(o.beneficiary_contact)}"></div>
     </div>
 
-    ${checkboxRow(o.personal_details_confirmed, o.personal_details_confirmed_at, 'I confirm the Personal Details, Spouse, Children, Emergency Contact and Beneficiary information above is true and correct.', 'personal_details')}
+    <div class="checkbox-row">
+      <input type="checkbox" id="confirm_personal_details" ${o.personal_details_confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('personal_details')">
+      <label for="confirm_personal_details">I confirm the Statutory Details, Spouse, Children, Emergency Contact and Beneficiary information above is true and correct.</label>
+      ${o.personal_details_confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(o.personal_details_confirmed_at).toLocaleString()}</div>` : ''}
+    </div>
 
-    <button class="btn btn-ghost" onclick="saveOnboarding(true)" style="margin-bottom:24px;">Save Progress</button>
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="onboardingGoStep('spouse_children')">← Back</button>
+      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('tp3_ab_c')">Next →</button></div>
+    </div>
+  `;
+}
 
-    <hr style="border:none;border-top:1px solid var(--line);margin:8px 0 24px;">
+// ---------------------------------------------------------------------------
+// TP3 helpers — fully in Bahasa Malaysia, matching Borang PCB/TP3 (1/2026)
+// ---------------------------------------------------------------------------
+function tp3Field(t, key, label, placeholder){
+  return `<div class="field"><label>${label}</label><input type="text" id="tp3_${key}" placeholder="${placeholder||''}" value="${esc(t[key])}" oninput="updateTp3Field('${key}', this.value)"></div>`;
+}
+function tp3Money(t, key, label, limit){
+  return `
+    <div class="field">
+      <label>${label}${limit ? ` <span class="opt-tag">(Had Tahunan: RM${limit.toLocaleString()})</span>` : ''}</label>
+      <input type="text" id="tp3_${key}" placeholder="RM" value="${esc(t[key])}" oninput="updateTp3Field('${key}', this.value)">
+      <div id="capmsg_${key}" class="hint"></div>
+    </div>
+  `;
+}
 
-    ${tplTp3Section()}
+// ---------------------------------------------------------------------------
+// STEP 4: TP3 Bahagian A, B, C
+// ---------------------------------------------------------------------------
+function tplObTp3AbC(){
+  const t = onboardingState.tp3_data || {};
+  return `
+    <div class="section-title" style="margin-top:0;">BORANG PCB/TP3 — Bahagian A: Maklumat Majikan Terdahulu</div>
+    <div class="grid">
+      ${tp3Field(t, 'employer1_name', 'A1: Nama Majikan Terdahulu 1', 'cth: ABC Sdn Bhd')}
+      ${tp3Field(t, 'employer1_tin', 'A2: No. Pengenalan Cukai (TIN) 1')}
+    </div>
+    <div class="grid">
+      ${tp3Field(t, 'employer2_name', 'A3: Nama Majikan Terdahulu 2 (jika ada)')}
+      ${tp3Field(t, 'employer2_tin', 'A4: No. Pengenalan Cukai (TIN) 2 (jika ada)')}
+    </div>
 
-    <hr style="border:none;border-top:1px solid var(--line);margin:24px 0;">
+    <div class="section-title">Bahagian B: Maklumat Individu</div>
+    <div class="grid g3">
+      ${tp3Field(t, 'b1_name', 'B1: Nama')}
+      ${tp3Field(t, 'b2_ic_passport', 'B2: No. Kad Pengenalan/Pasport')}
+      ${tp3Field(t, 'b3_tin', 'B3: No. Pengenalan Cukai (TIN)')}
+    </div>
 
-    ${tplSalaryCreditingSection()}
+    <div class="section-title">Bahagian C: Maklumat Saraan / KWSP / Zakat / PCB</div>
+    <p class="hint" style="margin-top:-8px;">Sila nyatakan jumlah keseluruhan daripada majikan-majikan terdahulu.</p>
+    ${tp3Money(t, 'c1_gross_remuneration', 'C1: Jumlah saraan kasar bulanan dan saraan tambahan termasuk elaun/perkuisit/pemberian/manfaat yang dikenakan cukai')}
+    <div class="section-title" style="font-size:13px;margin-top:10px;">C2: Jumlah elaun/perkuisit/pemberian/manfaat yang dikecualikan cukai</div>
+    ${tp3Money(t, 'c2i_travel', 'i) Elaun perjalanan, kad petrol atau elaun petrol dan fi tol atas urusan rasmi')}
+    ${tp3Money(t, 'c2ii_childcare', 'ii) Elaun penjagaan anak')}
+    ${tp3Money(t, 'c2iii_products', 'iii) Produk yang dikeluarkan oleh perniagaan majikan yang diberi secara percuma atau pada harga diskaun')}
+    ${tp3Money(t, 'c2iv_service_award', 'iv) Perkuisit tunai/barangan bagi pencapaian perkhidmatan lalu/anugerah (berkhidmat lebih 10 tahun)')}
+    ${tp3Money(t, 'c2v_other', 'v) Lain-lain elaun/perkuisit/pemberian/manfaat yang dikecualikan cukai')}
+    ${tp3Money(t, 'c3_epf_total', 'C3: Jumlah caruman KWSP atau Kumpulan Wang Lain Yang Diluluskan ke atas semua saraan')}
+    ${tp3Money(t, 'c4i_zakat', 'C4(i): Jumlah Zakat')}
+    ${tp3Money(t, 'c4ii_umrah', 'C4(ii): Levi pelepasan bagi perjalanan umrah/tujuan keagamaan (Terhad 2 kali seumur hidup)')}
+    ${tp3Money(t, 'c5_total_pcb', 'C5: Jumlah PCB (tidak termasuk CP38)')}
 
-    <div class="btn-row" style="margin-top:30px;">
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="onboardingGoStep('emergency_beneficiary')">← Back</button>
+      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('tp3_d1_9')">Next →</button></div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// STEP 5: TP3 Bahagian D — D1 to D9
+// ---------------------------------------------------------------------------
+function tplObTp3D1to9(){
+  const t = onboardingState.tp3_data || {};
+  return `
+    <div class="section-title" style="margin-top:0;">Bahagian D: Maklumat Potongan (D1–D9)</div>
+    <p class="hint" style="margin-top:-8px;">Setiap item di bawah adalah satu jumlah gabungan, merangkumi semua sub-item yang disenaraikan.</p>
+
+    ${tp3Money(t, 'd1_parent_medical', 'D1: Perbelanjaan untuk ibu bapa/datuk nenek — a) rawatan perubatan, keperluan khas & penjagaan; b) rawatan pergigian; c) pemeriksaan perubatan penuh termasuk vaksinasi (Terhad RM1,000)', TP3_LIMITS.d1_parent_medical)}
+    ${tp3Money(t, 'd2_disabled_equipment', 'D2: Peralatan sokongan asas untuk diri sendiri/pasangan/anak/ibu bapa kurang upaya', TP3_LIMITS.d2_disabled_equipment)}
+    ${tp3Money(t, 'd3_course_fees', 'D3: Yuran pengajian (diri sendiri) — a) selain Sarjana/PhD (undang-undang/perakaunan/kewangan Islam/teknikal/vokasional/industri/saintifik/teknologi); b) Sarjana/PhD; c) kursus peningkatan kemahiran (Terhad RM2,000)', TP3_LIMITS.d3_course_fees)}
+    ${tp3Money(t, 'd4_medical_treatment', 'D4: Perbelanjaan rawatan perubatan — a) penyakit serius; b) rawatan kesuburan; c) vaksinasi (RM1,000); d) pergigian (RM1,000); e) pemeriksaan penuh/kesihatan mental (RM1,000); f) intervensi awal anak OKU ≤18 tahun (RM10,000)', TP3_LIMITS.d4_medical_treatment)}
+    ${tp3Money(t, 'd5_lifestyle', 'D5: Gaya hidup — a) buku/jurnal/majalah/surat khabar; b) komputer peribadi/telefon pintar/tablet; c) langganan internet (atas nama sendiri); d) kursus peningkatan kemahiran', TP3_LIMITS.d5_lifestyle)}
+    ${tp3Money(t, 'd6_sports_lifestyle', 'D6: Gaya hidup (sukan) — a) peralatan sukan (Akta Pembangunan Sukan 1997); b) sewa/fi fasiliti sukan; c) fi pendaftaran pertandingan; d) yuran gimnasium/latihan sukan', TP3_LIMITS.d6_sports_lifestyle)}
+    ${tp3Money(t, 'd7_breastfeeding_equipment', 'D7: Peralatan penyusuan ibu (anak ≤2 tahun, terhad sekali setiap 2 tahun taksiran)', TP3_LIMITS.d7_breastfeeding_equipment)}
+    ${tp3Money(t, 'd8_childcare_fees', 'D8: Yuran penghantaran anak ≤12 tahun ke taska/tadika/pusat jagaan harian berdaftar', TP3_LIMITS.d8_childcare_fees)}
+    ${tp3Money(t, 'd9_ssp1m_savings', 'D9: Tabungan bersih dalam Skim Simpanan Pendidikan Nasional (SSPN)', TP3_LIMITS.d9_ssp1m_savings)}
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="onboardingGoStep('tp3_ab_c')">← Back</button>
+      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('tp3_d10_17_declare')">Next →</button></div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// STEP 6: TP3 Bahagian D — D10 to D17 + Bahagian E (declaration)
+// ---------------------------------------------------------------------------
+function tplObTp3D10to17Declare(){
+  const o = onboardingState;
+  const t = o.tp3_data || {};
+  return `
+    <div class="section-title" style="margin-top:0;">Bahagian D: Maklumat Potongan (D10–D17)</div>
+    ${tp3Money(t, 'd10_alimony', 'D10: Bayaran alimoni kepada bekas isteri', TP3_LIMITS.d10_alimony)}
+    <div class="grid">
+      ${tp3Money(t, 'd11a_kwsp_sukarela', 'D11(a): KWSP Sukarela (Terhad RM4,000 termasuk KWSP wajib)', TP3_LIMITS.d11a_kwsp_sukarela)}
+      ${tp3Money(t, 'd11b_life_insurance', 'D11(b): Insurans nyawa/KWSP Sukarela (Terhad RM3,000)', TP3_LIMITS.d11b_life_insurance)}
+    </div>
+    ${tp3Money(t, 'd12_private_retirement', 'D12: Skim persaraan swasta dan anuiti tertangguh', TP3_LIMITS.d12_private_retirement)}
+    ${tp3Money(t, 'd13_insurance_education_medical', 'D13: Insurans pendidikan dan perubatan', TP3_LIMITS.d13_insurance_education_medical)}
+    ${tp3Money(t, 'd14_perkeso', 'D14: Caruman PERKESO (Akta Keselamatan Sosial Pekerja 1969 / Akta Sistem Insurans Pekerjaan 2017)', TP3_LIMITS.d14_perkeso)}
+    ${tp3Money(t, 'd15_ev_compost_cctv', 'D15: Pemasangan/sewaan/pembelian kemudahan pengecasan EV, mesin kompos, atau mesin rincih sisa makanan & CCTV', TP3_LIMITS.d15_ev_compost_cctv)}
+    <div class="grid">
+      ${tp3Money(t, 'd16a_housing_loan_500k', 'D16(a): Faedah pinjaman rumah — harga sehingga RM500,000', TP3_LIMITS.d16a_housing_loan_500k)}
+      ${tp3Money(t, 'd16b_housing_loan_750k', 'D16(b): Faedah pinjaman rumah — RM500,000 hingga RM750,000', TP3_LIMITS.d16b_housing_loan_750k)}
+    </div>
+    ${tp3Money(t, 'd17_tourism', 'D17: Fi kemasukan ke pusat pelancongan/program kebudayaan dalam negara', TP3_LIMITS.d17_tourism)}
+
+    <div class="section-title">Bahagian E: Akuan Pekerja</div>
+    <p style="font-size:13px;">Saya mengakui bahawa semua maklumat yang dinyatakan dalam borang ini adalah benar, betul dan lengkap. Sekiranya maklumat yang diberikan tidak benar, tindakan mahkamah boleh diambil ke atas saya di bawah perenggan 113(1)(b) Akta Cukai Pendapatan 1967.</p>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="confirm_tp3" ${o.tp3_confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('tp3')">
+      <label for="confirm_tp3">Saya mengesahkan bahawa maklumat di atas adalah benar, betul dan lengkap.</label>
+      ${o.tp3_confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(o.tp3_confirmed_at).toLocaleString()}</div>` : ''}
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="onboardingGoStep('tp3_d1_9')">← Back</button>
+      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('salary')">Next →</button></div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// STEP 7: Salary Crediting Requisition Form — matches the actual document
+// ---------------------------------------------------------------------------
+function tplObSalary(){
+  const o = onboardingState;
+  const companies = ['WCT Berhad', 'WCT Construction Sdn Bhd', 'WCT Machinery Sdn Bhd', 'Intraxis Engineering Sdn Bhd'];
+  return `
+    <div class="section-title" style="margin-top:0;">Salary Crediting Requisition Form</div>
+    <p class="step-desc">To: Human Resources Department</p>
+
+    <div class="field">
+      <label>Which company are you employed under? <span class="req-star">*</span></label>
+      <div class="radio-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
+        ${companies.map(c=>`<label class="radio-opt"><input type="radio" name="ob_salary_company" value="${c}" ${o.salary_company===c?'checked':''}> ${c}</label>`).join('')}
+      </div>
+    </div>
+
+    <p style="font-size:13.5px;">Please be informed that I hereby agree that my salary is to be paid through my bank account as follows:</p>
+
+    <div class="grid">
+      <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
+      <div class="field"><label>Branch</label><input type="text" id="ob_salary_branch" value="${esc(o.salary_branch)}"></div>
+    </div>
+    <div class="grid">
+      <div class="field"><label>Account No.</label><input type="text" id="ob_salary_account_no" value="${esc(o.salary_account_no)}"></div>
+      <div class="field"><label>IC/Passport No. Submitted During Application</label><input type="text" id="ob_salary_ic" value="${esc(o.salary_ic_submitted || state.nric_new || state.passport_number)}"></div>
+    </div>
+
+    <p style="font-size:12.5px;color:var(--ink-soft);">I confirm that the information herein is correct and in order. Should there be any discrepancy in the information, which will lead to possible delay or inability to credit my salaries, it is my sole responsibility.<br><br>
+    <em>Saya mengesahkan maklumat tersebut diatas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</em></p>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="confirm_salary_crediting" ${o.salary_crediting_confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('salary_crediting')">
+      <label for="confirm_salary_crediting">I confirm the above information is correct.</label>
+      ${o.salary_crediting_confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(o.salary_crediting_confirmed_at).toLocaleString()}</div>` : ''}
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="onboardingGoStep('tp3_d10_17_declare')">← Back</button>
+      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('review')">Finish →</button></div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// REVIEW — read-only summary, viewable any time after completing sections
+// ---------------------------------------------------------------------------
+function obReviewRow(k,v){ return `<div class="review-row"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
+
+function tplObReview(){
+  const o = onboardingState;
+  const t = o.tp3_data || {};
+  const allDone = o.personal_details_confirmed && o.tp3_confirmed && o.salary_crediting_confirmed;
+  return `
+    <div class="step-eyebrow">Onboarding</div>
+    <h2>Your Onboarding Details</h2>
+    ${allDone
+      ? `<div class="success-banner">All sections completed.</div>`
+      : `<div class="error-banner">Some sections aren't confirmed yet. <span style="text-decoration:underline;cursor:pointer;" onclick="onboardingStep='statutory';render();">Continue filling them in →</span></div>`}
+
+    <div class="review-block">
+      <h4>Statutory Details</h4>
+      ${obReviewRow('EPF No.', o.epf_no)}
+      ${obReviewRow('Income Tax No.', o.income_tax_no)}
+      ${obReviewRow('SOCSO No.', o.socso_no)}
+      ${obReviewRow('Bank Account No.', o.bank_account_no)}
+      ${obReviewRow('CIDB Green Card No.', o.cidb_green_card_no)}
+    </div>
+
+    <div class="review-block">
+      <h4>Spouse</h4>
+      ${obReviewRow('Name', o.spouse_name)}
+      ${obReviewRow('NRIC', o.spouse_nric)}
+      ${obReviewRow('Working', o.spouse_working)}
+    </div>
+
+    <div class="review-block">
+      <h4>Children</h4>
+      ${(o.children_below_18||[]).map(c=>obReviewRow(c.name, `Below 18 · DOB ${c.date_of_birth||'—'}`)).join('')}
+      ${(o.children_18_to_23||[]).map(c=>obReviewRow(c.name, `18–23 · ${c.gender||'—'} · ${c.course_name||'—'}`)).join('')}
+      ${(!o.children_below_18?.length && !o.children_18_to_23?.length) ? obReviewRow('Children','None') : ''}
+    </div>
+
+    <div class="review-block">
+      <h4>Emergency Contacts &amp; Beneficiary</h4>
+      ${(o.emergency_contacts||[]).map(c=>obReviewRow(c.name, `${c.relationship||'—'} · ${c.contact||'—'}`)).join('') || obReviewRow('Emergency Contacts','None')}
+      ${obReviewRow('Beneficiary', `${o.beneficiary_name||'—'} (${o.beneficiary_relationship||'—'})`)}
+    </div>
+
+    <div class="review-block">
+      <h4>TP3 Summary</h4>
+      ${obReviewRow('Previous Employer 1', t.employer1_name)}
+      ${obReviewRow('C1 Gross Remuneration', t.c1_gross_remuneration)}
+      ${obReviewRow('C5 Total PCB', t.c5_total_pcb)}
+    </div>
+
+    <div class="review-block">
+      <h4>Salary Crediting</h4>
+      ${obReviewRow('Company', o.salary_company)}
+      ${obReviewRow('Bank', o.salary_bank)}
+      ${obReviewRow('Account No.', o.salary_account_no)}
+    </div>
+
+    <div class="btn-row">
       <button class="btn btn-ghost" onclick="backFromOnboarding()">← Back to My Applications</button>
       <div></div>
     </div>
   `;
 }
+
 
 function handleCitizenChange(val){
   state.citizen = val;
