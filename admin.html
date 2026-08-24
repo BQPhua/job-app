@@ -269,7 +269,7 @@ function hideLoading(){ document.getElementById('loadingOverlay').style.display=
 function render(){
   const root = document.getElementById('root');
   document.getElementById('logoutArea').innerHTML = adminToken
-    ? `<button class="btn btn-outline btn-sm" style="background:transparent;color:#fff;border-color:#444;" onclick="logout()">Log out</button>` : '';
+    ? `<button class="btn btn-outline btn-sm" style="background:#fff;color:#000;border-color:#444;" onclick="logout()">Log out</button>` : '';
   const navEl = document.getElementById('adminNav');
   if(navEl){
     navEl.innerHTML = adminToken ? `
