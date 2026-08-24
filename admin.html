@@ -152,7 +152,11 @@
   @keyframes spin{to{transform:rotate(360deg);}}
 
   .login-wrap{max-width:380px;margin:80px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:36px;text-align:center;box-shadow:var(--shadow-md);}
-  .login-wrap input{font-family:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;width:100%;margin-top:14px;}
+  .login-wrap input:focus{
+  outline:none;
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-tint);
+}
   .pw-toggle-btn{
     position:absolute;right:8px;top:50%;transform:translateY(-50%);
     width:32px;height:32px;display:flex;align-items:center;justify-content:center;
