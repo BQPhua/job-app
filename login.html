@@ -174,6 +174,43 @@
         outline-offset: 1px;
         border-color: var(--accent);
       }
+      .pw-field-wrap {
+        position: relative;
+      }
+      .pw-field-wrap input[type='password'],
+      .pw-field-wrap input[type='text'] {
+        padding-right: 46px;
+      }
+      .pw-toggle-btn {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        color: var(--ink-soft);
+        cursor: pointer;
+        padding: 0;
+        transition: background .15s ease, color .15s ease;
+      }
+      .pw-toggle-btn:hover {
+        background: var(--cream);
+        color: var(--navy);
+      }
+      /* A custom toggle button is provided above, so suppress any
+         browser-native password reveal icon to avoid two icons stacking
+         in the same corner of the field. */
+      input[type="password"]::-ms-reveal,
+      input[type="password"]::-ms-clear { display: none; }
+      input[type="password"]::-webkit-textfield-decoration-container { visibility: hidden; }
+      input[type="password"]::-webkit-credentials-auto-fill-button,
+      input[type="password"]::-webkit-contacts-auto-fill-button { display: none !important; visibility: hidden; pointer-events: none; position: absolute; right: 0; }
       .req {
         color: var(--danger);
       }
@@ -322,6 +359,23 @@
         render();
       }
 
+      // ---------------------------------------------------------------
+      // Password show/hide — a custom button (not the browser's native
+      // reveal icon) so it looks the same across every browser and never
+      // silently disappears after the form re-renders (e.g. after a
+      // failed login attempt redraws the whole view).
+      // ---------------------------------------------------------------
+      const ICON_EYE_OPEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
+      const ICON_EYE_CLOSED = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
+      function togglePwField(inputId, btn) {
+        const el = document.getElementById(inputId);
+        const showing = el.type === 'password';
+        el.type = showing ? 'text' : 'password';
+        btn.innerHTML = showing ? ICON_EYE_CLOSED : ICON_EYE_OPEN;
+        btn.title = showing ? 'Hide password' : 'Show password';
+        btn.setAttribute('aria-label', btn.title);
+      }
+
       function oauthButtons() {
         return `
     <button class="oauth-btn" onclick="signInOAuth('google')">${GoogleIcon} Continue with Google</button>
@@ -339,7 +393,12 @@
     ${oauthButtons()}
     <div id="msg"></div>
     <div class="field"><label>Email <span class="req">*</span></label><input type="email" id="siEmail"></div>
-    <div class="field"><label>Password <span class="req">*</span></label><input type="password" id="siPassword"></div>
+    <div class="field"><label>Password <span class="req">*</span></label>
+      <div class="pw-field-wrap">
+        <input type="password" id="siPassword">
+        <button type="button" class="pw-toggle-btn" onclick="togglePwField('siPassword', this)" title="Show password" aria-label="Show password">${ICON_EYE_OPEN}</button>
+      </div>
+    </div>
     <div class="row-between"><span></span><button class="link-btn" onclick="setTab('forgot')">Forgot password?</button></div>
     <button class="btn btn-primary" onclick="doSignIn()">Sign In</button>
   `;
@@ -355,7 +414,12 @@
     <div id="msg"></div>
     <div class="field"><label>Full Name <span class="req">*</span></label><input type="text" id="regName"></div>
     <div class="field"><label>Email <span class="req">*</span></label><input type="email" id="regEmail"></div>
-    <div class="field"><label>Password <span class="req">*</span></label><input type="password" id="regPassword" oninput="checkPasswordStrength(this.value)"></div>
+    <div class="field"><label>Password <span class="req">*</span></label>
+      <div class="pw-field-wrap">
+        <input type="password" id="regPassword" oninput="checkPasswordStrength(this.value)">
+        <button type="button" class="pw-toggle-btn" onclick="togglePwField('regPassword', this)" title="Show password" aria-label="Show password">${ICON_EYE_OPEN}</button>
+      </div>
+    </div>
     <ul class="pw-checklist" id="pwChecklist">
       <li id="pw-len"><span class="dot"></span> At least 8 characters</li>
       <li id="pw-upper"><span class="dot"></span> One uppercase letter</li>
@@ -363,7 +427,12 @@
       <li id="pw-num"><span class="dot"></span> One number</li>
       <li id="pw-special"><span class="dot"></span> One special character</li>
     </ul>
-    <div class="field"><label>Confirm Password <span class="req">*</span></label><input type="password" id="regConfirm" oninput="checkPasswordMatch()"></div>
+    <div class="field"><label>Confirm Password <span class="req">*</span></label>
+      <div class="pw-field-wrap">
+        <input type="password" id="regConfirm" oninput="checkPasswordMatch()">
+        <button type="button" class="pw-toggle-btn" onclick="togglePwField('regConfirm', this)" title="Show password" aria-label="Show password">${ICON_EYE_OPEN}</button>
+      </div>
+    </div>
     <div id="matchMsg" style="font-size:12.5px;margin:-8px 0 14px;"></div>
     <button class="btn btn-primary" id="regSubmitBtn" disabled onclick="doRegister()">Create Account</button>
   `;
