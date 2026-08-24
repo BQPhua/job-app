@@ -117,7 +117,7 @@ function renderProgress(){
     return `<div class="${cls}"></div>`;
   }).join('');
   const refPart = state.reference_no ? `<span style="margin-right:14px;">Ref: ${state.reference_no}</span>` : '';
-  const userPart = currentUser ? `<span style="margin-right:14px;">${esc(currentUser.email)}</span><button class="link-btn" style="color:#C9D3DE;" onclick="signOut()">Sign out</button>` : '';
+  const userPart = currentUser ? `<span style="margin-right:14px;">${esc(currentUser.email)}</span><button class="btn" style="background:#fff;color:var(--navy);border:1px solid #fff;padding:6px 12px;font-size:12.5px;" onclick="signOut()">Sign out</button>` : '';
   topRefDisplay.innerHTML = refPart + userPart;
 }
 
@@ -182,7 +182,10 @@ function tplStart(){
             <div class="draft-banner-title">${esc(a.reference_no)} — ${esc(a.position_applying||'Untitled')}</div>
             <div class="draft-banner-meta">${esc(a.business_unit)} · Draft in progress</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="continueDraft('${a.id}')">Continue →</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="continueDraft('${a.id}')">Continue →</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="deleteDraft('${a.id}','${esc(a.reference_no)}')">Delete</button>
+          </div>
         </div>
       `).join('')}
     ` : ''}
@@ -225,6 +228,20 @@ function tplStart(){
       <div class="error-banner">There are no open positions right now. Please check back later, or contact HR directly.</div>
     `}
   `;
+}
+
+async function deleteDraft(id, referenceNo){
+  if(!confirm(`Permanently delete the draft application "${referenceNo}"? This cannot be undone.`)) return;
+  showLoading('Deleting draft...');
+  try{
+    const { error } = await supabaseClient.rpc('rpc_delete_my_draft_application', { p_id: id });
+    if(error) throw error;
+    await loadMyApplications();
+    render();
+  } catch(e){
+    alert('Error deleting draft: ' + e.message);
+  }
+  hideLoading();
 }
 
 async function continueDraft(id){
@@ -430,6 +447,7 @@ async function openOnboarding(applicationId){
     onboardingAppId = applicationId;
     onboardingState = data[0];
     onboardingStep = onboardingState.status === 'completed' ? 'review' : 'statutory';
+    obReviewPage = 1;
     hideLoading();
     goStep('onboarding');
   } catch(e){
@@ -461,7 +479,6 @@ async function saveOnboarding(showAlert){
       tp3_data: onboardingState.tp3_data,
       salary_company: document.querySelector('input[name="ob_salary_company"]:checked')?.value || onboardingState.salary_company || '',
       salary_bank: document.getElementById('ob_salary_bank')?.value.trim() || '',
-      salary_branch: document.getElementById('ob_salary_branch')?.value.trim() || '',
       salary_account_no: document.getElementById('ob_salary_account_no')?.value.trim() || '',
       salary_ic_submitted: document.getElementById('ob_salary_ic')?.value.trim() || ''
     };
@@ -523,6 +540,7 @@ async function confirmOnboardingSection(section){
 
 function backFromOnboarding(){
   onboardingAppId = null; onboardingState = null; onboardingStep = 'statutory';
+  obReviewPage = 1; salaryAckChecked = false;
   goStep('start');
 }
 
@@ -537,6 +555,7 @@ function obProgressBar(){
 
 function tplOnboarding(){
   if(onboardingStep === 'review') return tplObReview();
+  if(onboardingStep === 'preview') return tplObPreview();
   const stepMap = {
     statutory: tplObStatutory,
     spouse_children: tplObSpouseChildren,
@@ -688,8 +707,9 @@ function tplObEmergencyBeneficiary(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="onboardingGoStep('spouse_children')">← Back</button>
-      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('tp3_ab_c')">Next →</button></div>
+      <div class="right"><button class="btn btn-primary" ${o.personal_details_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('tp3_ab_c')">Next →</button></div>
     </div>
+    ${!o.personal_details_confirmed ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
   `;
 }
 
@@ -813,14 +833,20 @@ function tplObTp3D10to17Declare(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="onboardingGoStep('tp3_d1_9')">← Back</button>
-      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('salary')">Next →</button></div>
+      <div class="right"><button class="btn btn-primary" ${o.tp3_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('salary')">Next →</button></div>
     </div>
+    ${!o.tp3_confirmed ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
   `;
 }
 
 // ---------------------------------------------------------------------------
 // STEP 7: Salary Crediting Requisition Form — matches the actual document
 // ---------------------------------------------------------------------------
+let salaryAckChecked = false; // local-only acknowledgment; the real, final
+// confirmation happens on the Review Before Submitting page via
+// submitOnboarding() — this checkbox just gates getting to that page, it
+// does not itself lock anything in.
+
 function tplObSalary(){
   const o = onboardingState;
   const companies = ['WCT Berhad', 'WCT Construction Sdn Bhd', 'WCT Machinery Sdn Bhd', 'Intraxis Engineering Sdn Bhd'];
@@ -837,10 +863,7 @@ function tplObSalary(){
 
     <p style="font-size:13.5px;">Please be informed that I hereby agree that my salary is to be paid through my bank account as follows:</p>
 
-    <div class="grid">
-      <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
-      <div class="field"><label>Branch</label><input type="text" id="ob_salary_branch" value="${esc(o.salary_branch)}"></div>
-    </div>
+    <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
     <div class="grid">
       <div class="field"><label>Account No.</label><input type="text" id="ob_salary_account_no" value="${esc(o.salary_account_no)}"></div>
       <div class="field"><label>IC/Passport No. Submitted During Application</label><input type="text" id="ob_salary_ic" value="${esc(o.salary_ic_submitted || state.nric_new || state.passport_number)}"></div>
@@ -850,26 +873,186 @@ function tplObSalary(){
     <em>Saya mengesahkan maklumat tersebut diatas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</em></p>
 
     <div class="checkbox-row">
-      <input type="checkbox" id="confirm_salary_crediting" ${o.salary_crediting_confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('salary_crediting')">
+      <input type="checkbox" id="confirm_salary_crediting" ${salaryAckChecked?'checked':''} onchange="salaryAckChecked=this.checked;render();">
       <label for="confirm_salary_crediting">I confirm the above information is correct.</label>
-      ${o.salary_crediting_confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(o.salary_crediting_confirmed_at).toLocaleString()}</div>` : ''}
     </div>
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="onboardingGoStep('tp3_d10_17_declare')">← Back</button>
-      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('review')">Finish →</button></div>
+      <div class="right"><button class="btn btn-primary" ${salaryAckChecked ? '' : 'disabled'} onclick="onboardingGoStep('preview')">Review Before Submitting →</button></div>
     </div>
+    ${!salaryAckChecked ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
   `;
 }
 
 // ---------------------------------------------------------------------------
-// REVIEW — read-only summary, viewable any time after completing sections
+// REVIEW / PREVIEW — comprehensive, paginated read-only summary of every
+// onboarding field. Shared between two places:
+//   - 'preview' step: reached from Salary's "Review Before Submitting"
+//     button, BEFORE anything is finalized — has an editable "Back to Edit"
+//     path and an explicit Submit action.
+//   - 'review' step: the final, locked view shown after submission (or when
+//     re-opening an already-completed onboarding record).
+// Two pages since the full TP3 form alone is ~30 fields — showing
+// everything on one screen was too long to scan comfortably.
 // ---------------------------------------------------------------------------
+let obReviewPage = 1;
+
 function obReviewRow(k,v){ return `<div class="review-row"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
+
+function obSummaryPage1Html(o){
+  return `
+    <div class="review-block">
+      <h4>Statutory Details</h4>
+      ${obReviewRow('EPF No.', o.epf_no)}
+      ${obReviewRow('Income Tax No.', o.income_tax_no)}
+      ${obReviewRow('Tax Branch', o.tax_branch)}
+      ${obReviewRow('SOCSO No.', o.socso_no)}
+      ${obReviewRow('Bank Account No.', o.bank_account_no)}
+      ${obReviewRow('CIDB Green Card No.', o.cidb_green_card_no)}
+      ${obReviewRow('CIDB Branch', o.cidb_branch)}
+    </div>
+
+    <div class="review-block">
+      <h4>Spouse Information</h4>
+      ${obReviewRow('Name', o.spouse_name)}
+      ${obReviewRow('NRIC', o.spouse_nric)}
+      ${obReviewRow('Date of Birth', o.spouse_date_of_birth)}
+      ${obReviewRow('Working', o.spouse_working)}
+    </div>
+
+    <div class="review-block">
+      <h4>Children Below 18</h4>
+      ${(o.children_below_18||[]).map(c=>obReviewRow(c.name||'Unnamed', `DOB: ${c.date_of_birth||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obReviewRow('Children','None')}
+    </div>
+
+    <div class="review-block">
+      <h4>Children 18–23 (Unmarried, Full-Time Student)</h4>
+      ${(o.children_18_to_23||[]).map(c=>obReviewRow(c.name||'Unnamed', `${c.gender||'—'} · NRIC: ${c.nric||'—'} · DOB: ${c.date_of_birth||'—'} · ${c.course_name||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obReviewRow('Children','None')}
+    </div>
+
+    <div class="review-block">
+      <h4>Emergency Contacts</h4>
+      ${(o.emergency_contacts||[]).map(c=>obReviewRow(c.name||'Unnamed', `${c.relationship||'—'} · ${c.contact||'—'}`)).join('') || obReviewRow('Emergency Contacts','None')}
+    </div>
+
+    <div class="review-block">
+      <h4>Beneficiary</h4>
+      ${obReviewRow('Name', o.beneficiary_name)}
+      ${obReviewRow('Relationship', o.beneficiary_relationship)}
+      ${obReviewRow('Contact No.', o.beneficiary_contact)}
+    </div>
+  `;
+}
+
+function obSummaryPage2Html(o){
+  const t = o.tp3_data || {};
+  return `
+    <div class="review-block">
+      <h4>TP3 — Bahagian A: Maklumat Majikan Terdahulu</h4>
+      ${obReviewRow('A1 Nama Majikan Terdahulu 1', t.employer1_name)}
+      ${obReviewRow('A2 No. Pengenalan Cukai (TIN) 1', t.employer1_tin)}
+      ${obReviewRow('A3 Nama Majikan Terdahulu 2', t.employer2_name)}
+      ${obReviewRow('A4 No. Pengenalan Cukai (TIN) 2', t.employer2_tin)}
+    </div>
+
+    <div class="review-block">
+      <h4>TP3 — Bahagian B: Maklumat Individu</h4>
+      ${obReviewRow('B1 Nama', t.b1_name)}
+      ${obReviewRow('B2 No. Kad Pengenalan/Pasport', t.b2_ic_passport)}
+      ${obReviewRow('B3 No. Pengenalan Cukai (TIN)', t.b3_tin)}
+    </div>
+
+    <div class="review-block">
+      <h4>TP3 — Bahagian C: Saraan / KWSP / Zakat / PCB</h4>
+      ${obReviewRow('C1 Jumlah Saraan Kasar', t.c1_gross_remuneration)}
+      ${obReviewRow('C2(i) Elaun Perjalanan', t.c2i_travel)}
+      ${obReviewRow('C2(ii) Elaun Penjagaan Anak', t.c2ii_childcare)}
+      ${obReviewRow('C2(iii) Produk Percuma/Diskaun', t.c2iii_products)}
+      ${obReviewRow('C2(iv) Perkuisit Perkhidmatan Lalu', t.c2iv_service_award)}
+      ${obReviewRow('C2(v) Lain-lain Pengecualian', t.c2v_other)}
+      ${obReviewRow('C3 Jumlah KWSP', t.c3_epf_total)}
+      ${obReviewRow('C4(i) Zakat', t.c4i_zakat)}
+      ${obReviewRow('C4(ii) Levi Umrah', t.c4ii_umrah)}
+      ${obReviewRow('C5 Jumlah PCB', t.c5_total_pcb)}
+    </div>
+
+    <div class="review-block">
+      <h4>TP3 — Bahagian D: Potongan</h4>
+      ${obReviewRow('D1 Ibu Bapa/Datuk Nenek', t.d1_parent_medical)}
+      ${obReviewRow('D2 Peralatan OKU', t.d2_disabled_equipment)}
+      ${obReviewRow('D3 Yuran Pengajian', t.d3_course_fees)}
+      ${obReviewRow('D4 Rawatan Perubatan', t.d4_medical_treatment)}
+      ${obReviewRow('D5 Gaya Hidup', t.d5_lifestyle)}
+      ${obReviewRow('D6 Gaya Hidup (Sukan)', t.d6_sports_lifestyle)}
+      ${obReviewRow('D7 Peralatan Penyusuan', t.d7_breastfeeding_equipment)}
+      ${obReviewRow('D8 Yuran Taska/Tadika', t.d8_childcare_fees)}
+      ${obReviewRow('D9 Simpanan SSPN', t.d9_ssp1m_savings)}
+      ${obReviewRow('D10 Alimoni', t.d10_alimony)}
+      ${obReviewRow('D11(a) KWSP Sukarela', t.d11a_kwsp_sukarela)}
+      ${obReviewRow('D11(b) Insurans Nyawa', t.d11b_life_insurance)}
+      ${obReviewRow('D12 Persaraan Swasta', t.d12_private_retirement)}
+      ${obReviewRow('D13 Insurans Pendidikan/Perubatan', t.d13_insurance_education_medical)}
+      ${obReviewRow('D14 PERKESO', t.d14_perkeso)}
+      ${obReviewRow('D15 EV/Kompos/CCTV', t.d15_ev_compost_cctv)}
+      ${obReviewRow('D16(a) Faedah Pinjaman ≤RM500,000', t.d16a_housing_loan_500k)}
+      ${obReviewRow('D16(b) Faedah Pinjaman RM500,000–750,000', t.d16b_housing_loan_750k)}
+      ${obReviewRow('D17 Pelancongan/Kebudayaan', t.d17_tourism)}
+    </div>
+
+    <div class="review-block">
+      <h4>Salary Crediting</h4>
+      ${obReviewRow('Company', o.salary_company)}
+      ${obReviewRow('Bank', o.salary_bank)}
+      ${obReviewRow('Account No.', o.salary_account_no)}
+      ${obReviewRow('IC/Passport No. Submitted', o.salary_ic_submitted)}
+    </div>
+  `;
+}
+
+function obSummaryPaginationHtml(){
+  return `
+    <div class="pagination" style="margin:18px 0;">
+      <button class="btn btn-ghost btn-sm" style="padding:6px 12px;" ${obReviewPage<=1?'disabled':''} onclick="obReviewPage=1;render();window.scrollTo(0,0);">← Page 1</button>
+      <span style="font-size:13px;color:var(--ink-soft);">Page ${obReviewPage} of 2</span>
+      <button class="btn btn-ghost btn-sm" style="padding:6px 12px;" ${obReviewPage>=2?'disabled':''} onclick="obReviewPage=2;render();window.scrollTo(0,0);">Page 2 →</button>
+    </div>
+  `;
+}
+
+function tplObPreview(){
+  const o = onboardingState;
+  return `
+    <div class="step-eyebrow">Onboarding</div>
+    <h2>Review Before Submitting</h2>
+    <p class="step-desc">Please check everything below carefully. Once you submit, your onboarding record will be marked complete and HR will be notified — you won't be able to edit it afterward.</p>
+
+    ${obReviewPage===1 ? obSummaryPage1Html(o) : obSummaryPage2Html(o)}
+    ${obSummaryPaginationHtml()}
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="onboardingGoStep('salary')">← Back to Edit</button>
+      <div class="right"><button class="btn btn-primary" onclick="submitOnboarding()">Submit &amp; Complete Onboarding →</button></div>
+    </div>
+  `;
+}
+
+async function submitOnboarding(){
+  const ok = await saveOnboarding(false);
+  if(!ok) return;
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_confirm_onboarding_section', { p_application_id: onboardingAppId, p_section: 'salary_crediting' });
+    if(error) throw error;
+    onboardingState = data[0];
+    obReviewPage = 1;
+    onboardingStep = 'review';
+    render();
+    window.scrollTo(0,0);
+  } catch(e){ alert('Error: ' + e.message); }
+}
 
 function tplObReview(){
   const o = onboardingState;
-  const t = o.tp3_data || {};
   const allDone = o.personal_details_confirmed && o.tp3_confirmed && o.salary_crediting_confirmed;
   return `
     <div class="step-eyebrow">Onboarding</div>
@@ -878,48 +1061,8 @@ function tplObReview(){
       ? `<div class="success-banner">All sections completed.</div>`
       : `<div class="error-banner">Some sections aren't confirmed yet. <span style="text-decoration:underline;cursor:pointer;" onclick="onboardingStep='statutory';render();">Continue filling them in →</span></div>`}
 
-    <div class="review-block">
-      <h4>Statutory Details</h4>
-      ${obReviewRow('EPF No.', o.epf_no)}
-      ${obReviewRow('Income Tax No.', o.income_tax_no)}
-      ${obReviewRow('SOCSO No.', o.socso_no)}
-      ${obReviewRow('Bank Account No.', o.bank_account_no)}
-      ${obReviewRow('CIDB Green Card No.', o.cidb_green_card_no)}
-    </div>
-
-    <div class="review-block">
-      <h4>Spouse</h4>
-      ${obReviewRow('Name', o.spouse_name)}
-      ${obReviewRow('NRIC', o.spouse_nric)}
-      ${obReviewRow('Working', o.spouse_working)}
-    </div>
-
-    <div class="review-block">
-      <h4>Children</h4>
-      ${(o.children_below_18||[]).map(c=>obReviewRow(c.name, `Below 18 · DOB ${c.date_of_birth||'—'}`)).join('')}
-      ${(o.children_18_to_23||[]).map(c=>obReviewRow(c.name, `18–23 · ${c.gender||'—'} · ${c.course_name||'—'}`)).join('')}
-      ${(!o.children_below_18?.length && !o.children_18_to_23?.length) ? obReviewRow('Children','None') : ''}
-    </div>
-
-    <div class="review-block">
-      <h4>Emergency Contacts &amp; Beneficiary</h4>
-      ${(o.emergency_contacts||[]).map(c=>obReviewRow(c.name, `${c.relationship||'—'} · ${c.contact||'—'}`)).join('') || obReviewRow('Emergency Contacts','None')}
-      ${obReviewRow('Beneficiary', `${o.beneficiary_name||'—'} (${o.beneficiary_relationship||'—'})`)}
-    </div>
-
-    <div class="review-block">
-      <h4>TP3 Summary</h4>
-      ${obReviewRow('Previous Employer 1', t.employer1_name)}
-      ${obReviewRow('C1 Gross Remuneration', t.c1_gross_remuneration)}
-      ${obReviewRow('C5 Total PCB', t.c5_total_pcb)}
-    </div>
-
-    <div class="review-block">
-      <h4>Salary Crediting</h4>
-      ${obReviewRow('Company', o.salary_company)}
-      ${obReviewRow('Bank', o.salary_bank)}
-      ${obReviewRow('Account No.', o.salary_account_no)}
-    </div>
+    ${obReviewPage===1 ? obSummaryPage1Html(o) : obSummaryPage2Html(o)}
+    ${obSummaryPaginationHtml()}
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="backFromOnboarding()">← Back to My Applications</button>
