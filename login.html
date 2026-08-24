@@ -308,6 +308,19 @@
         color: var(--ink-soft);
         margin-top: 18px;
       }
+
+      /* ==================================================================
+         MOBILE — additive only, desktop rules above are untouched.
+         ================================================================== */
+      @media (max-width: 480px) {
+        body { padding: 20px 12px; }
+        .card { padding: 22px 18px; }
+        .brand { gap: 10px; margin-bottom: 20px; }
+        .brand-mark { width: 36px; height: 36px; font-size: 17px; }
+        .brand-text .sub { font-size: 13px; }
+        .oauth-btn { padding: 10px 12px; font-size: 13.5px; }
+        .tabs button { padding: 8px 4px; font-size: 13px; }
+      }
     </style>
   </head>
   <body>
