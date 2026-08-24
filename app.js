@@ -201,8 +201,7 @@ function tplStart(){
               <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
               <td>
                 <div class="history-actions">
-                  <button class="btn btn-ghost btn-sm" onclick="openTrackEdit('${a.id}')">Edit Details</button>
-                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">New Hire Forms</button>` : ''}
+                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding Details</button>` : '<span style="color:var(--ink-soft);font-size:12.5px;">—</span>'}
                 </div>
               </td>
             </tr>
@@ -210,8 +209,6 @@ function tplStart(){
         </tbody>
       </table>
     ` : ''}
-
-    <div id="trackEditBox"></div>
 
     <div class="section-title" style="margin-top:26px;">Start a New Application</div>
     ${activeJobs.length ? `
@@ -228,48 +225,6 @@ function tplStart(){
       <div class="error-banner">There are no open positions right now. Please check back later, or contact HR directly.</div>
     `}
   `;
-}
-
-function openTrackEdit(id){
-  const a = myApplications.find(x=>x.id===id);
-  if(!a) return;
-  document.getElementById('trackEditBox').innerHTML = `
-    <div class="card" style="padding:20px;margin-bottom:20px;background:#FAFAF9;">
-      <h3 style="font-size:15px;">Edit Details — ${esc(a.reference_no)}</h3>
-      <p class="hint">Your application has already been submitted, so only contact details can be updated here. For anything else, please reach out to HR directly.</p>
-
-      <div class="section-title" style="margin-top:14px;">Contact</div>
-      <div class="grid">
-        <div class="field"><label>Email</label><input type="email" id="trackEmail" value="${esc(a.email)}"></div>
-        <div class="field"><label>Mobile Phone</label><input type="tel" placeholder="e.g. 012-345 6789" id="trackMobile" value="${esc(a.mobile_phone)}"></div>
-      </div>
-      <div class="field"><label>Permanent Address</label><textarea id="trackAddress">${esc(a.permanent_address)}</textarea></div>
-      <div class="field"><label>Postcode</label><input type="text" id="trackPostcode" value="${esc(a.permanent_postcode)}"></div>
-
-      <div id="trackEditErr"></div>
-      <div style="display:flex;gap:10px;margin-top:8px;">
-        <button class="btn btn-primary" onclick="saveTrackEdit('${a.id}','${a.reference_no}')">Save Changes</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('trackEditBox').innerHTML=''">Cancel</button>
-      </div>
-    </div>
-  `;
-}
-
-async function saveTrackEdit(id, referenceNo){
-  const patch = {
-    email: document.getElementById('trackEmail').value.trim(),
-    mobile_phone: document.getElementById('trackMobile').value.trim(),
-    permanent_address: document.getElementById('trackAddress').value.trim(),
-    permanent_postcode: document.getElementById('trackPostcode').value.trim()
-  };
-  try{
-    const { error } = await supabaseClient.rpc('rpc_candidate_update_application', { p_id: id, p_reference_no: referenceNo, p_patch: patch });
-    if(error) throw error;
-    document.getElementById('trackEditBox').innerHTML = `<div class="success-banner">Saved.</div>`;
-    await loadMyApplications();
-  } catch(e){
-    document.getElementById('trackEditErr').innerHTML = `<div class="error-banner">${e.message}</div>`;
-  }
 }
 
 async function continueDraft(id){
@@ -410,28 +365,6 @@ function tplPersonal(){
       </div>
       <div class="field"><label>Race <span class="req-star">*</span></label><input type="text" placeholder="e.g. Malay" value="${esc(state.race)}" oninput="updateField('race', this.value)"></div>
       <div></div>
-    </div>
-
-    <div class="section-title">Statutory Details <span class="opt-tag">— all fields in this section are optional</span></div>
-    <div class="grid">
-      <div class="field"><label>EPF No. <span class="opt-tag">(optional)</span></label><input type="text" placeholder="e.g. 12345678900" value="${esc(state.epf_no)}" oninput="updateField('epf_no', this.value)"></div>
-      <div></div>
-    </div>
-    <div class="grid">
-      <div class="field"><label>Income Tax No. <span class="opt-tag">(optional)</span></label><input type="text" placeholder="e.g. SG12345678090" value="${esc(state.income_tax_no)}" oninput="updateField('income_tax_no', this.value)"></div>
-      <div class="field"><label>Tax Branch <span class="opt-tag">(optional)</span></label><input type="text" value="${esc(state.tax_branch)}" oninput="updateField('tax_branch', this.value)"></div>
-    </div>
-    <div class="grid">
-      <div class="field">
-        <label>SOCSO No. <span class="opt-tag">(optional)</span></label>
-        <input type="text" id="socsoInput" value="${esc(state.socso_no)}" oninput="handleSocsoManualEdit(this.value)">
-        <div class="hint">Auto-filled from your NRIC above — feel free to edit it if it's different.</div>
-      </div>
-      <div class="field"><label>Bank Account No. <span class="opt-tag">(optional)</span></label><input type="text" placeholder="e.g. 1234567890" value="${esc(state.bank_account_no)}" oninput="updateField('bank_account_no', this.value)"></div>
-    </div>
-    <div class="grid">
-      <div class="field"><label>CIDB Green Card No. <span class="opt-tag">(optional)</span></label><input type="text" placeholder="e.g. GC-2024-998877" value="${esc(state.cidb_green_card_no)}" oninput="updateField('cidb_green_card_no', this.value)"></div>
-      <div class="field"><label>Branch <span class="opt-tag">(optional)</span></label><input type="text" value="${esc(state.cidb_branch)}" oninput="updateField('cidb_branch', this.value)"></div>
     </div>
 
     ${navButtonsValidated('start','language', validatePersonalStep)}
@@ -1438,10 +1371,6 @@ function tplReview(){
       ${rrow('Date of Birth / Age', state.date_of_birth+' / '+state.age)}
       ${rrow('Marital Status', state.marital_status)}
       ${rrow('Race / Bumiputra', state.race+' / '+state.bumiputra)}
-      ${rrow('EPF No.', state.epf_no)}
-      ${rrow('Income Tax No.', state.income_tax_no)}
-      ${rrow('SOCSO No.', state.socso_no)}
-      ${rrow('CIDB Green Card No.', state.cidb_green_card_no)}
     </div>
 
     <div class="review-block">
