@@ -153,6 +153,13 @@
 
   .login-wrap{max-width:380px;margin:80px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:36px;text-align:center;box-shadow:var(--shadow-md);}
   .login-wrap input{font-family:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;width:100%;margin-top:14px;}
+  .pw-toggle-btn{
+    position:absolute;right:8px;top:50%;transform:translateY(-50%);
+    width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+    background:#fff;border:1px solid var(--line);border-radius:8px;
+    color:var(--ink-soft);cursor:pointer;padding:0;transition:background .15s ease,color .15s ease;
+  }
+  .pw-toggle-btn:hover{background:var(--cream);color:var(--navy);}
   /* Some browsers (Edge, some Safari versions) inject their own built-in
      password reveal/clear icon on the right edge of a password field. We
      already have a custom show/hide button positioned there, so suppress
@@ -226,6 +233,8 @@ const ICON_ONBOARD = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none
 const ICON_DELETE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>';
 const ICON_MAIL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 6 10 7 10-7"/></svg>';
 const ICON_EDIT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const ICON_EYE_OPEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICON_EYE_CLOSED = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
 
 function rowActionsHtml(a){
   const isHired = a.status === 'hired';
@@ -289,8 +298,8 @@ function loginView(){
       <h2>Admin Login</h2>
       <p style="color:var(--ink-soft);font-size:13px;">Enter the HR admin passcode to view applications.</p>
       <div style="position:relative;margin-top:14px;">
-        <input type="password" id="passcodeInput" placeholder="Admin passcode" style="padding-right:44px;" onkeydown="if(event.key==='Enter') doLogin()">
-        <button type="button" onclick="togglePasscodeVisibility()" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;color:var(--ink-soft);padding:4px;" title="Show/hide passcode">👁</button>
+        <input type="password" id="passcodeInput" placeholder="Admin passcode" style="padding-right:48px;" onkeydown="if(event.key==='Enter') doLogin()">
+        <button type="button" id="passcodeToggleBtn" class="pw-toggle-btn" onclick="togglePasscodeVisibility()" title="Show passcode" aria-label="Show passcode">${ICON_EYE_OPEN}</button>
       </div>
       <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px;" onclick="doLogin()">Log In</button>
       <div id="loginErr"></div>
@@ -300,7 +309,12 @@ function loginView(){
 }
 function togglePasscodeVisibility(){
   const el = document.getElementById('passcodeInput');
-  el.type = el.type === 'password' ? 'text' : 'password';
+  const btn = document.getElementById('passcodeToggleBtn');
+  const showing = el.type === 'password';
+  el.type = showing ? 'text' : 'password';
+  btn.innerHTML = showing ? ICON_EYE_CLOSED : ICON_EYE_OPEN;
+  btn.title = showing ? 'Hide passcode' : 'Show passcode';
+  btn.setAttribute('aria-label', btn.title);
 }
 async function doLogin(){
   const pass = document.getElementById('passcodeInput').value;
