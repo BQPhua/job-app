@@ -1127,17 +1127,33 @@ async function updateStatus(status){
 // ONBOARDING / STATUTORY DETAILS VIEW (post-hire forms)
 // ============================================================================
 let onboardingData = null;
+let onboardingAppInfo = null; // basic application record (name/reference) for the onboarding
+// modal's header + PDF export — deliberately kept separate from `selectedApp`,
+// since that variable also controls whether the full detail modal re-opens
+// on every render() and whether the 20s auto-refresh poll pauses. Reusing
+// it here would silently pop open the detail modal and freeze the
+// dashboard's auto-refresh any time someone views onboarding without
+// having opened the detail modal first.
 
 async function openOnboardingView(applicationId){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_get_onboarding', { p_token: adminToken, p_application_id: applicationId });
-    if(error) throw error;
-    onboardingData = data[0];
+    const needsAppFetch = !(selectedApp && selectedApp.id === applicationId);
+    const [obRes, appRes] = await Promise.all([
+      supabaseClient.rpc('rpc_admin_get_onboarding', { p_token: adminToken, p_application_id: applicationId }),
+      needsAppFetch
+        ? supabaseClient.rpc('rpc_admin_get_application', { p_token: adminToken, p_id: applicationId })
+        : Promise.resolve({ data: [selectedApp], error: null })
+    ]);
+    if(obRes.error) throw obRes.error;
+    if(appRes.error) throw appRes.error;
+    onboardingData = obRes.data[0];
+    onboardingAppInfo = appRes.data[0];
     renderOnboardingModal();
   } catch(e){ alert('Error loading onboarding details: '+e.message); }
 }
 function closeOnboardingModal(){
   onboardingData = null;
+  onboardingAppInfo = null;
   const existing = document.getElementById('onboardingModalRoot');
   if(existing) existing.remove();
 }
@@ -1251,8 +1267,8 @@ function renderOnboardingModal(){
 }
 
 function exportOnboardingPdf(){
-  if(!onboardingData || !selectedApp){ alert('No onboarding data loaded.'); return; }
-  const html = buildOnboardingPdfHtml(selectedApp, onboardingData);
+  if(!onboardingData || !onboardingAppInfo){ alert('No onboarding data loaded.'); return; }
+  const html = buildOnboardingPdfHtml(onboardingAppInfo, onboardingData);
   const win = window.open('', '_blank');
   if(!win){ alert('Please allow pop-ups for this site to generate the PDF.'); return; }
   win.document.open();
