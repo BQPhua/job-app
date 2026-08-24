@@ -11,10 +11,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
       :root {
-        --navy: #000000;
-        --navy-2: #262626;
-        --gold: #ed1c24;
-        --gold-light: #c4151b;
+        --navy:#101B2D;
+        --navy-2:#1C2C44;
+        --accent:#3E5C76;
+        --accent-dark:#2C4356;
         --cream: #f7f7f6;
         --paper: #ffffff;
         --ink: #1a1a1a;
@@ -58,7 +58,7 @@
         width: 42px;
         height: 42px;
         border-radius: 9px;
-        background: linear-gradient(135deg, var(--gold-light), var(--gold));
+        background: linear-gradient(135deg, var(--accent-dark), var(--accent));
         display: flex;
         align-items: center;
         justify-content: center;
@@ -170,9 +170,9 @@
         width: 100%;
       }
       input:focus {
-        outline: 2px solid var(--gold-light);
+        outline: 2px solid var(--accent-dark);
         outline-offset: 1px;
-        border-color: var(--gold);
+        border-color: var(--accent);
       }
       .req {
         color: var(--danger);
@@ -282,7 +282,8 @@
           style="height: 64px; image-rendering: -webkit-optimize-contrast"
         />
         <div class="brand-text">
-          <div class="sub">WCT Employment Application Portal</div>
+          <div class="name">WCT Group</div>
+          <div class="sub">Employment Application Portal</div>
         </div>
       </div>
 
