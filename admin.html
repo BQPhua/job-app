@@ -302,7 +302,7 @@ function loginView(){
       <h2>Admin Login</h2>
       <p style="color:var(--ink-soft);font-size:13px;">Enter the HR admin passcode to view applications.</p>
       <div style="position:relative;margin-top:14px;">
-        <input type="password" id="passcodeInput" placeholder="Admin passcode" style="padding-right:48px;" onkeydown="if(event.key==='Enter') doLogin()">
+        <input type="password" id="passcodeInput" placeholder="Admin passcode" autocomplete="off" data-lpignore="true" data-1p-ignore style="padding-right:48px;" onkeydown="if(event.key==='Enter') doLogin()">
         <button type="button" id="passcodeToggleBtn" class="pw-toggle-btn" onclick="togglePasscodeVisibility()" title="Show passcode" aria-label="Show passcode">${ICON_EYE_OPEN}</button>
       </div>
       <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px;" onclick="doLogin()">Log In</button>
