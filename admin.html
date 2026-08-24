@@ -111,8 +111,24 @@
 
   .empty-state{text-align:center;padding:60px 20px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:var(--radius);}
 
-  img.pfp{width:44px;height:44px;border-radius:8px;object-fit:cover;background:#eee;flex-shrink:0;}
+  img.pfp,.pfp{width:44px;height:44px;border-radius:8px;object-fit:cover;background:#eee;flex-shrink:0;}
+  .pfp-placeholder{display:flex;align-items:center;justify-content:center;background:var(--navy);color:#fff;font-weight:700;font-size:16px;font-family:'Source Serif 4',serif;}
   .name-cell{display:flex;align-items:center;gap:10px;}
+  .row-check{width:16px;height:16px;cursor:pointer;accent-color:var(--navy);}
+  tr.row-selected td{background:var(--gold-tint);}
+  tr.row-selected:hover td{background:var(--gold-tint);}
+
+  .bulk-toolbar{
+    background:var(--navy);color:#fff;border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;
+    display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:var(--shadow-md);
+    animation:bulkIn .15s ease;
+  }
+  @keyframes bulkIn{ from{opacity:0;transform:translateY(-4px);} to{opacity:1;transform:translateY(0);} }
+  .bulk-toolbar .bulk-count{font-weight:700;font-size:13.5px;margin-right:auto;}
+  .bulk-toolbar select{font-family:inherit;font-size:13px;padding:8px 10px;border-radius:7px;border:1px solid #3A3A3A;background:#1F1F1F;color:#fff;}
+  .bulk-toolbar .btn-outline{background:transparent;color:#fff;border-color:#444;}
+  .bulk-toolbar .btn-outline:hover{background:#1F1F1F;}
+  .bulk-toolbar .bulk-clear{opacity:.8;}
 
   /* ---------- Modal ---------- */
   .modal-overlay{position:fixed;inset:0;background:rgba(10,10,10,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;z-index:50;}
@@ -137,6 +153,16 @@
 
   .login-wrap{max-width:380px;margin:80px auto;background:#fff;border:1px solid var(--line);border-radius:14px;padding:36px;text-align:center;box-shadow:var(--shadow-md);}
   .login-wrap input{font-family:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;width:100%;margin-top:14px;}
+  /* Some browsers (Edge, some Safari versions) inject their own built-in
+     password reveal/clear icon on the right edge of a password field. We
+     already have a custom show/hide button positioned there, so suppress
+     the native one everywhere it can appear — otherwise the two icons
+     visually stack on top of each other. */
+  input[type="password"]::-ms-reveal,
+  input[type="password"]::-ms-clear{ display:none; }
+  input[type="password"]::-webkit-textfield-decoration-container{ visibility:hidden; }
+  input[type="password"]::-webkit-credentials-auto-fill-button,
+  input[type="password"]::-webkit-contacts-auto-fill-button{ display:none !important; visibility:hidden; pointer-events:none; position:absolute; right:0; }
   .error-banner{background:var(--danger-tint);border:1px solid #EBC3BD;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
   .success-banner{background:var(--ok-tint);border:1px solid #BEDACB;color:var(--ok);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
 </style>
@@ -186,6 +212,32 @@ let filterStatus = '';
 let currentPage = 1;
 const PAGE_SIZE = 20;
 let searchDebounceTimer = null;
+let selectedIds = new Set(); // batch management — ids checked on the current page
+
+// ---------------------------------------------------------------------------
+// Small consistent icon set for row/table actions — replaces mixed emoji so
+// the action column reads as one deliberate button group instead of ad-hoc
+// symbols, and so every row always renders the same number of buttons
+// (disabled instead of removed) rather than the layout shifting per row.
+// ---------------------------------------------------------------------------
+const ICON_VIEW = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const ICON_PDF = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 15h6M9 11h2"/></svg>';
+const ICON_ONBOARD = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>';
+const ICON_DELETE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>';
+const ICON_MAIL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 6 10 7 10-7"/></svg>';
+const ICON_EDIT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
+function rowActionsHtml(a){
+  const isHired = a.status === 'hired';
+  return `
+    <div class="row-actions">
+      <button class="btn btn-outline btn-icon" title="View details" onclick="openDetail('${a.id}')">${ICON_VIEW}</button>
+      <button class="btn btn-outline btn-icon" title="Export PDF" onclick="exportCandidatePdf('${a.id}')">${ICON_PDF}</button>
+      <button class="btn btn-icon ${isHired ? 'btn-gold' : 'btn-outline'}" title="${isHired ? 'Onboarding Details' : 'Onboarding Details — available once Hired'}" ${isHired ? `onclick="openOnboardingView('${a.id}')"` : 'disabled'}>${ICON_ONBOARD}</button>
+      <button class="btn btn-outline-danger btn-icon" title="Delete" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">${ICON_DELETE}</button>
+    </div>
+  `;
+}
 
 const STATUS_LABELS = {
   submitted:'New', under_review:'Under Review', shortlisted:'Shortlisted',
@@ -274,12 +326,15 @@ function logout(){ sessionStorage.removeItem('wct_admin_token'); sessionStorage.
 function dashboardView(){
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
+  const allOnPageSelected = applications.length>0 && applications.every(a=>selectedIds.has(a.id));
+
   const rows = applications.map(a => `
-    <tr class="data-row">
+    <tr class="data-row ${selectedIds.has(a.id)?'row-selected':''}">
+      <td><input type="checkbox" class="row-check" ${selectedIds.has(a.id)?'checked':''} onchange="toggleSelectRow('${a.id}', this.checked)"></td>
       <td>${esc(a.reference_no)}</td>
       <td>
         <div class="name-cell">
-          ${a.profile_picture_url ? `<img class="pfp" src="${a.profile_picture_url}">` : ''}
+          ${a.profile_picture_url ? `<img class="pfp" src="${a.profile_picture_url}">` : `<div class="pfp pfp-placeholder">${esc((a.name_nric||'?').trim().charAt(0).toUpperCase())}</div>`}
           <div>
             <div style="font-weight:600;">${esc(a.name_nric)}</div>
             <div style="font-size:11.5px;color:var(--ink-soft);">${esc(a.email)}</div>
@@ -295,14 +350,7 @@ function dashboardView(){
         </select>
       </td>
       <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
-      <td>
-        <div class="row-actions">
-          <button class="btn btn-outline btn-sm" onclick="openDetail('${a.id}')">View</button>
-          <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf('${a.id}')">PDF</button>
-          ${a.status==='hired' ? `<button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">New Hire Forms</button>` : ''}
-          <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">Delete</button>
-        </div>
-      </td>
+      <td>${rowActionsHtml(a)}</td>
     </tr>
   `).join('');
 
@@ -335,9 +383,26 @@ function dashboardView(){
       <button class="btn btn-outline btn-sm" onclick="exportCsv()">Export CSV</button>
     </div>
 
+    ${selectedIds.size>0 ? `
+    <div class="bulk-toolbar">
+      <span class="bulk-count">${selectedIds.size} selected</span>
+      <select id="bulkStatusSelect">
+        <option value="">Change status to…</option>
+        ${STATUS_OPTIONS.map(s=>`<option value="${s}">${STATUS_LABELS[s]}</option>`).join('')}
+      </select>
+      <button class="btn btn-gold btn-sm" onclick="applyBulkStatus()">Apply</button>
+      <button class="btn btn-outline btn-sm" onclick="bulkExportCsv()">Export Selected</button>
+      <button class="btn btn-danger btn-sm" onclick="bulkDelete()">Delete Selected</button>
+      <button class="btn btn-outline btn-sm bulk-clear" onclick="clearSelection()">Clear</button>
+    </div>
+    ` : ''}
+
     ${applications.length===0 ? `<div class="empty-state">No applications match your search/filters.</div>` : `
       <table>
-        <thead><tr><th>Reference</th><th>Candidate</th><th>Position</th><th>Unit</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
+        <thead><tr>
+          <th style="width:36px;"><input type="checkbox" class="row-check" ${allOnPageSelected?'checked':''} onchange="toggleSelectAll(this.checked)" title="Select all on this page"></th>
+          <th>Reference</th><th>Candidate</th><th>Position</th><th>Unit</th><th>Status</th><th>Submitted</th><th>Actions</th>
+        </tr></thead>
         <tbody>${rows}</tbody>
       </table>
       <div class="pagination">
@@ -355,15 +420,80 @@ function dashboardView(){
 function handleSearchInput(val){
   searchTerm = val;
   clearTimeout(searchDebounceTimer);
-  searchDebounceTimer = setTimeout(() => { currentPage = 1; loadApplications(); }, 350);
+  searchDebounceTimer = setTimeout(() => { currentPage = 1; selectedIds.clear(); loadApplications(); }, 350);
 }
 function setFilter(key, val){
   if(key==='business_unit') filterBusinessUnit = val;
   if(key==='status') filterStatus = val;
   currentPage = 1;
+  selectedIds.clear();
   loadApplications();
 }
-function goToPage(p){ currentPage = p; loadApplications(); }
+function goToPage(p){ currentPage = p; selectedIds.clear(); loadApplications(); }
+
+// ---------------------------------------------------------------------------
+// BATCH MANAGEMENT — selection is scoped to what's currently loaded (one
+// page of results); there's no server-side "select all matching filter"
+// since bulk status/delete calls loop the existing single-record RPCs
+// client-side rather than requiring a new bulk RPC.
+// ---------------------------------------------------------------------------
+function toggleSelectRow(id, checked){
+  if(checked) selectedIds.add(id); else selectedIds.delete(id);
+  render();
+}
+function toggleSelectAll(checked){
+  applications.forEach(a => checked ? selectedIds.add(a.id) : selectedIds.delete(a.id));
+  render();
+}
+function clearSelection(){ selectedIds.clear(); render(); }
+
+async function applyBulkStatus(){
+  const status = document.getElementById('bulkStatusSelect').value;
+  if(!status){ alert('Please choose a status to apply first.'); return; }
+  const count = selectedIds.size;
+  if(status === 'blacklisted' && !confirm(`Blacklist ${count} candidate(s)? They will be signed out immediately and blocked from logging in or applying again using this email.`)) return;
+  if(!confirm(`Change status to "${STATUS_LABELS[status]}" for ${count} selected application(s)?`)) return;
+  showLoading(`Updating ${count} application(s)...`);
+  let failed = 0;
+  for(const id of Array.from(selectedIds)){
+    try{
+      const { error } = await supabaseClient.rpc('rpc_admin_update_status', {p_token: adminToken, p_id: id, p_status: status});
+      if(error) failed++;
+    } catch(e){ failed++; }
+  }
+  selectedIds.clear();
+  hideLoading();
+  await Promise.all([loadApplications(), loadStats()]);
+  if(failed) alert(`${failed} of ${count} update(s) failed — please check those applications individually.`);
+}
+
+async function bulkDelete(){
+  const count = selectedIds.size;
+  if(!confirm(`Permanently delete ${count} selected application(s)? This cannot be undone.`)) return;
+  showLoading(`Deleting ${count} application(s)...`);
+  let failed = 0;
+  for(const id of Array.from(selectedIds)){
+    try{
+      const { error } = await supabaseClient.rpc('rpc_admin_delete_application', {p_token: adminToken, p_id: id});
+      if(error) failed++;
+    } catch(e){ failed++; }
+  }
+  selectedIds.clear();
+  hideLoading();
+  await Promise.all([loadApplications(), loadStats()]);
+  if(failed) alert(`${failed} of ${count} deletion(s) failed.`);
+}
+
+async function bulkExportCsv(){
+  showLoading('Preparing export of selected applications...');
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_export_all', { p_token: adminToken });
+    if(error) throw error;
+    const filtered = (data||[]).filter(a => selectedIds.has(a.id));
+    downloadApplicationsCsv(filtered, `wct-applications-selected-export-${new Date().toISOString().slice(0,10)}.csv`);
+  } catch(e){ alert('Error exporting: '+e.message); }
+  hideLoading();
+}
 
 async function loadEverything(){
   showLoading('Loading applications...');
@@ -438,7 +568,12 @@ async function exportCsv(){
   try{
     const { data, error } = await supabaseClient.rpc('rpc_admin_export_all', { p_token: adminToken });
     if(error) throw error;
+    downloadApplicationsCsv(data||[], `wct-applications-full-export-${new Date().toISOString().slice(0,10)}.csv`);
+  } catch(e){ alert('Error exporting: '+e.message); }
+  hideLoading();
+}
 
+function downloadApplicationsCsv(data, filename){
     const jsonCell = (v) => v ? JSON.stringify(v) : '';
     const dt = (v) => v ? new Date(v).toISOString() : '';
 
@@ -516,11 +651,9 @@ async function exportCsv(){
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `wct-applications-full-export-${new Date().toISOString().slice(0,10)}.csv`;
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
-  } catch(e){ alert('Error exporting: '+e.message); }
-  hideLoading();
 }
 
 // ============================================================================
@@ -607,7 +740,26 @@ async function loadJobsForPage(){
     const { data, error } = await supabaseClient.rpc('rpc_admin_list_jobs', { p_token: adminToken });
     if(error) throw error;
     jobsList = data || [];
+    await sweepExpiredJobs();
   } catch(e){ alert('Error loading job postings: '+e.message); jobsList = []; }
+}
+
+// Candidates never see expired postings (already filtered by expiry_date in
+// rpc_list_active_jobs), but they used to linger in the admin's Job Postings
+// list until someone manually deleted them. There's no cron job in this
+// project (deliberately — see project conventions), so instead we do a
+// lazy cleanup sweep every time an admin opens the Jobs page: anything past
+// its expiry date gets deleted right away, no manual click needed.
+async function sweepExpiredJobs(){
+  const now = new Date();
+  const expired = jobsList.filter(j => j.expiry_date && new Date(j.expiry_date) < now);
+  if(expired.length === 0) return;
+  for(const j of expired){
+    try{ await supabaseClient.rpc('rpc_admin_delete_job', { p_token: adminToken, p_id: j.id }); }
+    catch(e){ console.error('Failed to auto-remove expired job', j.id, e); }
+  }
+  const { data } = await supabaseClient.rpc('rpc_admin_list_jobs', { p_token: adminToken });
+  jobsList = data || [];
 }
 function goToJobsPage(p){ jobsCurrentPage = p; render(); }
 
@@ -812,7 +964,7 @@ function viewDetailHtml(a){
       </div>
       ${a.status==='hired' ? `
       <div class="status-actions">
-        <button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">📋 New Hire Forms</button>
+        <button class="btn btn-gold btn-sm" onclick="openOnboardingView('${a.id}')">${ICON_ONBOARD} Onboarding Details</button>
       </div>
       ` : ''}
       <div class="status-actions">
@@ -916,7 +1068,7 @@ function renderOnboardingModal(){
   div.innerHTML = `
     <div class="modal" style="max-width:760px;">
       <button class="modal-close" onclick="closeOnboardingModal()">✕</button>
-      <h2>Onboarding / Statutory Details</h2>
+      <h2>Onboarding Details</h2>
       <p style="color:var(--ink-soft);font-size:13px;margin-top:-6px;">Status: ${o.status==='completed' ? '<strong style="color:var(--ok);">Completed</strong>' : '<strong style="color:var(--warn);">In Progress</strong>'}</p>
 
       <div class="detail-section">
