@@ -1848,5 +1848,18 @@ async function signOut(){
   showLoading('Loading your applications...');
   await Promise.all([loadMyApplications(), loadActiveJobs()]);
   hideLoading();
+
+  // A "Complete Your Onboarding" email link lands here as
+  // index.html?onboarding=<application id> (carried through the sign-in
+  // flow if the candidate wasn't already logged in) — open that
+  // application's onboarding form directly instead of the generic
+  // application list, so the click actually saves them a step.
+  const onboardingId = new URLSearchParams(window.location.search).get('onboarding');
+  if(onboardingId){
+    // Strip the param so refreshing the page afterward doesn't keep
+    // re-opening onboarding every time.
+    window.history.replaceState({}, '', window.location.pathname);
+    await openOnboarding(onboardingId);
+  }
   render();
 })();
