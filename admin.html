@@ -176,6 +176,48 @@
   input[type="password"]::-webkit-contacts-auto-fill-button{ display:none !important; visibility:hidden; pointer-events:none; position:absolute; right:0; }
   .error-banner{background:var(--danger-tint);border:1px solid #EBC3BD;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
   .success-banner{background:var(--ok-tint);border:1px solid #BEDACB;color:var(--ok);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
+
+  /* ==========================================================================
+     MOBILE — additive only; every rule above this block is untouched, so
+     the desktop dashboard layout doesn't change at all.
+     ========================================================================== */
+  @media(max-width:820px){
+    .topbar{padding:10px 14px;flex-wrap:wrap;row-gap:8px;}
+    .topbar .brand{flex-wrap:wrap;row-gap:6px;}
+    .admin-nav{margin-left:0;padding-left:0;border-left:none;flex-wrap:wrap;}
+    .topbar .sub{display:none;} /* "WCT Admin Dashboard" label — nav labels already make the context clear, and it's the first thing to drop for space */
+
+    .wrap{padding:14px 10px 40px;}
+
+    .stat-row{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:4px;}
+    .stat{min-width:118px;}
+
+    /* Toolbar: stack search/filters/buttons full-width instead of
+       squeezing them into one row that wraps unpredictably. */
+    .toolbar{flex-direction:column;align-items:stretch;}
+    .toolbar input[type=text], .toolbar select{width:100%;}
+
+    .bulk-toolbar{flex-direction:column;align-items:stretch;}
+    .bulk-toolbar .bulk-count{margin-right:0;}
+    .bulk-toolbar select{width:100%;}
+
+    /* The applications table has 8 columns — no reasonable way to reflow
+       that to a single column without a completely different mobile-only
+       template, so let it scroll horizontally instead of squashing. */
+    table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
+
+    .pagination{flex-direction:column;align-items:flex-start;gap:8px;}
+
+    .modal-overlay{padding:16px 8px;}
+    .modal{padding:20px;}
+    .drow{flex-direction:column;padding:6px 0;}
+    .drow .k, .drow .v{width:100%;}
+    .drow .k{font-size:11px;text-transform:uppercase;letter-spacing:.03em;}
+    .status-actions{gap:6px;}
+    .status-actions .btn{flex:1;min-width:120px;}
+
+    .login-wrap{margin:40px auto;padding:26px 20px;}
+  }
 </style>
 </head>
 <body>
