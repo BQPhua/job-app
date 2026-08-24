@@ -1568,7 +1568,7 @@ function tplFinal(){
     <div id="finalErr"></div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="goStep('pdpa')">← Back</button>
-      <div class="right"><button class="btn btn-gold" onclick="finalSubmit()">Submit Application</button></div>
+      <div class="right"><button class="btn btn-accent" onclick="finalSubmit()">Submit Application</button></div>
     </div>
   `;
 }
