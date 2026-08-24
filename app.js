@@ -182,7 +182,7 @@ function tplStart(){
             <div class="draft-banner-title">${esc(a.reference_no)} — ${esc(a.position_applying||'Untitled')}</div>
             <div class="draft-banner-meta">${esc(a.business_unit)} · Draft in progress</div>
           </div>
-          <div style="display:flex;gap:8px;">
+          <div class="draft-banner-actions" style="display:flex;gap:8px;">
             <button class="btn btn-primary btn-sm" onclick="continueDraft('${a.id}')">Continue →</button>
             <button class="btn btn-ghost btn-sm" style="color:var(--danger);border-color:var(--danger);" onclick="deleteDraft('${a.id}','${esc(a.reference_no)}')">Delete</button>
           </div>
