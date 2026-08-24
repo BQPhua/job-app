@@ -266,10 +266,23 @@ function hideLoading(){ document.getElementById('loadingOverlay').style.display=
 // ============================================================================
 // RENDER DISPATCH
 // ============================================================================
+// `lastRenderedView` lets us tell the difference between "navigating into
+// the Home view" (needs the full shell — stat cards, toolbar, search input —
+// rebuilt) and "data on the Home view changed" (only the results table/stats
+// need updating). Previously every keystroke in the search box triggered a
+// full teardown-and-rebuild of the whole dashboard, including the search
+// input itself — that's what caused the lag and the cursor jumping back
+// (the old fix tried to manually restore focus/cursor position after the
+// rebuild, but that's fighting the real problem instead of avoiding it).
+// Now the search input's DOM node is never touched by a data refresh, so
+// the browser's own text-cursor handling just works, with nothing to fix.
+// ============================================================================
+let lastRenderedView = null;
+
 function render(){
   const root = document.getElementById('root');
   document.getElementById('logoutArea').innerHTML = adminToken
-    ? `<button class="btn btn-outline btn-sm" style="background:#fff;color:#000;border-color:#444;" onclick="logout()">Log out</button>` : '';
+    ? `<button class="btn btn-outline btn-sm" onclick="logout()">Log out</button>` : '';
   const navEl = document.getElementById('adminNav');
   if(navEl){
     navEl.innerHTML = adminToken ? `
@@ -278,12 +291,22 @@ function render(){
       ${adminScope==='ALL' ? `<a class="${currentView==='settings'?'active':''}" onclick="setView('settings')">Manager Settings</a>` : ''}
     ` : '';
   }
-  if(!adminToken){ root.innerHTML = loginView(); return; }
-  let pageContent;
-  if(currentView==='jobs') pageContent = jobsPageView();
-  else if(currentView==='settings') pageContent = settingsPageView();
-  else pageContent = dashboardView();
-  root.innerHTML = `<div class="wrap">${pageContent}</div>`;
+  if(!adminToken){ root.innerHTML = loginView(); lastRenderedView = null; return; }
+
+  if(currentView === 'home'){
+    if(lastRenderedView !== 'home' || !document.getElementById('dashResults')){
+      root.innerHTML = `<div class="wrap">${dashboardShellHtml()}</div>`;
+      lastRenderedView = 'home';
+    } else {
+      renderDashboardResults();
+    }
+  } else {
+    let pageContent;
+    if(currentView==='jobs') pageContent = jobsPageView();
+    else if(currentView==='settings') pageContent = settingsPageView();
+    root.innerHTML = `<div class="wrap">${pageContent}</div>`;
+    lastRenderedView = currentView;
+  }
   if(selectedApp) renderModal();
 }
 async function setView(view){
@@ -342,11 +365,51 @@ async function doLogin(){
 function logout(){ sessionStorage.removeItem('wct_admin_token'); sessionStorage.removeItem('wct_admin_scope'); adminToken=null; adminScope=null; render(); }
 
 // ============================================================================
-// DASHBOARD: stats + toolbar + table + pagination
+// DASHBOARD: shell (search/filters — built once) + results (rebuilt on
+// every data refresh, e.g. search typing, filter change, page change,
+// status update, delete, the 20s auto-poll). Splitting these apart is what
+// fixes the search box lag/cursor-jump — see the note above render().
 // ============================================================================
-function dashboardView(){
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+function dashboardShellHtml(){
+  return `
+    <div class="stat-row" id="dashStats">${statRowHtml()}</div>
 
+    <div class="toolbar">
+      <input type="text" id="searchInput" placeholder="Search by name, reference no., email, or phone..." value="${esc(searchTerm)}" oninput="handleSearchInput(this.value)">
+      ${adminScope === 'ALL' ? `
+        <select onchange="setFilter('business_unit', this.value)">
+          <option value="">All Business Units</option>
+          <option value="E&C" ${filterBusinessUnit==='E&C'?'selected':''}>E&amp;C</option>
+          <option value="Land" ${filterBusinessUnit==='Land'?'selected':''}>Land</option>
+          <option value="Mall" ${filterBusinessUnit==='Mall'?'selected':''}>Mall</option>
+        </select>
+      ` : `<span class="badge" style="background:var(--navy);color:#fff;">${esc(adminScope)} ACCESS ONLY</span>`}
+      <select onchange="setFilter('status', this.value)">
+        <option value="">All Statuses</option>
+        <option value="submitted" ${filterStatus==='submitted'?'selected':''}>New</option>
+        ${STATUS_OPTIONS.map(s=>`<option value="${s}" ${filterStatus===s?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
+      </select>
+      <button class="btn btn-outline btn-sm" onclick="loadEverything()">Refresh</button>
+      <button class="btn btn-outline btn-sm" onclick="exportCsv()">Export CSV</button>
+    </div>
+
+    <div id="dashResults">${dashboardResultsHtml()}</div>
+  `;
+}
+
+function statRowHtml(){
+  return `
+      <div class="stat"><div class="n">${stats.total||0}</div><div class="l">Total Applicants</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.submitted||0}</div><div class="l">New</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.under_review||0}</div><div class="l">Under Review</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.rejected||0}</div><div class="l">Rejected</div></div>
+  `;
+}
+
+function dashboardResultsHtml(){
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
   const allOnPageSelected = applications.length>0 && applications.every(a=>selectedIds.has(a.id));
 
   const rows = applications.map(a => `
@@ -376,34 +439,6 @@ function dashboardView(){
   `).join('');
 
   return `
-    <div class="stat-row">
-      <div class="stat"><div class="n">${stats.total||0}</div><div class="l">Total Applicants</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.submitted||0}</div><div class="l">New</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.under_review||0}</div><div class="l">Under Review</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.rejected||0}</div><div class="l">Rejected</div></div>
-    </div>
-
-    <div class="toolbar">
-      <input type="text" id="searchInput" placeholder="Search by name, reference no., email, or phone..." value="${esc(searchTerm)}" oninput="handleSearchInput(this.value)">
-      ${adminScope === 'ALL' ? `
-        <select onchange="setFilter('business_unit', this.value)">
-          <option value="">All Business Units</option>
-          <option value="E&C" ${filterBusinessUnit==='E&C'?'selected':''}>E&amp;C</option>
-          <option value="Land" ${filterBusinessUnit==='Land'?'selected':''}>Land</option>
-          <option value="Mall" ${filterBusinessUnit==='Mall'?'selected':''}>Mall</option>
-        </select>
-      ` : `<span class="badge" style="background:var(--navy);color:#fff;">${esc(adminScope)} ACCESS ONLY</span>`}
-      <select onchange="setFilter('status', this.value)">
-        <option value="">All Statuses</option>
-        <option value="submitted" ${filterStatus==='submitted'?'selected':''}>New</option>
-        ${STATUS_OPTIONS.map(s=>`<option value="${s}" ${filterStatus===s?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
-      </select>
-      <button class="btn btn-outline btn-sm" onclick="loadEverything()">Refresh</button>
-      <button class="btn btn-outline btn-sm" onclick="exportCsv()">Export CSV</button>
-    </div>
-
     ${selectedIds.size>0 ? `
     <div class="bulk-toolbar">
       <span class="bulk-count">${selectedIds.size} selected</span>
@@ -436,6 +471,13 @@ function dashboardView(){
       </div>
     `}
   `;
+}
+
+function renderDashboardResults(){
+  const statsEl = document.getElementById('dashStats');
+  if(statsEl) statsEl.innerHTML = statRowHtml();
+  const resultsEl = document.getElementById('dashResults');
+  if(resultsEl) resultsEl.innerHTML = dashboardResultsHtml();
 }
 
 function handleSearchInput(val){
@@ -522,15 +564,10 @@ async function loadEverything(){
   hideLoading();
 }
 
-async function loadApplications(){
-  // The search input gets destroyed and recreated every time render() runs
-  // (since it rebuilds the whole toolbar HTML) — capture focus/cursor state
-  // first so we can restore it after, otherwise every pause in typing kicks
-  // focus out of the box and the next keystroke is lost.
-  const searchEl = document.getElementById('searchInput');
-  const hadFocus = document.activeElement === searchEl;
-  const cursorPos = hadFocus ? searchEl.selectionStart : null;
+let searchRequestSeq = 0; // guards against a slow/stale response overwriting a newer one
 
+async function loadApplications(){
+  const mySeq = ++searchRequestSeq;
   try{
     const { data, error } = await supabaseClient.rpc('rpc_admin_search_applications', {
       p_token: adminToken,
@@ -541,17 +578,12 @@ async function loadApplications(){
       p_page_size: PAGE_SIZE
     });
     if(error) throw error;
+    if(mySeq !== searchRequestSeq) return; // a newer search/filter/page change has since started — drop this stale result
     applications = data.rows || [];
     totalCount = data.total || 0;
     render();
-    if(hadFocus){
-      const newSearchEl = document.getElementById('searchInput');
-      if(newSearchEl){
-        newSearchEl.focus();
-        newSearchEl.setSelectionRange(cursorPos, cursorPos);
-      }
-    }
   } catch(e){
+    if(mySeq !== searchRequestSeq) return;
     if(String(e.message||'').includes('expired')||String(e.message||'').includes('Session')){ logout(); }
     else alert('Error loading applications: '+e.message);
   }
