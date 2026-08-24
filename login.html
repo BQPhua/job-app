@@ -376,6 +376,16 @@
         btn.setAttribute('aria-label', btn.title);
       }
 
+      // If this login page was reached via a "Complete Your Onboarding"
+      // email link (index.html?onboarding=<id> → bounced here because the
+      // candidate wasn't signed in yet), carry that same parameter forward
+      // to index.html once they do sign in, so they land straight in the
+      // onboarding form instead of the generic application list.
+      function indexRedirectUrl(basePath) {
+        const onboardingId = new URLSearchParams(window.location.search).get('onboarding');
+        return basePath + (onboardingId ? '?onboarding=' + encodeURIComponent(onboardingId) : '');
+      }
+
       function oauthButtons() {
         return `
     <button class="oauth-btn" onclick="signInOAuth('google')">${GoogleIcon} Continue with Google</button>
@@ -495,9 +505,10 @@
 
       async function signInOAuth(provider) {
         const options = {
-          redirectTo:
+          redirectTo: indexRedirectUrl(
             window.location.origin +
-            window.location.pathname.replace('login.html', 'index.html'),
+              window.location.pathname.replace('login.html', 'index.html')
+          ),
         };
         // Force an explicit account picker instead of a silent background sign-in
         // attempt. The silent attempt is what shows "Trying to sign you in" with
@@ -532,7 +543,7 @@
           showMsg('error', error.message);
           return;
         }
-        window.location.href = 'index.html';
+        window.location.href = indexRedirectUrl('index.html');
       }
 
       async function doRegister() {
@@ -618,7 +629,7 @@
           data: { session },
         } = await supabaseClient.auth.getSession();
         if (session) {
-          window.location.href = 'index.html';
+          window.location.href = indexRedirectUrl('index.html');
           return;
         }
         render();
