@@ -1134,6 +1134,10 @@ let onboardingAppInfo = null; // basic application record (name/reference) for t
 // it here would silently pop open the detail modal and freeze the
 // dashboard's auto-refresh any time someone views onboarding without
 // having opened the detail modal first.
+let adminObPage = 1; // which page of the onboarding modal is showing — the
+// full record (personal/spouse/children/emergency/beneficiary + the
+// complete TP3 form + salary) is too long for one screen, same reasoning
+// as the candidate's own paginated summary.
 
 async function openOnboardingView(applicationId){
   try{
@@ -1148,12 +1152,14 @@ async function openOnboardingView(applicationId){
     if(appRes.error) throw appRes.error;
     onboardingData = obRes.data[0];
     onboardingAppInfo = appRes.data[0];
+    adminObPage = 1;
     renderOnboardingModal();
   } catch(e){ alert('Error loading onboarding details: '+e.message); }
 }
 function closeOnboardingModal(){
   onboardingData = null;
   onboardingAppInfo = null;
+  adminObPage = 1;
   const existing = document.getElementById('onboardingModalRoot');
   if(existing) existing.remove();
 }
@@ -1161,27 +1167,8 @@ function closeOnboardingModal(){
 function obRow(k, v){ return `<div class="drow"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
 function obConfirmLine(confirmed, at){ return confirmed ? `Confirmed — ${new Date(at).toLocaleString()}` : 'Not yet confirmed'; }
 
-function renderOnboardingModal(){
-  const existing = document.getElementById('onboardingModalRoot');
-  if(existing) existing.remove();
-  const o = onboardingData;
-  if(!o){
-    alert('No onboarding record found for this candidate yet — they may not have started it.');
-    return;
-  }
-  const t = o.tp3_data || {};
-
-  const div = document.createElement('div');
-  div.id = 'onboardingModalRoot';
-  div.className = 'modal-overlay';
-  div.style.zIndex = '70';
-  div.onclick = (e)=>{ if(e.target===div) closeOnboardingModal(); };
-  div.innerHTML = `
-    <div class="modal" style="max-width:760px;">
-      <button class="modal-close" onclick="closeOnboardingModal()">✕</button>
-      <h2>Onboarding Details</h2>
-      <p style="color:var(--ink-soft);font-size:13px;margin-top:-6px;">Status: ${o.status==='completed' ? '<strong style="color:var(--ok);">Completed</strong>' : '<strong style="color:var(--warn);">In Progress</strong>'}</p>
-
+function adminObPage1Html(o){
+  return `
       <div class="detail-section">
         <h4>Statutory Details</h4>
         ${obRow('EPF No.', o.epf_no)}
@@ -1222,26 +1209,62 @@ function renderOnboardingModal(){
         ${obRow('Relationship', o.beneficiary_relationship)}
         ${obRow('Contact', o.beneficiary_contact)}
       </div>
+  `;
+}
+
+function adminObPage2Html(o){
+  const t = o.tp3_data || {};
+  return `
+      <div class="detail-section">
+        <h4>TP3 — Bahagian A: Maklumat Majikan Terdahulu</h4>
+        ${obRow('A1 Nama Majikan Terdahulu 1', t.employer1_name)}
+        ${obRow('A2 No. Pengenalan Cukai (TIN) 1', t.employer1_tin)}
+        ${obRow('A3 Nama Majikan Terdahulu 2', t.employer2_name)}
+        ${obRow('A4 No. Pengenalan Cukai (TIN) 2', t.employer2_tin)}
+      </div>
 
       <div class="detail-section">
-        <h4>TP3 Tax Form</h4>
-        ${obRow('Previous Employer 1', `${t.employer1_name||'—'} (TIN: ${t.employer1_tin||'—'})`)}
-        ${obRow('Previous Employer 2', `${t.employer2_name||'—'} (TIN: ${t.employer2_tin||'—'})`)}
-        ${obRow('C1 Gross Remuneration', t.c1_gross_remuneration)}
-        ${obRow('C3 EPF Total', t.c3_epf_total)}
-        ${obRow('C5 Total PCB', t.c5_total_pcb)}
-        ${obRow('D1 Parent/Grandparent Medical', t.d1_parent_medical)}
-        ${obRow('D2 Disabled Equipment', t.d2_disabled_equipment)}
-        ${obRow('D3 Course Fees', t.d3_course_fees)}
-        ${obRow('D4 Medical Treatment', t.d4_medical_treatment)}
-        ${obRow('D5 Lifestyle', t.d5_lifestyle)}
-        ${obRow('D6 Lifestyle (Sports)', t.d6_sports_lifestyle)}
-        ${obRow('D7 Breastfeeding Equipment', t.d7_breastfeeding_equipment)}
-        ${obRow('D8 Childcare Fees', t.d8_childcare_fees)}
-        ${obRow('D9 SSPN Net Savings', t.d9_ssp1m_savings)}
-        ${obRow('D10 Alimony', t.d10_alimony)}
-        ${obRow('D11(a)/(b) EPF/Life Insurance', `${t.d11a_kwsp_sukarela||'—'} / ${t.d11b_life_insurance||'—'}`)}
-        ${obRow('D16(a)/(b) Housing Loan Interest', `${t.d16a_housing_loan_500k||'—'} / ${t.d16b_housing_loan_750k||'—'}`)}
+        <h4>TP3 — Bahagian B: Maklumat Individu</h4>
+        ${obRow('B1 Nama', t.b1_name)}
+        ${obRow('B2 No. Kad Pengenalan/Pasport', t.b2_ic_passport)}
+        ${obRow('B3 No. Pengenalan Cukai (TIN)', t.b3_tin)}
+      </div>
+
+      <div class="detail-section">
+        <h4>TP3 — Bahagian C: Saraan / KWSP / Zakat / PCB</h4>
+        ${obRow('C1 Jumlah Saraan Kasar', t.c1_gross_remuneration)}
+        ${obRow('C2(i) Elaun Perjalanan', t.c2i_travel)}
+        ${obRow('C2(ii) Elaun Penjagaan Anak', t.c2ii_childcare)}
+        ${obRow('C2(iii) Produk Percuma/Diskaun', t.c2iii_products)}
+        ${obRow('C2(iv) Perkuisit Perkhidmatan Lalu', t.c2iv_service_award)}
+        ${obRow('C2(v) Lain-lain Pengecualian', t.c2v_other)}
+        ${obRow('C3 Jumlah KWSP', t.c3_epf_total)}
+        ${obRow('C4(i) Zakat', t.c4i_zakat)}
+        ${obRow('C4(ii) Levi Umrah', t.c4ii_umrah)}
+        ${obRow('C5 Jumlah PCB', t.c5_total_pcb)}
+      </div>
+
+      <div class="detail-section">
+        <h4>TP3 — Bahagian D: Potongan</h4>
+        ${obRow('D1 Ibu Bapa/Datuk Nenek', t.d1_parent_medical)}
+        ${obRow('D2 Peralatan OKU', t.d2_disabled_equipment)}
+        ${obRow('D3 Yuran Pengajian', t.d3_course_fees)}
+        ${obRow('D4 Rawatan Perubatan', t.d4_medical_treatment)}
+        ${obRow('D5 Gaya Hidup', t.d5_lifestyle)}
+        ${obRow('D6 Gaya Hidup (Sukan)', t.d6_sports_lifestyle)}
+        ${obRow('D7 Peralatan Penyusuan', t.d7_breastfeeding_equipment)}
+        ${obRow('D8 Yuran Taska/Tadika', t.d8_childcare_fees)}
+        ${obRow('D9 Simpanan SSPN', t.d9_ssp1m_savings)}
+        ${obRow('D10 Alimoni', t.d10_alimony)}
+        ${obRow('D11(a) KWSP Sukarela', t.d11a_kwsp_sukarela)}
+        ${obRow('D11(b) Insurans Nyawa', t.d11b_life_insurance)}
+        ${obRow('D12 Persaraan Swasta', t.d12_private_retirement)}
+        ${obRow('D13 Insurans Pendidikan/Perubatan', t.d13_insurance_education_medical)}
+        ${obRow('D14 PERKESO', t.d14_perkeso)}
+        ${obRow('D15 EV/Kompos/CCTV', t.d15_ev_compost_cctv)}
+        ${obRow('D16(a) Faedah Pinjaman ≤RM500,000', t.d16a_housing_loan_500k)}
+        ${obRow('D16(b) Faedah Pinjaman RM500,000–750,000', t.d16b_housing_loan_750k)}
+        ${obRow('D17 Pelancongan/Kebudayaan', t.d17_tourism)}
       </div>
 
       <div class="detail-section">
@@ -1257,6 +1280,41 @@ function renderOnboardingModal(){
         ${obRow('TP3 Section', obConfirmLine(o.tp3_confirmed, o.tp3_confirmed_at))}
         ${obRow('Salary Crediting Section', obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at))}
       </div>
+  `;
+}
+
+function adminObPaginationHtml(){
+  return `
+    <div class="pagination" style="margin:14px 0;">
+      <button class="btn btn-outline btn-sm" ${adminObPage<=1?'disabled':''} onclick="adminObPage=1;renderOnboardingModal();">← Page 1</button>
+      <span style="font-size:13px;color:var(--ink-soft);">Page ${adminObPage} of 2</span>
+      <button class="btn btn-outline btn-sm" ${adminObPage>=2?'disabled':''} onclick="adminObPage=2;renderOnboardingModal();">Page 2 →</button>
+    </div>
+  `;
+}
+
+function renderOnboardingModal(){
+  const existing = document.getElementById('onboardingModalRoot');
+  if(existing) existing.remove();
+  const o = onboardingData;
+  if(!o){
+    alert('No onboarding record found for this candidate yet — they may not have started it.');
+    return;
+  }
+
+  const div = document.createElement('div');
+  div.id = 'onboardingModalRoot';
+  div.className = 'modal-overlay';
+  div.style.zIndex = '70';
+  div.onclick = (e)=>{ if(e.target===div) closeOnboardingModal(); };
+  div.innerHTML = `
+    <div class="modal" style="max-width:760px;">
+      <button class="modal-close" onclick="closeOnboardingModal()">✕</button>
+      <h2>Onboarding Details</h2>
+      <p style="color:var(--ink-soft);font-size:13px;margin-top:-6px;">Status: ${o.status==='completed' ? '<strong style="color:var(--ok);">Completed</strong>' : '<strong style="color:var(--warn);">In Progress</strong>'}</p>
+
+      ${adminObPage===1 ? adminObPage1Html(o) : adminObPage2Html(o)}
+      ${adminObPaginationHtml()}
 
       <div class="status-actions">
         <button class="btn btn-outline btn-sm" onclick="exportOnboardingPdf()">📄 Export to PDF</button>
