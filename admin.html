@@ -871,6 +871,7 @@ function jobsPageView(){
       <tr class="data-row">
         <td><strong>${esc(j.title)}</strong></td>
         <td>${esc(j.business_unit)}</td>
+        <td>${j.start_date ? new Date(j.start_date).toLocaleDateString() : '—'}</td>
         <td>${j.expiry_date ? `<span style="color:${expired?'var(--danger)':'var(--ink)'};">${new Date(j.expiry_date).toLocaleDateString()}${expired?' (expired)':''}</span>` : '<span style="color:var(--ink-soft);">No expiry</span>'}</td>
         <td>${new Date(j.created_at).toLocaleDateString()}</td>
         <td><button class="btn btn-outline-danger btn-sm" onclick="deleteJob('${j.id}')">Delete</button></td>
@@ -891,6 +892,7 @@ function jobsPageView(){
       <div class="field" style="margin:0;"><label>Business Unit</label>
         <select id="newJobUnit">${unitOptions.map(u=>`<option value="${u}">${u}</option>`).join('')}</select>
       </div>
+      <div class="field" style="margin:0;"><label>Start Date</label><input type="date" id="newJobStartDate" value="${new Date().toISOString().slice(0,10)}"></div>
       <div class="field" style="margin:0;"><label>Expiry Date (optional)</label><input type="date" id="newJobExpiry"></div>
       <button class="btn btn-primary btn-sm" onclick="createJob()">Post Job</button>
     </div>
@@ -898,7 +900,7 @@ function jobsPageView(){
 
     ${jobsList.length===0 ? `<div class="empty-state">No job postings yet — add one above.</div>` : `
       <table>
-        <thead><tr><th>Title</th><th>Unit</th><th>Expiry</th><th>Posted</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Title</th><th>Unit</th><th>Start Date</th><th>Expiry</th><th>Posted</th><th>Actions</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       <div class="pagination">
@@ -916,10 +918,11 @@ function jobsPageView(){
 async function createJob(){
   const title = document.getElementById('newJobTitle').value.trim();
   const unit = document.getElementById('newJobUnit').value;
+  const startDate = document.getElementById('newJobStartDate').value || null;
   const expiry = document.getElementById('newJobExpiry').value || null;
   if(!title){ document.getElementById('newJobErr').innerHTML = `<div class="error-banner">Please enter a job title.</div>`; return; }
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_create_job', { p_token: adminToken, p_title: title, p_business_unit: unit, p_expiry_date: expiry });
+    const { error } = await supabaseClient.rpc('rpc_admin_create_job', { p_token: adminToken, p_title: title, p_business_unit: unit, p_expiry_date: expiry, p_start_date: startDate });
     if(error) throw error;
     await loadJobsForPage();
     render();
