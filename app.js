@@ -143,6 +143,7 @@ function render(){
     case 'final': root.innerHTML = tplFinal(); break;
     case 'done': root.innerHTML = tplDone(); break;
     case 'onboarding': root.innerHTML = tplOnboarding(); break;
+    case 'my-application-detail': root.innerHTML = tplMyApplicationDetail(); break;
   }
 }
 
@@ -193,15 +194,14 @@ function tplStart(){
         <tbody>
           ${others.map(a=>`
             <tr>
-              <td><strong>${esc(a.reference_no)}</strong></td>
+              <td><strong><a href="#" onclick="viewMyApplication('${a.id}'); return false;" style="color:var(--navy-2);text-decoration:underline;">${esc(a.reference_no)}</a></strong></td>
               <td>${esc(a.position_applying)}</td>
               <td>${esc(a.business_unit)}</td>
               <td>${statusBadgeHtml(a.status)}</td>
               <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
               <td>
                 <div class="history-actions">
-                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding Details</button>` : ''}
-                  <button class="btn btn-ghost btn-sm" onclick="exportMyApplicationPdfById('${a.id}')">📄 Download PDF</button>
+                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding Details</button>` : '<span style="color:var(--ink-soft);font-size:12.5px;">—</span>'}
                 </div>
               </td>
             </tr>
@@ -247,6 +247,72 @@ async function continueDraft(id){
   if(!row) return;
   loadStateFromRow(row);
   goStep('personal');
+}
+
+let viewingApplicationId = null;
+function viewMyApplication(id){
+  viewingApplicationId = id;
+  goStep('my-application-detail');
+}
+
+function tplMyApplicationDetail(){
+  const a = myApplications.find(x=>x.id===viewingApplicationId);
+  if(!a){
+    return `
+      <div class="step-eyebrow">Application Details</div>
+      <h2>Not found</h2>
+      <p class="step-desc">This application could not be found.</p>
+      <button class="btn btn-ghost" onclick="goStep('start')">← Back to My Applications</button>
+    `;
+  }
+  const refs = [a.referee1, a.referee2].filter(r => r && r.name);
+  return `
+    <div class="step-eyebrow">${esc(a.reference_no)}</div>
+    <h2>${esc(a.position_applying || 'Application Details')}</h2>
+    <p class="step-desc">${esc(a.business_unit)} · ${statusBadgeHtml(a.status)} · Submitted ${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</p>
+
+    <div class="review-block">
+      <h4>Personal Particulars</h4>
+      ${rrow('Name (per NRIC)', a.name_nric)}
+      ${rrow('NRIC', a.nric_new)}
+      ${rrow('Email', a.email)}
+      ${rrow('Mobile', a.mobile_phone)}
+      ${rrow('Address', (a.permanent_address||'')+' '+(a.permanent_postcode||''))}
+    </div>
+
+    <div class="review-block">
+      <h4>Education</h4>
+      ${(a.education||[]).map(r=>rrow(r.type, `${r.name} (${r.from_year}–${r.to_year}) — ${r.qualification}${r.course_name?' — '+r.course_name:''}`)).join('') || rrow('Education','None provided')}
+    </div>
+
+    <div class="review-block">
+      <h4>Working Experience</h4>
+      ${(a.working_experience||[]).map(r=>rrow(r.position||'Position', `${r.employer} (${r.from}–${r.is_current?'Present':r.to})`)).join('') || rrow('Experience','None provided')}
+    </div>
+
+    <div class="review-block">
+      <h4>Employment Details</h4>
+      ${rrow('Expected Basic Salary', a.expected_basic_salary)}
+      ${rrow('Available to Start', a.date_available_to_start)}
+    </div>
+
+    ${refs.length ? `
+    <div class="review-block">
+      <h4>Referees</h4>
+      ${refs.map((r,i)=>rrow(`Referee ${i+1}`, `${r.name} — ${r.designation} · ${r.relationship} · ${r.contact}`)).join('')}
+    </div>` : ''}
+
+    <div class="review-block">
+      <h4>Declarations</h4>
+      ${rrow('(B) Lawsuits/Proceedings', a.declaration_lawsuit==='Yes' ? `Yes — ${a.declaration_lawsuit_specify}` : a.declaration_lawsuit)}
+      ${rrow('(C) Other Matters', a.declaration_other_matters==='Yes' ? `Yes — ${a.declaration_other_matters_specify}` : a.declaration_other_matters)}
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="goStep('start')">← Back to My Applications</button>
+      <div class="right"><button class="btn btn-primary" onclick="exportMyApplicationPdfById('${a.id}')">📄 Download as PDF</button></div>
+    </div>
+  `;
 }
 
 async function loadMyApplications(){
