@@ -389,14 +389,20 @@
         btn.setAttribute('aria-label', btn.title);
       }
 
-      // If this login page was reached via a "Complete Your Onboarding"
-      // email link (index.html?onboarding=<id> → bounced here because the
-      // candidate wasn't signed in yet), carry that same parameter forward
-      // to index.html once they do sign in, so they land straight in the
-      // onboarding form instead of the generic application list.
+      // If this login page was reached via a link carrying extra context —
+      // a "Complete Your Onboarding" email link (?onboarding=<id>) or a
+      // business-unit-specific application link (?bu=Mall etc.) — bounced
+      // here because the candidate wasn't signed in yet, carry that same
+      // parameter forward to index.html once they do sign in. Explicitly
+      // whitelisted (rather than forwarding the whole query string) so an
+      // unrelated param like a failed OAuth's ?error=... never leaks through.
       function indexRedirectUrl(basePath) {
-        const onboardingId = new URLSearchParams(window.location.search).get('onboarding');
-        return basePath + (onboardingId ? '?onboarding=' + encodeURIComponent(onboardingId) : '');
+        const params = new URLSearchParams(window.location.search);
+        const forward = new URLSearchParams();
+        if(params.get('onboarding')) forward.set('onboarding', params.get('onboarding'));
+        if(params.get('bu')) forward.set('bu', params.get('bu'));
+        const qs = forward.toString();
+        return basePath + (qs ? '?' + qs : '');
       }
 
       function oauthButtons() {
