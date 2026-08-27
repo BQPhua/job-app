@@ -86,7 +86,15 @@
   .toolbar input[type=text]{flex:1;min-width:220px;}
   .toolbar select{width:auto;}
 
-  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm);}
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);}
+  /* overflow:hidden used to be here to make the border-radius show on the
+     table's corners, but that also clipped the status-panel dropdown
+     (position:absolute, extends past the table's own box) — replicate the
+     same rounded-corner look without clipping child content instead. */
+  thead tr:first-child th:first-child{border-top-left-radius:var(--radius);}
+  thead tr:first-child th:last-child{border-top-right-radius:var(--radius);}
+  tbody tr:last-child td:first-child{border-bottom-left-radius:var(--radius);}
+  tbody tr:last-child td:last-child{border-bottom-right-radius:var(--radius);}
   th{background:var(--navy);color:#fff;text-align:left;padding:11px 14px;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:600;}
   td{padding:11px 14px;font-size:13.5px;border-bottom:1px solid var(--line);vertical-align:middle;}
   tr:last-child td{border-bottom:none;}
@@ -136,9 +144,11 @@
   @keyframes bulkIn{ from{opacity:0;transform:translateY(-4px);} to{opacity:1;transform:translateY(0);} }
   .bulk-toolbar .bulk-count{font-weight:700;font-size:13.5px;margin-right:auto;}
   .bulk-toolbar select{font-family:inherit;font-size:13px;padding:8px 10px;border-radius:7px;border:1px solid #3A3A3A;background:#1F1F1F;color:#fff;}
-  .bulk-toolbar .btn-outline{background:transparent;color:#fff;border-color:#444;}
-  .bulk-toolbar .btn-outline:hover{background:#1F1F1F;}
-  .bulk-toolbar .bulk-clear{opacity:.8;}
+  .bulk-toolbar .btn-accent,
+  .bulk-toolbar .btn-outline{background:#fff;color:var(--navy);border-color:#fff;}
+  .bulk-toolbar .btn-accent:hover,
+  .bulk-toolbar .btn-outline:hover{background:var(--cream);}
+  .bulk-toolbar .bulk-clear{opacity:.85;}
 
   /* ---------- Modal ---------- */
   .modal-overlay{position:fixed;inset:0;background:rgba(10,10,10,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;z-index:50;}
@@ -708,6 +718,7 @@ function downloadApplicationsCsv(data, filename){
       // -- Employment Questions --
       'Resignation Notice Required','Notice Period','Date Available to Start','Expected Basic Salary',
       'Relatives in Company','Relatives Name','Relatives Relationship',
+      'Referred by Anyone','Referral Name','Referral Department',
       'Own Transport (Car)','Own Transport (Motorcycle)','Willing Outside Klang Valley',
       'Physical Defects','Physical Defects Specify','Arrested/Convicted','Arrested/Convicted Specify',
       // -- Referees & Declarations --
@@ -743,6 +754,7 @@ function downloadApplicationsCsv(data, filename){
       jsonCell(a.language_ability), jsonCell(a.education), jsonCell(a.working_experience),
       a.resignation_notice_required, a.notice_period, a.date_available_to_start, a.expected_basic_salary,
       a.relatives_in_company, a.relatives_name, a.relatives_relationship,
+      a.referral_person, a.referral_name, a.referral_department,
       a.own_transport_motorcar, a.own_transport_motorcycle, a.willing_based_outside_klang_valley,
       a.physical_defects, a.physical_defects_specify, a.arrested_convicted, a.arrested_convicted_specify,
       jsonCell(a.referee1), jsonCell(a.referee2), a.declaration_lawsuit, a.declaration_lawsuit_specify, a.declaration_other_matters, a.declaration_other_matters_specify,
@@ -921,6 +933,8 @@ function viewDetailHtml(a){
         <h4>Additional Questions</h4>
         ${drow('Relatives/Friends in Company', a.relatives_in_company)}
         ${a.relatives_in_company==='Yes' ? drow('Relative Name / Relationship', `${a.relatives_name||'—'} / ${a.relatives_relationship||'—'}`) : ''}
+        ${drow('Referred by Anyone', a.referral_person)}
+        ${a.referral_person==='Yes' ? drow('Referral Name / Department', `${a.referral_name||'—'} / ${a.referral_department||'—'}`) : ''}
         ${drow('Physical Defects/Disabilities', a.physical_defects)}
         ${a.physical_defects==='Yes' ? drow('Please Specify', a.physical_defects_specify) : ''}
         ${drow('Arrested/Convicted', a.arrested_convicted)}
@@ -1461,6 +1475,8 @@ function buildJobApplicationPageHtml(a){
     <div class="kv">
       <div class="item"><span class="lbl">Relatives/Friends in Company</span>${fmt(a.relatives_in_company)}</div>
       ${a.relatives_in_company==='Yes' ? `<div class="item"><span class="lbl">Relative Name / Relationship</span>${fmt(a.relatives_name)} / ${fmt(a.relatives_relationship)}</div>` : ''}
+      <div class="item"><span class="lbl">Referred by Anyone</span>${fmt(a.referral_person)}</div>
+      ${a.referral_person==='Yes' ? `<div class="item"><span class="lbl">Referral Name / Department</span>${fmt(a.referral_name)} / ${fmt(a.referral_department)}</div>` : ''}
       <div class="item"><span class="lbl">Physical Defects/Disabilities</span>${fmt(a.physical_defects)}</div>
       ${a.physical_defects==='Yes' ? `<div class="item full"><span class="lbl">Please Specify</span>${fmt(a.physical_defects_specify)}</div>` : ''}
       <div class="item"><span class="lbl">Arrested/Convicted</span>${fmt(a.arrested_convicted)}</div>
