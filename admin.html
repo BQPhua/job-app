@@ -97,14 +97,24 @@
   .badge.submitted{background:var(--info-tint);color:var(--info);}
   .badge.under_review{background:var(--warn-tint);color:var(--warn);}
   .badge.shortlisted{background:var(--ok-tint);color:var(--ok);}
-  .badge.interview_scheduled{background:#EEE8FB;color:#6A3FC0;}
-  .badge.offer_sent{background:#FCEFE0;color:#B9660E;}
+  .badge.interview_scheduled{background:#EEE8FB;color:#6A3FC0;} /* historical only, no longer selectable */
+  .badge.offer_sent{background:#FCEFE0;color:#B9660E;} /* historical only, no longer selectable */
+  .badge.kiv{background:#FDF3E3;color:#9C7A0E;}
   .badge.rejected{background:var(--danger-tint);color:var(--danger);}
   .badge.hired{background:var(--navy);color:#fff;}
   .badge.withdrawn{background:#EDEDEC;color:var(--ink-soft);}
   .badge.blacklisted{background:#1a1a1a;color:#fff;}
 
-  select.status-select{font-size:12px;padding:6px 8px;border-radius:7px;border:1px solid var(--line);background:#fff;font-weight:600;cursor:pointer;}
+  .status-panel{
+    position:absolute;top:100%;left:0;margin-top:4px;background:#fff;border:1px solid var(--line);border-radius:8px;
+    box-shadow:var(--shadow-md);z-index:15;min-width:160px;padding:4px;
+  }
+  .status-panel-btn{
+    display:block;width:100%;text-align:left;padding:8px 10px;font-family:inherit;font-size:12.5px;font-weight:600;
+    background:none;border:none;border-radius:6px;cursor:pointer;color:var(--ink);
+  }
+  .status-panel-btn:hover{background:var(--cream);}
+  .status-panel-btn.current{color:var(--accent);}
 
   .pagination{display:flex;justify-content:space-between;align-items:center;margin-top:14px;font-size:13px;color:var(--ink-soft);}
   .pagination .controls{display:flex;gap:6px;align-items:center;}
@@ -242,7 +252,6 @@
 
 <script src="config.js"></script>
 <script src="logo.js"></script>
-<script src="jts-logo.js"></script>
 <script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);</script>
 <script>
 // ============================================================================
@@ -255,10 +264,7 @@ let totalCount = 0;
 let stats = { total: 0, by_status: {} };
 let selectedApp = null;
 let editingApp = false;
-let jobsList = [];
 let currentView = 'home';
-let jobsCurrentPage = 1;
-const JOBS_PAGE_SIZE = 10;
 let searchTerm = '';
 let filterBusinessUnit = '';
 let filterStatus = '';
@@ -266,6 +272,7 @@ let currentPage = 1;
 const PAGE_SIZE = 20;
 let searchDebounceTimer = null;
 let selectedIds = new Set(); // batch management — ids checked on the current page
+let openStatusPanelId = null; // which row's status button panel is currently open (only one at a time)
 
 // ---------------------------------------------------------------------------
 // Small consistent icon set for row/table actions — replaces mixed emoji so
@@ -296,10 +303,14 @@ function rowActionsHtml(a){
 
 const STATUS_LABELS = {
   submitted:'New', under_review:'Under Review', shortlisted:'Shortlisted',
+  // interview_scheduled and offer_sent are no longer selectable (removed
+  // from STATUS_OPTIONS below) but stay mapped here so any existing
+  // historical record still in one of those statuses displays its label
+  // correctly instead of showing "undefined".
   interview_scheduled:'Interview Scheduled', offer_sent:'Offer Sent',
-  hired:'Hired', rejected:'Rejected', withdrawn:'Withdrawn', blacklisted:'Blacklisted'
+  kiv:'KIV', hired:'Hired', rejected:'Rejected', withdrawn:'Withdrawn', blacklisted:'Blacklisted'
 };
-const STATUS_OPTIONS = ['under_review','shortlisted','interview_scheduled','offer_sent','hired','rejected','withdrawn','blacklisted'];
+const STATUS_OPTIONS = ['under_review','shortlisted','kiv','hired','rejected','withdrawn','blacklisted'];
 
 function esc(v){ if(v===null||v===undefined) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function showLoading(text){ document.getElementById('loadingText').innerText = text||'Working...'; document.getElementById('loadingOverlay').style.display='flex'; }
@@ -329,7 +340,6 @@ function render(){
   if(navEl){
     navEl.innerHTML = adminToken ? `
       <a class="${currentView==='home'?'active':''}" onclick="setView('home')">Home</a>
-      <a class="${currentView==='jobs'?'active':''}" onclick="setView('jobs')">Job Postings</a>
       ${adminScope==='ALL' ? `<a class="${currentView==='settings'?'active':''}" onclick="setView('settings')">Manager Settings</a>` : ''}
     ` : '';
   }
@@ -344,8 +354,7 @@ function render(){
     }
   } else {
     let pageContent;
-    if(currentView==='jobs') pageContent = jobsPageView();
-    else if(currentView==='settings') pageContent = settingsPageView();
+    if(currentView==='settings') pageContent = settingsPageView();
     root.innerHTML = `<div class="wrap">${pageContent}</div>`;
     lastRenderedView = currentView;
   }
@@ -353,7 +362,6 @@ function render(){
 }
 async function setView(view){
   currentView = view;
-  if(view==='jobs'){ jobsCurrentPage = 1; await loadJobsForPage(); }
   if(view==='settings'){ await loadSettingsForPage(); }
   render();
 }
@@ -445,6 +453,7 @@ function statRowHtml(){
       <div class="stat"><div class="n">${stats.by_status?.submitted||0}</div><div class="l">New</div></div>
       <div class="stat"><div class="n">${stats.by_status?.under_review||0}</div><div class="l">Under Review</div></div>
       <div class="stat"><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
+      <div class="stat"><div class="n">${stats.by_status?.kiv||0}</div><div class="l">KIV</div></div>
       <div class="stat"><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
       <div class="stat"><div class="n">${stats.by_status?.rejected||0}</div><div class="l">Rejected</div></div>
   `;
@@ -469,11 +478,13 @@ function dashboardResultsHtml(){
       </td>
       <td><strong>${esc(a.position_applying)}</strong></td>
       <td>${esc(a.business_unit)}</td>
-      <td>
-        <select class="status-select" onchange="quickUpdateStatus('${a.id}', this.value)">
-          <option value="submitted" ${a.status==='submitted'?'selected':''} disabled>New</option>
-          ${STATUS_OPTIONS.map(s=>`<option value="${s}" ${a.status===s?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
-        </select>
+      <td style="position:relative;">
+        <span class="badge ${a.status}" style="cursor:pointer;" onclick="toggleStatusPanel('${a.id}')">${STATUS_LABELS[a.status]||a.status} ▾</span>
+        ${openStatusPanelId === a.id ? `
+          <div class="status-panel">
+            ${STATUS_OPTIONS.map(s=>`<button class="status-panel-btn ${a.status===s?'current':''}" onclick="quickUpdateStatus('${a.id}', '${s}')">${STATUS_LABELS[s]}${a.status===s?' ✓':''}</button>`).join('')}
+          </div>
+        ` : ''}
       </td>
       <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
       <td>${rowActionsHtml(a)}</td>
@@ -525,16 +536,17 @@ function renderDashboardResults(){
 function handleSearchInput(val){
   searchTerm = val;
   clearTimeout(searchDebounceTimer);
-  searchDebounceTimer = setTimeout(() => { currentPage = 1; selectedIds.clear(); loadApplications(); }, 350);
+  searchDebounceTimer = setTimeout(() => { currentPage = 1; selectedIds.clear(); openStatusPanelId = null; loadApplications(); }, 350);
 }
 function setFilter(key, val){
   if(key==='business_unit') filterBusinessUnit = val;
   if(key==='status') filterStatus = val;
   currentPage = 1;
   selectedIds.clear();
+  openStatusPanelId = null;
   loadApplications();
 }
-function goToPage(p){ currentPage = p; selectedIds.clear(); loadApplications(); }
+function goToPage(p){ currentPage = p; selectedIds.clear(); openStatusPanelId = null; loadApplications(); }
 
 // ---------------------------------------------------------------------------
 // BATCH MANAGEMENT — selection is scoped to what's currently loaded (one
@@ -640,8 +652,18 @@ async function loadStats(){
   } catch(e){ console.error(e); }
 }
 
+function toggleStatusPanel(id){
+  openStatusPanelId = (openStatusPanelId === id) ? null : id;
+  renderDashboardResults();
+}
+
 async function quickUpdateStatus(id, status){
-  if(status === 'blacklisted' && !confirm('Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email.')){ loadApplications(); return; }
+  const label = STATUS_LABELS[status] || status;
+  const warnMsg = status === 'blacklisted'
+    ? 'Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email.'
+    : `Change this application's status to "${label}"? The candidate will be notified by email.`;
+  if(!confirm(warnMsg)){ openStatusPanelId = null; loadApplications(); return; }
+  openStatusPanelId = null;
   try{
     const { error } = await supabaseClient.rpc('rpc_admin_update_status', {p_token: adminToken, p_id: id, p_status: status});
     if(error) throw error;
@@ -689,9 +711,9 @@ function downloadApplicationsCsv(data, filename){
       'Own Transport (Car)','Own Transport (Motorcycle)','Willing Outside Klang Valley',
       'Physical Defects','Physical Defects Specify','Arrested/Convicted','Arrested/Convicted Specify',
       // -- Referees & Declarations --
-      'Referee 1 (JSON)','Referee 2 (JSON)','Declaration - Lawsuit','Declaration - Other Matters',
+      'Referee 1 (JSON)','Referee 2 (JSON)','Declaration - Lawsuit (B)','Declaration - Lawsuit Specify','Declaration - Other Matters (C)','Declaration - Other Matters Specify',
       // -- Attachments & Consent --
-      'Profile Picture URL','Attachments (JSON)','Consent Language',
+      'Passport Size Photo URL','Attachments (JSON)','Consent Language',
       'JTS Agreed','JTS Agreed Name','JTS Agreed NRIC','JTS Agreed Mobile','JTS Agreed At',
       'PDPA Agreed','PDPA Agreed Name','PDPA Agreed NRIC','PDPA Agreed At',
       // -- Onboarding: Statutory Details --
@@ -723,7 +745,7 @@ function downloadApplicationsCsv(data, filename){
       a.relatives_in_company, a.relatives_name, a.relatives_relationship,
       a.own_transport_motorcar, a.own_transport_motorcycle, a.willing_based_outside_klang_valley,
       a.physical_defects, a.physical_defects_specify, a.arrested_convicted, a.arrested_convicted_specify,
-      jsonCell(a.referee1), jsonCell(a.referee2), a.declaration_lawsuit, a.declaration_other_matters,
+      jsonCell(a.referee1), jsonCell(a.referee2), a.declaration_lawsuit, a.declaration_lawsuit_specify, a.declaration_other_matters, a.declaration_other_matters_specify,
       a.profile_picture_url, jsonCell(a.attachments), a.language_choice,
       a.jts_agreed, a.jts_agreed_name, a.jts_agreed_nric, a.jts_agreed_mobile, dt(a.jts_agreed_at),
       a.pdpa_agreed, a.pdpa_agreed_name, a.pdpa_agreed_nric, dt(a.pdpa_agreed_at),
@@ -830,114 +852,6 @@ async function saveSettings(){
   } catch(e){ document.getElementById('settingsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
 
-async function loadJobsForPage(){
-  try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_list_jobs', { p_token: adminToken });
-    if(error) throw error;
-    jobsList = data || [];
-    await sweepExpiredJobs();
-  } catch(e){ alert('Error loading job postings: '+e.message); jobsList = []; }
-}
-
-// Candidates never see expired postings (already filtered by expiry_date in
-// rpc_list_active_jobs), but they used to linger in the admin's Job Postings
-// list until someone manually deleted them. There's no cron job in this
-// project (deliberately — see project conventions), so instead we do a
-// lazy cleanup sweep every time an admin opens the Jobs page: anything past
-// its expiry date gets deleted right away, no manual click needed.
-async function sweepExpiredJobs(){
-  const now = new Date();
-  const expired = jobsList.filter(j => j.expiry_date && new Date(j.expiry_date) < now);
-  if(expired.length === 0) return;
-  for(const j of expired){
-    try{ await supabaseClient.rpc('rpc_admin_delete_job', { p_token: adminToken, p_id: j.id }); }
-    catch(e){ console.error('Failed to auto-remove expired job', j.id, e); }
-  }
-  const { data } = await supabaseClient.rpc('rpc_admin_list_jobs', { p_token: adminToken });
-  jobsList = data || [];
-}
-function goToJobsPage(p){ jobsCurrentPage = p; render(); }
-
-function jobsPageView(){
-  const unitOptions = adminScope === 'ALL' ? ['E&C','Land','Mall'] : [adminScope];
-  const totalPages = Math.max(1, Math.ceil(jobsList.length / JOBS_PAGE_SIZE));
-  if(jobsCurrentPage > totalPages) jobsCurrentPage = totalPages;
-  const pageStart = (jobsCurrentPage - 1) * JOBS_PAGE_SIZE;
-  const pageItems = jobsList.slice(pageStart, pageStart + JOBS_PAGE_SIZE);
-
-  const rows = pageItems.map(j=>{
-    const expired = j.expiry_date && new Date(j.expiry_date) < new Date();
-    return `
-      <tr class="data-row">
-        <td><strong>${esc(j.title)}</strong></td>
-        <td>${esc(j.business_unit)}</td>
-        <td>${j.start_date ? new Date(j.start_date).toLocaleDateString() : '—'}</td>
-        <td>${j.expiry_date ? `<span style="color:${expired?'var(--danger)':'var(--ink)'};">${new Date(j.expiry_date).toLocaleDateString()}${expired?' (expired)':''}</span>` : '<span style="color:var(--ink-soft);">No expiry</span>'}</td>
-        <td>${new Date(j.created_at).toLocaleDateString()}</td>
-        <td><button class="btn btn-outline-danger btn-sm" onclick="deleteJob('${j.id}')">Delete</button></td>
-      </tr>
-    `;
-  }).join('');
-
-  return `
-    <div class="stat-row">
-      <div class="stat" style="flex:none;min-width:auto;">
-        <h2 style="font-size:20px;margin:0;">Job Postings</h2>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Candidates only see postings listed here, and only while unexpired.</div>
-      </div>
-    </div>
-
-    <div class="toolbar" style="align-items:flex-end;">
-      <div class="field" style="margin:0;flex:1;min-width:180px;"><label>Job Title</label><input type="text" id="newJobTitle" placeholder="e.g. Site Engineer"></div>
-      <div class="field" style="margin:0;"><label>Business Unit</label>
-        <select id="newJobUnit">${unitOptions.map(u=>`<option value="${u}">${u}</option>`).join('')}</select>
-      </div>
-      <div class="field" style="margin:0;"><label>Start Date</label><input type="date" id="newJobStartDate" value="${new Date().toISOString().slice(0,10)}"></div>
-      <div class="field" style="margin:0;"><label>Expiry Date (optional)</label><input type="date" id="newJobExpiry"></div>
-      <button class="btn btn-primary btn-sm" onclick="createJob()">Post Job</button>
-    </div>
-    <div id="newJobErr"></div>
-
-    ${jobsList.length===0 ? `<div class="empty-state">No job postings yet — add one above.</div>` : `
-      <table>
-        <thead><tr><th>Title</th><th>Unit</th><th>Start Date</th><th>Expiry</th><th>Posted</th><th>Actions</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <div class="pagination">
-        <div>Showing ${pageStart+1}–${Math.min(pageStart+JOBS_PAGE_SIZE, jobsList.length)} of ${jobsList.length}</div>
-        <div class="controls">
-          <button class="btn btn-outline btn-sm" ${jobsCurrentPage<=1?'disabled':''} onclick="goToJobsPage(jobsCurrentPage-1)">← Prev</button>
-          <span>Page ${jobsCurrentPage} of ${totalPages}</span>
-          <button class="btn btn-outline btn-sm" ${jobsCurrentPage>=totalPages?'disabled':''} onclick="goToJobsPage(jobsCurrentPage+1)">Next →</button>
-        </div>
-      </div>
-    `}
-  `;
-}
-
-async function createJob(){
-  const title = document.getElementById('newJobTitle').value.trim();
-  const unit = document.getElementById('newJobUnit').value;
-  const startDate = document.getElementById('newJobStartDate').value || null;
-  const expiry = document.getElementById('newJobExpiry').value || null;
-  if(!title){ document.getElementById('newJobErr').innerHTML = `<div class="error-banner">Please enter a job title.</div>`; return; }
-  try{
-    const { error } = await supabaseClient.rpc('rpc_admin_create_job', { p_token: adminToken, p_title: title, p_business_unit: unit, p_expiry_date: expiry, p_start_date: startDate });
-    if(error) throw error;
-    await loadJobsForPage();
-    render();
-  } catch(e){ document.getElementById('newJobErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
-}
-async function deleteJob(id){
-  if(!confirm('Delete this job posting? Candidates will no longer be able to select it.')) return;
-  try{
-    const { error } = await supabaseClient.rpc('rpc_admin_delete_job', { p_token: adminToken, p_id: id });
-    if(error) throw error;
-    await loadJobsForPage();
-    render();
-  } catch(e){ alert('Error: '+e.message); }
-}
-
 function renderModal(){
   const a = selectedApp;
   const existing = document.getElementById('modalRoot');
@@ -985,12 +899,12 @@ function viewDetailHtml(a){
 
       <div class="detail-section">
         <h4>Education</h4>
-        ${(a.education||[]).map(e=>drow(e.type, `${e.name} (${e.from_year}–${e.to_year}) — ${e.qualification}`)).join('') || drow('Education','None provided')}
+        ${(a.education||[]).map(e=>drow(e.type, `${e.name} (${e.from_year}–${e.to_year}) — ${e.qualification}${e.course_name?' — '+e.course_name:''}`)).join('') || drow('Education','None provided')}
       </div>
 
       <div class="detail-section">
         <h4>Working Experience</h4>
-        ${(a.working_experience||[]).map(e=>drow(e.position||'Position', `${e.employer} (${e.from}–${e.to}) — RM${e.remuneration||'—'}/month`)).join('') || drow('Experience','None provided')}
+        ${(a.working_experience||[]).map(e=>drow(e.position||'Position', `${e.employer} (${e.from}–${e.is_current?'Present':e.to}) — RM${e.remuneration||'—'}/month`)).join('') || drow('Experience','None provided')}
       </div>
 
       <div class="detail-section">
@@ -1022,8 +936,8 @@ function viewDetailHtml(a){
 
       <div class="detail-section">
         <h4>Declarations</h4>
-        ${drow('Lawsuits / Proceedings', a.declaration_lawsuit)}
-        ${drow('Other Matters', a.declaration_other_matters)}
+        ${drow('Declaration (B) — Lawsuits/Proceedings', a.declaration_lawsuit==='Yes' ? `Yes — ${a.declaration_lawsuit_specify}` : a.declaration_lawsuit)}
+        ${drow('Declaration (C) — Other Matters', a.declaration_other_matters==='Yes' ? `Yes — ${a.declaration_other_matters_specify}` : a.declaration_other_matters)}
       </div>
 
       <div class="detail-section">
@@ -1045,7 +959,6 @@ function viewDetailHtml(a){
       <div class="detail-section">
         <h4>Consent Records</h4>
         ${drow('Consent Language', a.language_choice==='BM' ? 'Bahasa Melayu' : 'English')}
-        ${drow('JTS Consent Agreed', a.jts_agreed ? `Yes — ${new Date(a.jts_agreed_at).toLocaleString()}` : 'No')}
         ${drow('PDPA Consent Agreed', a.pdpa_agreed ? `Yes — ${new Date(a.pdpa_agreed_at).toLocaleString()}` : 'No')}
       </div>
 
@@ -1117,7 +1030,11 @@ async function saveEdit(){
 }
 
 async function updateStatus(status){
-  if(status === 'blacklisted' && !confirm('Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email. This can be reversed later by changing their status.')) return;
+  const label = STATUS_LABELS[status] || status;
+  const warnMsg = status === 'blacklisted'
+    ? 'Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email. This can be reversed later by changing their status.'
+    : `Change this application's status to "${label}"? The candidate will be notified by email.`;
+  if(!confirm(warnMsg)) return;
   try{
     const { error } = await supabaseClient.rpc('rpc_admin_update_status', {p_token: adminToken, p_id: selectedApp.id, p_status: status});
     if(error) throw error;
@@ -1137,10 +1054,6 @@ let onboardingAppInfo = null; // basic application record (name/reference) for t
 // it here would silently pop open the detail modal and freeze the
 // dashboard's auto-refresh any time someone views onboarding without
 // having opened the detail modal first.
-let adminObPage = 1; // which page of the onboarding modal is showing — the
-// full record (personal/spouse/children/emergency/beneficiary + the
-// complete TP3 form + salary) is too long for one screen, same reasoning
-// as the candidate's own paginated summary.
 
 async function openOnboardingView(applicationId){
   try{
@@ -1155,14 +1068,12 @@ async function openOnboardingView(applicationId){
     if(appRes.error) throw appRes.error;
     onboardingData = obRes.data[0];
     onboardingAppInfo = appRes.data[0];
-    adminObPage = 1;
     renderOnboardingModal();
   } catch(e){ alert('Error loading onboarding details: '+e.message); }
 }
 function closeOnboardingModal(){
   onboardingData = null;
   onboardingAppInfo = null;
-  adminObPage = 1;
   const existing = document.getElementById('onboardingModalRoot');
   if(existing) existing.remove();
 }
@@ -1193,12 +1104,12 @@ function adminObPage1Html(o){
 
       <div class="detail-section">
         <h4>Children Below 18</h4>
-        ${(o.children_below_18||[]).map(c=>obRow(c.name, `DOB: ${c.date_of_birth||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obRow('Children','None')}
+        ${(o.children_below_18||[]).map(c=>obRow(c.name, `${c.gender||'—'} · NRIC: ${c.nric||'—'} · DOB: ${c.date_of_birth||'—'} · Education: ${c.course_name||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obRow('Children','None')}
       </div>
 
       <div class="detail-section">
         <h4>Children 18–23 (Unmarried, Full-Time Student)</h4>
-        ${(o.children_18_to_23||[]).map(c=>obRow(c.name, `${c.gender||'—'} · NRIC: ${c.nric||'—'} · DOB: ${c.date_of_birth||'—'} · ${c.course_name||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obRow('Children','None')}
+        ${(o.children_18_to_23||[]).map(c=>obRow(c.name, `${c.gender||'—'} · NRIC: ${c.nric||'—'} · DOB: ${c.date_of_birth||'—'} · Education: ${c.course_name||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obRow('Children','None')}
       </div>
 
       <div class="detail-section">
@@ -1207,7 +1118,7 @@ function adminObPage1Html(o){
       </div>
 
       <div class="detail-section">
-        <h4>Beneficiary</h4>
+        <h4>Beneficiary (Next of Kin)</h4>
         ${obRow('Name', o.beneficiary_name)}
         ${obRow('Relationship', o.beneficiary_relationship)}
         ${obRow('Contact', o.beneficiary_contact)}
@@ -1216,60 +1127,7 @@ function adminObPage1Html(o){
 }
 
 function adminObPage2Html(o){
-  const t = o.tp3_data || {};
   return `
-      <div class="detail-section">
-        <h4>TP3 — Bahagian A: Maklumat Majikan Terdahulu</h4>
-        ${obRow('A1 Nama Majikan Terdahulu 1', t.employer1_name)}
-        ${obRow('A2 No. Pengenalan Cukai (TIN) 1', t.employer1_tin)}
-        ${obRow('A3 Nama Majikan Terdahulu 2', t.employer2_name)}
-        ${obRow('A4 No. Pengenalan Cukai (TIN) 2', t.employer2_tin)}
-      </div>
-
-      <div class="detail-section">
-        <h4>TP3 — Bahagian B: Maklumat Individu</h4>
-        ${obRow('B1 Nama', t.b1_name)}
-        ${obRow('B2 No. Kad Pengenalan/Pasport', t.b2_ic_passport)}
-        ${obRow('B3 No. Pengenalan Cukai (TIN)', t.b3_tin)}
-      </div>
-
-      <div class="detail-section">
-        <h4>TP3 — Bahagian C: Saraan / KWSP / Zakat / PCB</h4>
-        ${obRow('C1 Jumlah Saraan Kasar', t.c1_gross_remuneration)}
-        ${obRow('C2(i) Elaun Perjalanan', t.c2i_travel)}
-        ${obRow('C2(ii) Elaun Penjagaan Anak', t.c2ii_childcare)}
-        ${obRow('C2(iii) Produk Percuma/Diskaun', t.c2iii_products)}
-        ${obRow('C2(iv) Perkuisit Perkhidmatan Lalu', t.c2iv_service_award)}
-        ${obRow('C2(v) Lain-lain Pengecualian', t.c2v_other)}
-        ${obRow('C3 Jumlah KWSP', t.c3_epf_total)}
-        ${obRow('C4(i) Zakat', t.c4i_zakat)}
-        ${obRow('C4(ii) Levi Umrah', t.c4ii_umrah)}
-        ${obRow('C5 Jumlah PCB', t.c5_total_pcb)}
-      </div>
-
-      <div class="detail-section">
-        <h4>TP3 — Bahagian D: Potongan</h4>
-        ${obRow('D1 Ibu Bapa/Datuk Nenek', t.d1_parent_medical)}
-        ${obRow('D2 Peralatan OKU', t.d2_disabled_equipment)}
-        ${obRow('D3 Yuran Pengajian', t.d3_course_fees)}
-        ${obRow('D4 Rawatan Perubatan', t.d4_medical_treatment)}
-        ${obRow('D5 Gaya Hidup', t.d5_lifestyle)}
-        ${obRow('D6 Gaya Hidup (Sukan)', t.d6_sports_lifestyle)}
-        ${obRow('D7 Peralatan Penyusuan', t.d7_breastfeeding_equipment)}
-        ${obRow('D8 Yuran Taska/Tadika', t.d8_childcare_fees)}
-        ${obRow('D9 Simpanan SSPN', t.d9_ssp1m_savings)}
-        ${obRow('D10 Alimoni', t.d10_alimony)}
-        ${obRow('D11(a) KWSP Sukarela', t.d11a_kwsp_sukarela)}
-        ${obRow('D11(b) Insurans Nyawa', t.d11b_life_insurance)}
-        ${obRow('D12 Persaraan Swasta', t.d12_private_retirement)}
-        ${obRow('D13 Insurans Pendidikan/Perubatan', t.d13_insurance_education_medical)}
-        ${obRow('D14 PERKESO', t.d14_perkeso)}
-        ${obRow('D15 EV/Kompos/CCTV', t.d15_ev_compost_cctv)}
-        ${obRow('D16(a) Faedah Pinjaman ≤RM500,000', t.d16a_housing_loan_500k)}
-        ${obRow('D16(b) Faedah Pinjaman RM500,000–750,000', t.d16b_housing_loan_750k)}
-        ${obRow('D17 Pelancongan/Kebudayaan', t.d17_tourism)}
-      </div>
-
       <div class="detail-section">
         <h4>Salary Crediting</h4>
         ${obRow('Bank', o.salary_bank)}
@@ -1280,19 +1138,8 @@ function adminObPage2Html(o){
       <div class="detail-section">
         <h4>Confirmation Records</h4>
         ${obRow('Personal Details Section', obConfirmLine(o.personal_details_confirmed, o.personal_details_confirmed_at))}
-        ${obRow('TP3 Section', obConfirmLine(o.tp3_confirmed, o.tp3_confirmed_at))}
         ${obRow('Salary Crediting Section', obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at))}
       </div>
-  `;
-}
-
-function adminObPaginationHtml(){
-  return `
-    <div class="pagination" style="margin:14px 0;">
-      <button class="btn btn-outline btn-sm" ${adminObPage<=1?'disabled':''} onclick="adminObPage=1;renderOnboardingModal();">← Page 1</button>
-      <span style="font-size:13px;color:var(--ink-soft);">Page ${adminObPage} of 2</span>
-      <button class="btn btn-outline btn-sm" ${adminObPage>=2?'disabled':''} onclick="adminObPage=2;renderOnboardingModal();">Page 2 →</button>
-    </div>
   `;
 }
 
@@ -1316,8 +1163,8 @@ function renderOnboardingModal(){
       <h2>Onboarding Details</h2>
       <p style="color:var(--ink-soft);font-size:13px;margin-top:-6px;">Status: ${o.status==='completed' ? '<strong style="color:var(--ok);">Completed</strong>' : '<strong style="color:var(--warn);">In Progress</strong>'}</p>
 
-      ${adminObPage===1 ? adminObPage1Html(o) : adminObPage2Html(o)}
-      ${adminObPaginationHtml()}
+      ${adminObPage1Html(o)}
+      ${adminObPage2Html(o)}
 
       <div class="status-actions">
         <button class="btn btn-outline btn-sm" onclick="exportOnboardingPdf()">📄 Export to PDF</button>
@@ -1339,10 +1186,9 @@ function exportOnboardingPdf(){
 }
 
 function buildOnboardingPdfHtml(a, o){
-  const t = o.tp3_data || {};
   const chk = (v) => v ? '☑' : '☐';
   const box = (v, w) => `<span style="display:inline-block;border:1px solid #999;padding:2px 8px;min-width:${w||'90px'};font-size:10px;">${fmt(v)}</span>`;
-  const childRowsBelow18 = (o.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmtDate(c.date_of_birth)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">Tiada</td></tr>`;
+  const childRowsBelow18 = (o.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">Tiada</td></tr>`;
   const childRows18to23 = (o.children_18_to_23||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">Tiada</td></tr>`;
   const emergencyRows = (o.emergency_contacts||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.relationship)}</td><td>${fmt(c.contact)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>`;
   const companies = ['WCT Berhad', 'WCT Construction Sdn Bhd', 'WCT Machinery Sdn Bhd', 'Intraxis Engineering Sdn Bhd'];
@@ -1417,16 +1263,16 @@ function buildOnboardingPdfHtml(a, o){
     <h2 class="bahagian">Children Information (if applicable)</h2>
     <p style="font-size:8.5px;color:#666;margin:-2px 0 4px;">Please tick the checkbox if claiming for Child Tax Relief</p>
     <div style="font-size:9.5px;font-weight:bold;margin-bottom:3px;">Children Below 18 Years Old</div>
-    <table class="data-table"><thead><tr><th>Name (as per NRIC)</th><th>Date of Birth</th><th>Child Tax Relief</th></tr></thead><tbody>${childRowsBelow18}</tbody></table>
+    <table class="data-table"><thead><tr><th>Name (as per NRIC)</th><th>Gender</th><th>NRIC No.</th><th>Date of Birth</th><th>Education</th><th>Child Tax Relief</th></tr></thead><tbody>${childRowsBelow18}</tbody></table>
 
     <div style="font-size:9.5px;font-weight:bold;margin-bottom:3px;">Children Above 18 Years Old Up To 23 (Unmarried &amp; Full-Time Student)</div>
-    <table class="data-table"><thead><tr><th>Name</th><th>Gender</th><th>NRIC No.</th><th>Date of Birth</th><th>Course Name</th><th>Tax Relief</th></tr></thead><tbody>${childRows18to23}</tbody></table>
+    <table class="data-table"><thead><tr><th>Name</th><th>Gender</th><th>NRIC No.</th><th>Date of Birth</th><th>Education</th><th>Tax Relief</th></tr></thead><tbody>${childRows18to23}</tbody></table>
 
     <h2 class="bahagian">Emergency Contact Person(s)</h2>
     <table class="data-table"><thead><tr><th>Name (as per NRIC)</th><th>Relationship</th><th>Home/Mobile Phone No.</th></tr></thead><tbody>${emergencyRows}</tbody></table>
 
     <table class="form-box">
-      <tr><td colspan="2" class="section-hdr">Beneficiary</td></tr>
+      <tr><td colspan="2" class="section-hdr">Beneficiary (Next of Kin)</td></tr>
       <tr><td class="lbl">Name</td><td>${fmt(o.beneficiary_name)}</td></tr>
       <tr><td class="lbl">Relationship</td><td>${fmt(o.beneficiary_relationship)}</td></tr>
       <tr><td class="lbl">Contact No.</td><td>${fmt(o.beneficiary_contact)}</td></tr>
@@ -1437,81 +1283,7 @@ function buildOnboardingPdfHtml(a, o){
     </div>
   </div>
 
-  <!-- ================= PAGE 2-3: BORANG PCB/TP3 (FULLY IN BAHASA MALAYSIA) ================= -->
-  <div class="doc-page">
-    <div style="text-align:right;font-size:9px;font-weight:bold;">BORANG PCB/TP3 (1/2026)</div>
-    <div style="text-align:center;font-size:12px;font-weight:bold;margin-top:4px;">LEMBAGA HASIL DALAM NEGERI MALAYSIA</div>
-    <div style="text-align:center;font-size:9px;margin-top:2px;">
-      BORANG MAKLUMAT BERKAITAN PENGGAJIAN DENGAN MAJIKAN-MAJIKAN TERDAHULU<br>
-      DALAM TAHUN SEMASA BAGI TUJUAN POTONGAN CUKAI BULANAN (PCB)<br>
-      KAEDAH-KAEDAH CUKAI PENDAPATAN (POTONGAN DARIPADA SARAAN) 1994<br>
-      <em>Borang ini ditetapkan di bawah seksyen 152 Akta Cukai Pendapatan (ACP) 1967</em>
-    </div>
-
-    <h2 class="bahagian">Bahagian A: Maklumat Majikan</h2>
-    <table class="form-box">
-      <tr><td class="lbl">A1 Nama Majikan Terdahulu 1</td><td>${fmt(t.employer1_name)}</td></tr>
-      <tr><td class="lbl">A2 No. Pengenalan Cukai (TIN)</td><td>${fmt(t.employer1_tin)}</td></tr>
-      <tr><td class="lbl">A3 Nama Majikan Terdahulu 2</td><td>${fmt(t.employer2_name)}</td></tr>
-      <tr><td class="lbl">A4 No. Pengenalan Cukai (TIN)</td><td>${fmt(t.employer2_tin)}</td></tr>
-    </table>
-
-    <h2 class="bahagian">Bahagian B: Maklumat Individu</h2>
-    <table class="form-box">
-      <tr><td class="lbl">B1 Nama</td><td>${fmt(t.b1_name || a.name_nric)}</td></tr>
-      <tr><td class="lbl">B2 No. Kad Pengenalan/Pasport</td><td>${fmt(t.b2_ic_passport || a.nric_new || a.passport_number)}</td></tr>
-      <tr><td class="lbl">B3 No. Pengenalan Cukai (TIN)</td><td>${fmt(t.b3_tin)}</td></tr>
-    </table>
-
-    <h2 class="bahagian">Bahagian C: Maklumat Saraan / KWSP / Zakat / PCB</h2>
-    <table class="tp3-d">
-      <tr class="hdr"><td>Perkara</td><td>Amaun Terkumpul (RM)</td></tr>
-      <tr><td class="desc">C1 Jumlah saraan kasar bulanan dan saraan tambahan termasuk elaun/perkuisit/pemberian/manfaat yang dikenakan cukai</td><td class="terkumpul" colspan="2">${fmt(t.c1_gross_remuneration)}</td></tr>
-      <tr><td class="desc">C2(i) Elaun perjalanan, kad petrol atau elaun petrol dan fi tol atas urusan rasmi</td><td class="terkumpul" colspan="2">${fmt(t.c2i_travel)}</td></tr>
-      <tr><td class="desc">C2(ii) Elaun penjagaan anak</td><td class="terkumpul" colspan="2">${fmt(t.c2ii_childcare)}</td></tr>
-      <tr><td class="desc">C2(iii) Produk yang dikeluarkan oleh perniagaan majikan secara percuma/diskaun</td><td class="terkumpul" colspan="2">${fmt(t.c2iii_products)}</td></tr>
-      <tr><td class="desc">C2(iv) Perkuisit tunai/barangan bagi perkhidmatan lalu/anugerah (&gt;10 tahun)</td><td class="terkumpul" colspan="2">${fmt(t.c2iv_service_award)}</td></tr>
-      <tr><td class="desc">C2(v) Lain-lain elaun/perkuisit/pemberian/manfaat yang dikecualikan cukai</td><td class="terkumpul" colspan="2">${fmt(t.c2v_other)}</td></tr>
-      <tr><td class="desc">C3 Jumlah caruman KWSP atau Kumpulan Wang Lain Yang Diluluskan</td><td class="terkumpul" colspan="2">${fmt(t.c3_epf_total)}</td></tr>
-      <tr><td class="desc">C4(i) Jumlah Zakat</td><td class="terkumpul" colspan="2">${fmt(t.c4i_zakat)}</td></tr>
-      <tr><td class="desc">C4(ii) Levi pelepasan perjalanan umrah/keagamaan (Terhad 2x seumur hidup)</td><td class="terkumpul" colspan="2">${fmt(t.c4ii_umrah)}</td></tr>
-      <tr><td class="desc">C5 Jumlah PCB (tidak termasuk CP38)</td><td class="terkumpul" colspan="2">${fmt(t.c5_total_pcb)}</td></tr>
-    </table>
-  </div>
-
-  <div class="doc-page">
-    <h2 class="bahagian">Bahagian D: Maklumat Potongan</h2>
-    <table class="tp3-d">
-      <tr class="hdr"><td>Perkara</td><td>Had Tahunan (RM)</td><td>Potongan Terkumpul (RM)</td></tr>
-      <tr><td class="desc">D1 Perbelanjaan untuk ibu bapa/datuk nenek (rawatan perubatan, pergigian, pemeriksaan penuh + vaksinasi)</td><td class="had">8,000</td><td class="terkumpul">${fmt(t.d1_parent_medical)}</td></tr>
-      <tr><td class="desc">D2 Peralatan sokongan asas untuk diri sendiri/pasangan/anak/ibu bapa OKU</td><td class="had">6,000</td><td class="terkumpul">${fmt(t.d2_disabled_equipment)}</td></tr>
-      <tr><td class="desc">D3 Yuran pengajian (diri sendiri)</td><td class="had">7,000</td><td class="terkumpul">${fmt(t.d3_course_fees)}</td></tr>
-      <tr><td class="desc">D4 Perbelanjaan rawatan perubatan (penyakit serius, kesuburan, vaksinasi, pergigian, dll.)</td><td class="had">10,000</td><td class="terkumpul">${fmt(t.d4_medical_treatment)}</td></tr>
-      <tr><td class="desc">D5 Gaya hidup (buku, komputer/telefon pintar, internet, kursus kemahiran)</td><td class="had">2,500</td><td class="terkumpul">${fmt(t.d5_lifestyle)}</td></tr>
-      <tr><td class="desc">D6 Gaya hidup — sukan</td><td class="had">1,000</td><td class="terkumpul">${fmt(t.d6_sports_lifestyle)}</td></tr>
-      <tr><td class="desc">D7 Peralatan penyusuan ibu (anak ≤2 tahun)</td><td class="had">1,000</td><td class="terkumpul">${fmt(t.d7_breastfeeding_equipment)}</td></tr>
-      <tr><td class="desc">D8 Yuran penghantaran anak ≤12 tahun ke taska/tadika</td><td class="had">3,000</td><td class="terkumpul">${fmt(t.d8_childcare_fees)}</td></tr>
-      <tr><td class="desc">D9 Tabungan bersih SSPN</td><td class="had">8,000</td><td class="terkumpul">${fmt(t.d9_ssp1m_savings)}</td></tr>
-      <tr><td class="desc">D10 Bayaran alimoni kepada bekas isteri</td><td class="had">4,000</td><td class="terkumpul">${fmt(t.d10_alimony)}</td></tr>
-      <tr><td class="desc">D11(a) KWSP Sukarela (termasuk KWSP wajib)</td><td class="had">4,000</td><td class="terkumpul">${fmt(t.d11a_kwsp_sukarela)}</td></tr>
-      <tr><td class="desc">D11(b) Insurans nyawa/KWSP Sukarela</td><td class="had">3,000</td><td class="terkumpul">${fmt(t.d11b_life_insurance)}</td></tr>
-      <tr><td class="desc">D12 Skim persaraan swasta dan anuiti tertangguh</td><td class="had">3,000</td><td class="terkumpul">${fmt(t.d12_private_retirement)}</td></tr>
-      <tr><td class="desc">D13 Insurans pendidikan dan perubatan</td><td class="had">4,000</td><td class="terkumpul">${fmt(t.d13_insurance_education_medical)}</td></tr>
-      <tr><td class="desc">D14 Caruman PERKESO</td><td class="had">350</td><td class="terkumpul">${fmt(t.d14_perkeso)}</td></tr>
-      <tr><td class="desc">D15 Pengecasan EV / mesin kompos / mesin rincih & CCTV</td><td class="had">2,500</td><td class="terkumpul">${fmt(t.d15_ev_compost_cctv)}</td></tr>
-      <tr><td class="desc">D16(a) Faedah pinjaman rumah — harga ≤RM500,000</td><td class="had">7,000</td><td class="terkumpul">${fmt(t.d16a_housing_loan_500k)}</td></tr>
-      <tr><td class="desc">D16(b) Faedah pinjaman rumah — RM500,000–RM750,000</td><td class="had">5,000</td><td class="terkumpul">${fmt(t.d16b_housing_loan_750k)}</td></tr>
-      <tr><td class="desc">D17 Fi kemasukan pusat pelancongan/kebudayaan dalam negara</td><td class="had">1,000</td><td class="terkumpul">${fmt(t.d17_tourism)}</td></tr>
-    </table>
-
-    <h2 class="bahagian">Bahagian E: Akuan Pekerja</h2>
-    <p style="font-size:9px;">Saya mengakui bahawa semua maklumat yang dinyatakan dalam borang ini adalah benar, betul dan lengkap. Sekiranya maklumat yang diberikan tidak benar, tindakan mahkamah boleh diambil ke atas saya di bawah perenggan 113(1)(b) Akta Cukai Pendapatan 1967.</p>
-    <div class="confirm-box">
-      Confirmed digitally (checkbox recorded, no wet signature): <strong>${obConfirmLine(o.tp3_confirmed, o.tp3_confirmed_at)}</strong>
-    </div>
-  </div>
-
-  <!-- ================= PAGE 4: SALARY CREDITING REQUISITION FORM ================= -->
+  <!-- ================= PAGE 2: SALARY CREDITING REQUISITION FORM ================= -->
   <div class="doc-page">
     <div class="letterhead">
       <img class="logo" src="${WCT_LOGO_DATA_URI}">
@@ -1551,8 +1323,8 @@ function buildOnboardingPdfHtml(a, o){
 // ============================================================================
 // PDF EXPORT — formal, print-ready HTML replica, saved via the browser's
 // own "Print > Save as PDF" — no third-party service, no cost. Merges the
-// Job Application, JTS Consent Letter, and PDPA Notice into one document,
-// each as its own page, in whichever language the candidate chose.
+// Job Application and PDPA Notice into one document, each as its own page,
+// in whichever language the candidate chose.
 // ============================================================================
 function fmt(v){ return (v===null||v===undefined||v==='') ? '—' : esc(String(v)); }
 function fmtDate(v){ if(!v) return '—'; try{ return new Date(v).toLocaleDateString('en-GB'); }catch(e){ return esc(v); } }
@@ -1624,10 +1396,10 @@ function pdfSharedStyles(){
 // Page 1: Job Application
 // ---------------------------------------------------------------------------
 function buildJobApplicationPageHtml(a){
-  const edu = (a.education||[]).map(e=>`<tr><td>${fmt(e.type)}</td><td>${fmt(e.name)}</td><td>${fmt(e.from_year)}–${fmt(e.to_year)}</td><td>${fmt(e.qualification)}</td></tr>`).join('')
-    || `<tr><td colspan="4" style="text-align:center;color:#999;">No entries provided</td></tr>`;
+  const edu = (a.education||[]).map(e=>`<tr><td>${fmt(e.type)}</td><td>${fmt(e.name)}</td><td>${fmt(e.from_year)}–${fmt(e.to_year)}</td><td>${fmt(e.qualification)}</td><td>${fmt(e.course_name)}</td></tr>`).join('')
+    || `<tr><td colspan="5" style="text-align:center;color:#999;">No entries provided</td></tr>`;
   const exp = (a.working_experience||[]).map(w=>`
-    <tr><td>${fmt(w.employer)}</td><td>${fmt(w.position)}</td><td>${fmt(w.from)}–${fmt(w.to)}</td><td>${fmt(w.remuneration)}</td></tr>
+    <tr><td>${fmt(w.employer)}</td><td>${fmt(w.position)}</td><td>${fmt(w.from)}–${w.is_current?'Present':fmt(w.to)}</td><td>${fmt(w.remuneration)}</td></tr>
     ${w.responsibilities ? `<tr><td colspan="4" style="color:#555;font-style:italic;padding-top:0;">${fmt(w.responsibilities)}</td></tr>` : ''}
   `).join('') || `<tr><td colspan="4" style="text-align:center;color:#999;">No entries provided</td></tr>`;
   const lang = (a.language_ability||[]).map(l=>`<tr><td>${fmt(l.language)}</td><td>${fmt(l.spoken)}</td><td>${fmt(l.written)}</td></tr>`).join('')
@@ -1670,7 +1442,7 @@ function buildJobApplicationPageHtml(a){
     <table><thead><tr><th>Language</th><th>Spoken</th><th>Written</th></tr></thead><tbody>${lang}</tbody></table>
 
     <h2 class="section">Education</h2>
-    <table><thead><tr><th>Type</th><th>Institution</th><th>Period</th><th>Qualification</th></tr></thead><tbody>${edu}</tbody></table>
+    <table><thead><tr><th>Type</th><th>Institution</th><th>Period</th><th>Qualification</th><th>Course Name</th></tr></thead><tbody>${edu}</tbody></table>
 
     <h2 class="section">Working Experience</h2>
     <table><thead><tr><th>Employer</th><th>Position</th><th>Period</th><th>Last Drawn</th></tr></thead><tbody>${exp}</tbody></table>
@@ -1703,8 +1475,8 @@ function buildJobApplicationPageHtml(a){
 
     <h2 class="section">Declarations</h2>
     <div class="kv">
-      <div class="item full"><span class="lbl">Lawsuits / Proceedings</span>${fmt(a.declaration_lawsuit)}</div>
-      <div class="item full"><span class="lbl">Other Matters</span>${fmt(a.declaration_other_matters)}</div>
+      <div class="item full"><span class="lbl">Declaration (B) — Lawsuits/Proceedings</span>${a.declaration_lawsuit==='Yes' ? `Yes — ${fmt(a.declaration_lawsuit_specify)}` : fmt(a.declaration_lawsuit)}</div>
+      <div class="item full"><span class="lbl">Declaration (C) — Other Matters</span>${a.declaration_other_matters==='Yes' ? `Yes — ${fmt(a.declaration_other_matters_specify)}` : fmt(a.declaration_other_matters)}</div>
     </div>
 
     <h2 class="section">Consent &amp; Submission Record</h2>
@@ -1717,60 +1489,6 @@ function buildJobApplicationPageHtml(a){
       <span>Reference ${esc(a.reference_no||'')} — Generated ${fmtDateTime(new Date().toISOString())}</span>
       <span>WCT Group Employment Application Portal</span>
     </div>
-  </div>
-  `;
-}
-
-// ---------------------------------------------------------------------------
-// Page 2: JTS Consent Letter — wording matches the original JTS Checks
-// document, filled with the recorded consent details instead of a blank
-// signature line (consent was captured digitally with a timestamp).
-// ---------------------------------------------------------------------------
-function buildJtsPageHtml(a){
-  const bm = a.language_choice === 'BM';
-  const title = bm ? 'SURAT KEBENARAN DAN PELEPASAN MAKLUMAT CALON' : "CANDIDATE'S CERTIFICATE AND RELEASE";
-  const body = bm ? `
-    <p>Saya, <span class="legal-fill">${fmt(a.jts_agreed_name || a.name_nric)}</span>, No. KP / Pasport: <span class="legal-fill">${fmt(a.jts_agreed_nric || a.nric_new)}</span> dengan ini memberikan kebenaran kepada <strong>JTS CHECKS SDN BHD (1157487-M)</strong>, sebuah syarikat saringan latar belakang untuk menjalankan perkara-perkara berikut bagi tujuan saringan latar belakang sebagai sebahagian daripada proses pengambilan pekerja oleh pelanggan JTS CHECKS SDN BHD ("Syarikat") yang mana saya sedang memohon pekerjaan. Saya juga memberikan kebenaran kepada Syarikat untuk melepaskan Laporan yang mengandungi keputusan saringan kepada Pelanggan.</p>
-    <p>Segala maklumat yang saya berikan bagi menyokong permohonan pekerjaan saya adalah benar dan tepat setakat pengetahuan saya. Saya faham bahawa sebarang penipuan atau maklumat yang tidak lengkap akan menjadi alasan yang mencukupi untuk penolakan permohonan atau pemecatan sekiranya saya diambil bekerja.</p>
-    <p>Saya dengan ini memberikan kebenaran dan kuasa kepada mana-mana bekas majikan, institusi pendidikan, individu, firma, syarikat, agensi pengguna atau agensi laporan kredit, atau agensi kerajaan untuk menjawab sebarang pertanyaan dan memberikan sebarang maklumat yang berada dalam pengetahuan atau rekod mereka, dan saya bersetuju untuk tidak menyalahkan atau menuntut mereka atas sebarang liabiliti berkaitan dengan pelepasan maklumat yang benar yang berada dalam pengetahuan atau rekod mereka. Saya juga bersetuju untuk tidak menyalahkan Syarikat dan membebaskan Syarikat daripada sebarang liabiliti atas penggunaan sebarang maklumat yang diterima daripada pihak-pihak tersebut dalam membuat keputusan pengambilan pekerja terhadap saya.</p>
-    <p>Syarikat diberi kuasa untuk melepaskan keputusan saringan kepada Pelanggan yang berkaitan dengan kebenaran ini. Sekiranya terdapat permintaan saringan latar belakang pada masa hadapan oleh Pelanggan yang sama, kebenaran ini kekal sah melainkan saya menarik balik secara bertulis. Saya bersetuju untuk tidak menyalahkan Syarikat dan membebaskan Syarikat daripada sebarang liabiliti atas penggunaan atau pendedahan maklumat tersebut, selagi ia dilakukan mengikut undang-undang perlindungan data yang berkenaan dan hanya untuk tujuan yang dinyatakan dalam kebenaran ini.</p>
-    <p style="text-align:center;font-weight:bold;text-decoration:underline;margin-top:16px;">PENGAKUAN DAN PELEPASAN</p>
-    <p>Saya mengakui penerimaan surat ini. Saya membebaskan syarikat anda serta pekerja dan ejen anda daripada sebarang liabiliti berkaitan dengan pemerolehan dan penggunaan maklumat tersebut semata-mata untuk tujuan penilaian dalam proses pengambilan pekerja. Saya memberi kuasa kepada semua syarikat, institusi pendidikan, organisasi dan individu lain untuk memberikan maklumat tersebut kepada anda dan ejen anda serta melepaskan mereka daripada sebarang liabiliti berkaitan pemerolehan, pelepasan dan penggunaan maklumat tersebut.</p>
-  ` : `
-    <p>I, <span class="legal-fill">${fmt(a.jts_agreed_name || a.name_nric)}</span>, NRIC No. / Passport: <span class="legal-fill">${fmt(a.jts_agreed_nric || a.nric_new)}</span> hereby grant consent to <strong>JTS CHECKS SDN BHD (1157487-M)</strong>, a background screening company to conduct the following for background screening as part of the recruitment process of JTS CHECKS SDN BHD's ("the Company") client with whom I am seeking employment opportunities with. I hereby grant consent to the Company to release the Report, which consists the screening results to the Client.</p>
-    <p>All information provided by me in support of my application for employment, is true and correct to the best of my knowledge. I understand that misrepresentation or omission will constitute sufficient grounds for rejection or for subsequent dismissal if I am hired.</p>
-    <p>I hereby consent and authorize any former employer, educational institution, person, firm, corporation, consumer or credit reporting agency, or government agency to answer any and all questions and to release or provide any information within their knowledge or record, and I agree to hold any or all of them blameless and free of any liability for releasing any truthful information that is within their knowledge or records. I also agree to hold the Company blameless and free of any liability for using any information received from such parties in making an employment decision regarding me.</p>
-    <p>The Company is authorized to release the screening results to the Client to whom this consent applies. In the event of any future background screening request by the same Client, this authorization shall remain valid unless expressly revoked by me in writing. I agree to hold the Company blameless and free of any liability for using or disclosing such information, provided it is done in accordance with applicable data protection laws and solely for the purpose stated in this consent.</p>
-    <p style="text-align:center;font-weight:bold;text-decoration:underline;margin-top:16px;">ACKNOWLEDGEMENT AND RELEASE</p>
-    <p>I acknowledge receipt of this letter. I release your company and its employees and agents from all liability relating to your obtaining and use of such information solely and only for the purpose of being evaluated for a recruitment position. I authorize all companies, educational institutions, organizations and other persons to provide such information to you and your agents and release them from all liability relating to the obtaining, release and use of such information.</p>
-  `;
-
-  return `
-  <div class="doc-page">
-    <div class="legal-header">
-      <div class="brand-row" style="display:flex;align-items:center;gap:12px;">
-        <img src="${JTS_LOGO_DATA_URI}" style="height:52px;">
-        <div>
-          <div class="company-name">JTS CHECKS SDN BHD</div>
-          <div class="company-sub">JTS CHECKS SDN BHD 1157487-M<br>Unit 3-3-5, Level 3, Tower3, UOA Business Park, Jalan Pengaturcara U1/51A, Kawasan Perindustrian Temasya, 40150, Shah Alam, Malaysia</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="legal-title">${title}</div>
-    <div class="legal-body">${body}</div>
-
-    <div class="confirm-box">
-      <div class="lbl">Consent recorded digitally (no wet signature collected)</div>
-      <div class="kv" style="margin-top:6px;">
-        <div class="item"><span class="lbl">${bm?'Nama Calon':'Candidate Name'}</span>${fmt(a.jts_agreed_name)}</div>
-        <div class="item"><span class="lbl">${bm?'No. KP / Pasport':'NRIC / Passport No.'}</span>${fmt(a.jts_agreed_nric)}</div>
-        <div class="item"><span class="lbl">${bm?'No. Telefon Bimbit':'Mobile No.'}</span>${fmt(a.jts_agreed_mobile)}</div>
-        <div class="item"><span class="lbl">${bm?'Tarikh Persetujuan':'Date of Consent'}</span>${fmtDateTime(a.jts_agreed_at)}</div>
-      </div>
-    </div>
-
-    <div class="small-print">Important Note: JTS CHECKS shall endeavor to ensure that all of its Pre-Employment Screening Information is accurate. JTS CHECKS however gives no warranties and makes no representations with respect to the accuracy, currency, or completeness of its Pre Screening Information.</div>
   </div>
   `;
 }
@@ -1832,9 +1550,8 @@ function buildFormalPdfHtml(a){
 <style>${pdfSharedStyles()}</style>
 </head>
 <body>
-  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF". Includes the Job Application, JTS Consent Letter, and PDPA Notice (3 pages).</span><button onclick="window.print()">Print / Save as PDF</button></div>
+  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF". Includes the Job Application and PDPA Notice (2 pages).</span><button onclick="window.print()">Print / Save as PDF</button></div>
   ${buildJobApplicationPageHtml(a)}
-  ${buildJtsPageHtml(a)}
   ${buildPdpaPageHtml(a)}
 </body></html>
   `;
