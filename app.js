@@ -1874,7 +1874,12 @@ function exportMyOnboardingPdf(){
 // ---------------------------------------------------------------------------
 async function signOut(){
   await supabaseClient.auth.signOut();
-  window.location.href = 'login.html';
+  // Preserve ?bu=... (and anything else in the URL) so someone who signed
+  // in via a business-unit-specific link and then signs out doesn't lose
+  // that context — without this, logging back in would land on a bare
+  // index.html with no business unit, blocking them from starting a new
+  // application entirely.
+  window.location.href = 'login.html' + window.location.search;
 }
 
 (async function boot(){
