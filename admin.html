@@ -64,6 +64,10 @@
   .btn-danger:hover{background:#a32e21;}
   .btn-success{background:var(--ok);color:#fff;}
   .btn-success:hover{background:#155e35;}
+  .btn-shortlist{background:#C99A2E;color:#fff;}
+  .btn-shortlist:hover{background:#A87F22;}
+  .btn-blacklist{background:#1a1a1a;color:#fff;}
+  .btn-blacklist:hover{background:#000;}
   .btn-accent{background:var(--accent);color:#fff;}
   .btn-accent:hover{background:var(--accent-dark);}
   .btn-outline{background:#fff;color:var(--navy);border-color:var(--line);}
@@ -303,11 +307,13 @@ const ICON_EYE_CLOSED = '<svg width="16" height="16" viewBox="0 0 24 24" fill="n
 
 function rowActionsHtml(a){
   const isHired = a.status === 'hired';
+  const mailtoHref = `mailto:${encodeURIComponent(a.email||'')}?subject=${encodeURIComponent('Regarding your application '+a.reference_no)}&body=${encodeURIComponent('Dear '+(a.name_nric||'Candidate')+',\n\n')}`;
   return `
     <div class="row-actions">
       <button class="btn btn-outline btn-icon" title="View details" onclick="openDetail('${a.id}')">${ICON_VIEW}</button>
       <button class="btn btn-outline btn-icon" title="Export PDF" onclick="exportCandidatePdf('${a.id}')">${ICON_PDF}</button>
       <button class="btn btn-icon ${isHired ? 'btn-accent' : 'btn-outline'}" title="${isHired ? 'Onboarding Details' : 'Onboarding Details — available once Hired'}" ${isHired ? `onclick="openOnboardingView('${a.id}')"` : 'disabled'}>${ICON_ONBOARD}</button>
+      <a class="btn btn-outline btn-icon" title="Email candidate" href="${mailtoHref}">${ICON_MAIL}</a>
       <button class="btn btn-outline-danger btn-icon" title="Delete" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">${ICON_DELETE}</button>
     </div>
   `;
@@ -315,14 +321,14 @@ function rowActionsHtml(a){
 
 const STATUS_LABELS = {
   submitted:'New', under_review:'Under Review', shortlisted:'Shortlisted',
-  // interview_scheduled and offer_sent are no longer selectable (removed
-  // from STATUS_OPTIONS below) but stay mapped here so any existing
-  // historical record still in one of those statuses displays its label
-  // correctly instead of showing "undefined".
-  interview_scheduled:'Interview Scheduled', offer_sent:'Offer Sent',
-  kiv:'KIV', hired:'Hired', rejected:'Rejected', withdrawn:'Withdrawn', blacklisted:'Blacklisted'
+  // interview_scheduled, offer_sent, under_review, and withdrawn are no
+  // longer selectable (removed from STATUS_OPTIONS below) but stay mapped
+  // here so any existing historical record still in one of those statuses
+  // displays its label correctly instead of showing "undefined".
+  interview_scheduled:'Interview Scheduled', offer_sent:'Offer Sent', withdrawn:'Withdrawn',
+  kiv:'KIV', hired:'Hired', rejected:'Rejected', blacklisted:'Blacklisted'
 };
-const STATUS_OPTIONS = ['under_review','shortlisted','kiv','hired','rejected','withdrawn','blacklisted'];
+const STATUS_OPTIONS = ['shortlisted','kiv','hired','rejected','blacklisted'];
 
 function esc(v){ if(v===null||v===undefined) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function showLoading(text){ document.getElementById('loadingText').innerText = text||'Working...'; document.getElementById('loadingOverlay').style.display='flex'; }
@@ -468,7 +474,6 @@ function statRowHtml(){
   return `
       <div class="stat${filterStatus===''?' stat-active':''}" ${statClick('')}><div class="n">${stats.total||0}</div><div class="l">Total Applicants</div></div>
       <div class="stat${activeCls('submitted')}" ${statClick('submitted')}><div class="n">${stats.by_status?.submitted||0}</div><div class="l">New</div></div>
-      <div class="stat${activeCls('under_review')}" ${statClick('under_review')}><div class="n">${stats.by_status?.under_review||0}</div><div class="l">Under Review</div></div>
       <div class="stat${activeCls('shortlisted')}" ${statClick('shortlisted')}><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
       <div class="stat${activeCls('kiv')}" ${statClick('kiv')}><div class="n">${stats.by_status?.kiv||0}</div><div class="l">KIV</div></div>
       <div class="stat${activeCls('hired')}" ${statClick('hired')}><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
@@ -493,8 +498,8 @@ function dashboardResultsHtml(){
           </div>
         </div>
       </td>
-      <td><strong>${esc(a.position_applying)}</strong></td>
       <td>${esc(a.business_unit)}</td>
+      <td>${a.company_id ? esc(companyNameById[a.company_id] || '—') : '<span style="color:var(--ink-soft);">—</span>'}</td>
       <td style="position:relative;">
         <span class="badge ${a.status}" style="cursor:pointer;" onclick="toggleStatusPanel('${a.id}')">${STATUS_LABELS[a.status]||a.status} ▾</span>
         ${openStatusPanelId === a.id ? `
@@ -527,7 +532,7 @@ function dashboardResultsHtml(){
       <table>
         <thead><tr>
           <th style="width:36px;"><input type="checkbox" class="row-check" ${allOnPageSelected?'checked':''} onchange="toggleSelectAll(this.checked)" title="Select all on this page"></th>
-          <th>Reference</th><th>Candidate</th><th>Position</th><th>Unit</th><th>Status</th><th>Submitted</th><th>Actions</th>
+          <th>Reference</th><th>Candidate</th><th>Unit</th><th>Company</th><th>Status</th><th>Submitted</th><th>Actions</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -636,9 +641,21 @@ async function bulkExportCsv(){
   hideLoading();
 }
 
+let companyNameById = {}; // for the dashboard table's Company column — fetched
+// once rather than per-row, since it rarely changes.
+
+async function loadCompanyLookup(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_list_companies', { p_token: adminToken });
+    if(error) throw error;
+    companyNameById = {};
+    (data||[]).forEach(c => { companyNameById[c.id] = c.name; });
+  } catch(e){ console.error('Could not load company lookup', e); }
+}
+
 async function loadEverything(){
   showLoading('Loading applications...');
-  await Promise.all([loadApplications(), loadStats()]);
+  await Promise.all([loadApplications(), loadStats(), loadCompanyLookup()]);
   hideLoading();
 }
 
@@ -680,6 +697,17 @@ function toggleStatusPanel(id){
   openStatusPanelId = (openStatusPanelId === id) ? null : id;
   renderDashboardResults();
 }
+
+// Registered once at script load (not per-render) — clicking anywhere that
+// isn't the open panel itself or the badge that opened it closes it. Without
+// this, the only way to dismiss the panel was to pick a status; there was
+// no way to just cancel out of it.
+document.addEventListener('click', function(e){
+  if(openStatusPanelId && !e.target.closest('.status-panel') && !e.target.closest('.badge')){
+    openStatusPanelId = null;
+    renderDashboardResults();
+  }
+});
 
 async function quickUpdateStatus(id, status){
   const label = STATUS_LABELS[status] || status;
@@ -1144,7 +1172,7 @@ function viewDetailHtml(a){
       ` : ''}
       <div class="status-actions">
         ${STATUS_OPTIONS.map(s => {
-          const styleMap = { hired:'btn-primary', shortlisted:'btn-success', rejected:'btn-danger', blacklisted:'btn-danger' };
+          const styleMap = { hired:'btn-success', shortlisted:'btn-shortlist', rejected:'btn-danger', blacklisted:'btn-blacklist' };
           const cls = styleMap[s] || 'btn-outline';
           return `<button class="btn ${cls} btn-sm" onclick="updateStatus('${s}')">${STATUS_LABELS[s]}</button>`;
         }).join('')}
@@ -1162,15 +1190,10 @@ function editFormHtml(a){
       <div class="field"><label>Mobile Phone</label><input type="text" id="editMobile" value="${esc(a.mobile_phone)}"></div>
       <div class="field"><label>Position Applying</label><input type="text" id="editPosition" value="${esc(a.position_applying)}"></div>
       <div class="field"><label>Business Unit</label>
-        ${adminScope === 'ALL' ? `
         <select id="editBusinessUnit">
           ${['E&C','Land','Mall'].map(o=>`<option value="${o}" ${a.business_unit===o?'selected':''}>${o}</option>`).join('')}
         </select>
         <div class="hint">Changing this transfers the application to another business unit's admin team.</div>
-        ` : `
-        <input type="text" value="${esc(a.business_unit)}" disabled style="background:#F0F0EE;color:var(--ink-soft);">
-        <div class="hint">Only an All Units admin can transfer an application to a different business unit.</div>
-        `}
       </div>
       <div style="display:flex;gap:10px;margin-top:14px;">
         <button class="btn btn-primary btn-sm" onclick="saveEdit()">Save Changes</button>
