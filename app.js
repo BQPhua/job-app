@@ -1021,6 +1021,10 @@ function tplObReview(){
 // ============================================================================
 let exitInterviewAppId = null;
 let exitInterviewData = null;
+let exitInterviewMode = 'edit'; // 'edit' | 'review' — the review screen is
+// the "offboarding details to check before submit" step: a plain read-only
+// summary of everything just entered, plus the sign-off checkbox, so the
+// candidate sees exactly what HR will see before it's locked in.
 
 // Same fixed reason list/order as admin.html's EXIT_REASONS_LEFT/RIGHT —
 // duplicated rather than shared since this project has no build step or
@@ -1050,7 +1054,7 @@ function toggleExitReason(reason, checked){
 }
 
 function backFromExitInterview(){
-  exitInterviewAppId = null; exitInterviewData = null;
+  exitInterviewAppId = null; exitInterviewData = null; exitInterviewMode = 'edit';
   goStep('start');
 }
 
@@ -1083,20 +1087,82 @@ async function saveExitInterview(showAlert){
   } catch(e){ alert('Error saving: ' + e.message); return false; }
 }
 
-async function submitExitInterview(){
-  if(!confirm('Submit and sign your Exit Interview Form? Once signed, you won\'t be able to edit Sections A–C anymore, and HR will be notified to complete their review.')) return;
+async function goToExitInterviewReview(){
   const ok = await saveExitInterview(false);
   if(!ok) return;
+  exitInterviewMode = 'review';
+  render();
+  window.scrollTo(0,0);
+}
+
+async function submitExitInterview(){
+  if(!document.getElementById('ei_sign_confirm').checked){
+    alert('Please check the confirmation box to sign and submit.');
+    return;
+  }
+  if(!confirm('Submit and sign your Exit Interview Form? Once signed, you won\'t be able to edit Sections A–C anymore, and HR will be notified to complete their review.')) return;
   try{
     const { data, error } = await supabaseClient.rpc('rpc_submit_my_exit_interview', { p_application_id: exitInterviewAppId });
     if(error) throw error;
     exitInterviewData = data[0];
+    exitInterviewMode = 'edit'; // the locked edit view now doubles as the final read-only view
     render();
     window.scrollTo(0,0);
   } catch(e){ alert('Error submitting: ' + e.message); }
 }
 
+function eiReviewRow(k,v){ return `<div class="review-row"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
+
 function tplExitInterview(){
+  if(exitInterviewMode === 'review' && !exitInterviewData.employee_signed) return tplExitInterviewReview();
+  return tplExitInterviewEdit();
+}
+
+function tplExitInterviewReview(){
+  const ei = exitInterviewData;
+  const a = myApplications.find(x=>x.id===exitInterviewAppId) || {};
+  const reasons = ei.reasons || [];
+  return `
+    <div class="step-eyebrow">Offboarding</div>
+    <h2>Review Your Offboarding Details</h2>
+    <p class="step-desc">Please check everything below carefully before signing — this locks Sections A–C and notifies HR.</p>
+
+    <div class="review-block">
+      <h4>A: Employee Details</h4>
+      ${eiReviewRow('Name (as per NRIC)', a.name_nric)}
+      ${eiReviewRow('Position', a.position_applying)}
+      ${eiReviewRow('Immediate Superior', ei.immediate_superior)}
+      ${eiReviewRow('Dept/Site', ei.dept_site)}
+      ${eiReviewRow('Date Joined', ei.date_joined)}
+      ${eiReviewRow('Notice Period', ei.notice_period)}
+      ${eiReviewRow('Official Last Day of Employment', ei.official_last_day)}
+      ${eiReviewRow('Actual Last Day of Employment', ei.actual_last_day)}
+    </div>
+
+    <div class="review-block">
+      <h4>B: Reason(s) for Leaving</h4>
+      ${eiReviewRow('Selected', reasons.length ? reasons.join(', ') : 'None selected')}
+      ${ei.reasons_other_specify ? eiReviewRow('Other, specified', ei.reasons_other_specify) : ''}
+    </div>
+
+    <div class="review-block">
+      <h4>C: Comments / Suggestions</h4>
+      ${eiReviewRow('Comments', ei.comments)}
+    </div>
+
+    <div class="checkbox-row" style="background:#FBFAF7;border-color:var(--line);">
+      <input type="checkbox" id="ei_sign_confirm">
+      <label for="ei_sign_confirm">I confirm the information above is true and correct. Checking this box and submitting acts as my signature — no physical signature is required. Today's date will be recorded automatically.</label>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="exitInterviewMode='edit';render();">← Back to Edit</button>
+      <div class="right"><button class="btn btn-primary" onclick="submitExitInterview()">Sign &amp; Submit →</button></div>
+    </div>
+  `;
+}
+
+function tplExitInterviewEdit(){
   const ei = exitInterviewData;
   const a = myApplications.find(x=>x.id===exitInterviewAppId) || {};
   const locked = ei.employee_signed;
@@ -1140,19 +1206,12 @@ function tplExitInterview(){
       <textarea id="ei_comments" rows="4" ${locked?'disabled':''}>${esc(ei.comments)}</textarea>
     </div>
 
-    ${!locked ? `
-      <div class="checkbox-row" style="background:#FBFAF7;border-color:var(--line);">
-        <input type="checkbox" id="ei_sign_confirm">
-        <label for="ei_sign_confirm">I confirm the information above is true and correct. Checking this box and submitting acts as my signature — no physical signature is required. Today's date will be recorded automatically.</label>
-      </div>
-    ` : ''}
-
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="backFromExitInterview()">← Back to My Applications</button>
       <div class="right">
         ${!locked ? `
           <button class="btn btn-ghost" onclick="saveExitInterview(true)">Save Draft</button>
-          <button class="btn btn-primary" onclick="handleSubmitExitInterview()">Sign &amp; Submit →</button>
+          <button class="btn btn-primary" onclick="goToExitInterviewReview()">Review Before Submitting →</button>
         ` : `
           <button class="btn btn-primary" onclick="exportMyExitInterviewPdf()">📄 Download as PDF</button>
         `}
@@ -1161,13 +1220,6 @@ function tplExitInterview(){
   `;
 }
 
-function handleSubmitExitInterview(){
-  if(!document.getElementById('ei_sign_confirm').checked){
-    alert('Please check the confirmation box to sign and submit.');
-    return;
-  }
-  submitExitInterview();
-}
 
 function exportMyExitInterviewPdf(){
   if(!exitInterviewData || !exitInterviewAppId){ alert('No exit interview data loaded.'); return; }
