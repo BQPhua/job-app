@@ -68,6 +68,8 @@
   .btn-shortlist:hover{background:#A87F22;}
   .btn-blacklist{background:#1a1a1a;color:#fff;}
   .btn-blacklist:hover{background:#000;}
+  .btn-offboarding{background:#6B6D70;color:#fff;}
+  .btn-offboarding:hover{background:#54524F;}
   .btn-accent{background:var(--accent);color:#fff;}
   .btn-accent:hover{background:var(--accent-dark);}
   .btn-outline{background:#fff;color:var(--navy);border-color:var(--line);}
@@ -114,6 +116,7 @@
   .badge.interview_scheduled{background:#EEE8FB;color:#6A3FC0;} /* historical only, no longer selectable */
   .badge.offer_sent{background:#FCEFE0;color:#B9660E;} /* historical only, no longer selectable */
   .badge.kiv{background:var(--warn-tint);color:var(--warn);}
+  .badge.offboarding{background:#E4E4E3;color:#54524F;}
   .badge.rejected{background:var(--danger-tint);color:var(--danger);}
   .badge.hired{background:var(--ok-tint);color:var(--ok);}
   .badge.withdrawn{background:#EDEDEC;color:var(--ink-soft);}
@@ -172,6 +175,14 @@
   .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
   .field label{font-size:12.5px;font-weight:600;color:var(--navy);}
   .field input, .field select{font-family:inherit;font-size:13.5px;padding:9px 11px;border:1px solid var(--line);border-radius:7px;}
+
+  /* Offboarding — HR sign-off box on the Exit Interview section. Plain,
+     self-contained styling (not reusing a candidate-side class) since
+     admin.html and index.html deliberately keep separate smaller CSS sets —
+     see the class-mismatch trap noted elsewhere in this file's history. */
+  .sign-checkbox-row{display:flex;align-items:flex-start;gap:10px;background:#FAFAF9;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:10px 0;}
+  .sign-checkbox-row input{margin-top:3px;}
+  .exit-reason-chip{display:inline-block;background:var(--accent-tint);color:var(--accent-dark);border-radius:14px;padding:3px 10px;font-size:11.5px;margin:2px 4px 2px 0;}
 
   /* Clean, styled <select> — used wherever a plain browser-default dropdown
      (e.g. Company/Entity assignment) needs to match the rest of the design
@@ -338,9 +349,21 @@ const STATUS_LABELS = {
   // here so any existing historical record still in one of those statuses
   // displays its label correctly instead of showing "undefined".
   interview_scheduled:'Interview Scheduled', offer_sent:'Offer Sent', withdrawn:'Withdrawn',
-  kiv:'Keep In View', hired:'Hired', rejected:'Rejected', blacklisted:'Blacklisted'
+  kiv:'Keep In View', hired:'Hired', offboarding:'Offboarding', rejected:'Rejected', blacklisted:'Blacklisted'
 };
-const STATUS_OPTIONS = ['shortlisted','kiv','hired','rejected','blacklisted'];
+const STATUS_OPTIONS = ['shortlisted','kiv','hired','offboarding','rejected','blacklisted'];
+// 'offboarding' is intentionally NOT routed through rpc_admin_update_status —
+// see rpc_admin_set_offboarding in add_offboarding_exit_interview.sql for why.
+// quickUpdateStatus/updateStatus/applyBulkStatus below all branch on this.
+const STATUS_VIA_DEDICATED_RPC = { offboarding: 'rpc_admin_set_offboarding' };
+
+// Fixed reason checkboxes from the paper "Employee Exit Interview Form" —
+// order matches the two printed columns exactly, so a PDF export or a
+// two-column render can reproduce the original layout. Kept in this same
+// order/wording in app.js too (duplicated rather than shared, per this
+// project's no-build-step, no-shared-module setup).
+const EXIT_REASONS_LEFT = ['Compensation (Salary / Benefits)','Better Offer','Career Advancement','Lack of promotional opportunities','Lack of training','Working Hours'];
+const EXIT_REASONS_RIGHT = ['Conflict with colleague/superior','Relocation','Retirement','Health','Return to Study','Distance travelled to work'];
 
 function esc(v){ if(v===null||v===undefined) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function showLoading(text){ document.getElementById('loadingText').innerText = text||'Working...'; document.getElementById('loadingOverlay').style.display='flex'; }
@@ -501,6 +524,7 @@ function statRowHtml(){
       <div class="stat${activeCls('shortlisted')}" ${statClick('shortlisted')}><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
       <div class="stat${activeCls('kiv')}" ${statClick('kiv')}><div class="n">${stats.by_status?.kiv||0}</div><div class="l">Keep In View</div></div>
       <div class="stat${activeCls('hired')}" ${statClick('hired')}><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
+      <div class="stat${activeCls('offboarding')}" ${statClick('offboarding')}><div class="n">${stats.by_status?.offboarding||0}</div><div class="l">Offboarding</div></div>
       <div class="stat${activeCls('rejected')}" ${statClick('rejected')}><div class="n">${stats.by_status?.rejected||0}</div><div class="l">Rejected</div></div>
   `;
 }
@@ -622,12 +646,17 @@ async function applyBulkStatus(){
   if(!status){ alert('Please choose a status to apply first.'); return; }
   const count = selectedIds.size;
   if(status === 'blacklisted' && !confirm(`Blacklist ${count} candidate(s)? They will be signed out immediately and blocked from logging in or applying again using this email.`)) return;
-  if(!confirm(`Change status to "${STATUS_LABELS[status]}" for ${count} selected application(s)?`)) return;
+  if(status === 'offboarding' && !confirm(`Move ${count} application(s) to "Offboarding"? Each candidate will be prompted to complete their Exit Interview Form.`)) return;
+  if(status !== 'offboarding' && !confirm(`Change status to "${STATUS_LABELS[status]}" for ${count} selected application(s)?`)) return;
   showLoading(`Updating ${count} application(s)...`);
   let failed = 0;
+  const rpcName = STATUS_VIA_DEDICATED_RPC[status] || 'rpc_admin_update_status';
   for(const id of Array.from(selectedIds)){
     try{
-      const { error } = await supabaseClient.rpc('rpc_admin_update_status', {p_token: adminToken, p_id: id, p_status: status});
+      const params = STATUS_VIA_DEDICATED_RPC[status]
+        ? { p_token: adminToken, p_id: id }
+        : { p_token: adminToken, p_id: id, p_status: status };
+      const { error } = await supabaseClient.rpc(rpcName, params);
       if(error) failed++;
     } catch(e){ failed++; }
   }
@@ -737,11 +766,17 @@ async function quickUpdateStatus(id, status){
   const label = STATUS_LABELS[status] || status;
   const warnMsg = status === 'blacklisted'
     ? 'Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email.'
+    : status === 'offboarding'
+    ? `Move this application to "Offboarding"? The candidate will be prompted to complete their Exit Interview Form.`
     : `Change this application's status to "${label}"? The candidate will be notified by email.`;
   if(!confirm(warnMsg)){ openStatusPanelId = null; loadApplications(); return; }
   openStatusPanelId = null;
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_update_status', {p_token: adminToken, p_id: id, p_status: status});
+    const rpcName = STATUS_VIA_DEDICATED_RPC[status] || 'rpc_admin_update_status';
+    const params = STATUS_VIA_DEDICATED_RPC[status]
+      ? { p_token: adminToken, p_id: id }
+      : { p_token: adminToken, p_id: id, p_status: status };
+    const { error } = await supabaseClient.rpc(rpcName, params);
     if(error) throw error;
     await Promise.all([loadApplications(), loadStats()]);
   } catch(e){ alert('Error: '+e.message); loadApplications(); }
@@ -856,6 +891,10 @@ function downloadApplicationsCsv(data, filename){
 // ============================================================================
 let otherBuMatches = [];
 let assignableCompanies = [];
+let exitInterviewData = null; // this application's exit_interviews row, if any — fetched
+// best-effort in openDetail() so the Exit Interview section can render whenever
+// one exists, not just while status==='offboarding' (a later status change
+// shouldn't hide historical exit interview data).
 
 async function openDetail(id){
   try{
@@ -873,18 +912,245 @@ async function openDetail(id){
       const { data: compData } = await supabaseClient.rpc('rpc_admin_list_companies', { p_token: adminToken });
       assignableCompanies = compData || [];
     } catch(e){ assignableCompanies = []; }
+    try{
+      const { data: eiData } = await supabaseClient.rpc('rpc_admin_get_exit_interview', { p_token: adminToken, p_application_id: id });
+      exitInterviewData = (eiData && eiData[0]) || null;
+    } catch(e){ exitInterviewData = null; }
 
     render();
   } catch(e){ alert('Error: '+e.message); }
 }
 function closeDetail(){
   selectedApp=null; editingApp=false;
-  otherBuMatches = []; assignableCompanies = [];
+  otherBuMatches = []; assignableCompanies = []; exitInterviewData = null;
   const existing = document.getElementById('modalRoot');
   if(existing) existing.remove();
   render();
 }
 function drow(k,v){ return `<div class="drow"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
+
+// ============================================================================
+// EXIT INTERVIEW / OFFBOARDING — digitized version of the paper "Employee
+// Exit Interview Form". Candidate fills Sections A–C and signs (app.js);
+// HR reviews and signs Section D here, which triggers the notify-candidate
+// flow (see notify_power_automate_on_exit_interview_signed in the migration).
+// ============================================================================
+function exitInterviewSectionHtml(a){
+  const ei = exitInterviewData;
+  if(!ei || !ei.employee_signed){
+    return `
+      <div class="detail-section">
+        <h4>Employee Exit Interview Form</h4>
+        <div class="hint">The candidate hasn't completed and signed this form yet. It becomes available to them as soon as this application's status is "Offboarding".</div>
+      </div>
+    `;
+  }
+  const reasons = ei.reasons || [];
+  const reasonChips = reasons.length
+    ? reasons.map(r=>`<span class="exit-reason-chip">${esc(r)}</span>`).join('')
+    : '<span style="color:var(--ink-soft);">None selected</span>';
+
+  return `
+    <div class="detail-section">
+      <h4>Employee Exit Interview Form</h4>
+      ${drow('Position', a.position_applying)}
+      ${drow('Immediate Superior', ei.immediate_superior)}
+      ${drow('Dept/Site', ei.dept_site)}
+      ${drow('Date Joined', fmtDate(ei.date_joined))}
+      ${drow('Notice Period', ei.notice_period)}
+      ${drow('Official Last Day of Employment', fmtDate(ei.official_last_day))}
+      ${drow('Actual Last Day of Employment', fmtDate(ei.actual_last_day))}
+      <div class="drow"><div class="k">Reason(s) for Leaving</div><div class="v">${reasonChips}</div></div>
+      ${ei.reasons_other_specify ? drow('Other Reason Specified', ei.reasons_other_specify) : ''}
+      ${drow('Comments / Suggestions', ei.comments)}
+      ${drow('Employee Signature', `${ei.employee_signed_name} — signed ${new Date(ei.employee_signed_at).toLocaleString()}`)}
+
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);">
+        <div style="font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin-bottom:8px;">Section D — For HRD (HQ) Use Only</div>
+        ${ei.hr_signed ? `
+          ${drow('Signed By', `${ei.hr_signed_name} (${ei.hr_signed_position})`)}
+          ${drow('Signed At', new Date(ei.hr_signed_at).toLocaleString())}
+          <div class="success-banner">Signed — the candidate has been notified with a link to download their signed copy.</div>
+        ` : `
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="field"><label>Name in Full</label><input type="text" id="hrSignName" placeholder="Your full name"></div>
+            <div class="field"><label>Position</label><input type="text" id="hrSignPosition" placeholder="Your position/title"></div>
+          </div>
+          <div class="sign-checkbox-row">
+            <input type="checkbox" id="hrSignConfirm">
+            <label for="hrSignConfirm">I confirm I am signing this Exit Interview Form on behalf of HRD (HQ). Today's date/time will be recorded as the signing date — no physical signature is collected.</label>
+          </div>
+          <div id="hrSignErr"></div>
+          <button class="btn btn-primary btn-sm" onclick="hrSignExitInterview('${a.id}')">Sign Exit Interview Form</button>
+        `}
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn btn-outline btn-sm" onclick="exportExitInterviewPdf('${a.id}')">📄 Export Exit Interview PDF</button>
+      </div>
+    </div>
+  `;
+}
+
+async function hrSignExitInterview(applicationId){
+  const name = document.getElementById('hrSignName').value.trim();
+  const position = document.getElementById('hrSignPosition').value.trim();
+  const confirmed = document.getElementById('hrSignConfirm').checked;
+  if(!name || !position){
+    document.getElementById('hrSignErr').innerHTML = `<div class="error-banner">Name and position are both required.</div>`;
+    return;
+  }
+  if(!confirmed){
+    document.getElementById('hrSignErr').innerHTML = `<div class="error-banner">Please check the confirmation box to sign.</div>`;
+    return;
+  }
+  if(!confirm('Sign this Exit Interview Form? This is final — the candidate will be emailed a link to their signed copy immediately.')) return;
+  showLoading('Signing...');
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_sign_exit_interview', {
+      p_token: adminToken, p_application_id: applicationId, p_hr_name: name, p_hr_position: position
+    });
+    if(error) throw error;
+    exitInterviewData = data[0];
+    hideLoading();
+    render();
+  } catch(e){ hideLoading(); document.getElementById('hrSignErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+}
+
+function exportExitInterviewPdf(applicationId){
+  const a = applications.find(x=>x.id===applicationId) || selectedApp;
+  const ei = exitInterviewData;
+  if(!ei){ alert('No exit interview data loaded.'); return; }
+  const html = buildExitInterviewPdfHtml(a, ei);
+  const win = window.open('', '_blank');
+  if(!win){ alert('Please allow pop-ups for this site to generate the PDF.'); return; }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  win.onload = () => setTimeout(() => win.print(), 400);
+}
+
+// Visually mirrors the actual paper form: light-blue section header bars,
+// checkbox grid for Section B, ruled lines for Section C, and a two-column
+// signature block for both Employee and HRD sign-off — same "digitized,
+// no wet signature" pattern used throughout (checkbox + typed name + a
+// server-recorded timestamp stand in for a signature).
+function buildExitInterviewPdfHtml(a, ei){
+  const chk = (checked) => `<span style="display:inline-block;width:13px;height:13px;border:1.5px solid #333;margin-right:8px;vertical-align:middle;text-align:center;line-height:11px;font-size:11px;font-weight:bold;">${checked?'✓':''}</span>`;
+  const reasons = ei.reasons || [];
+  const reasonRow = (label) => `<div style="padding:4px 0;font-size:10.5px;">${chk(reasons.includes(label))}${esc(label)}</div>`;
+
+  return `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Exit Interview — ${esc(a.reference_no||'')} — WCT Group</title>
+<style>
+  @page{ size:A4; margin:14mm; }
+  *{box-sizing:border-box;}
+  body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;margin:0;line-height:1.5;}
+  .outer{border:2px solid #000;padding:0;}
+  .top-bar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px 6px;}
+  .top-bar img.logo{height:44px;}
+  .top-bar .priv{font-weight:bold;font-size:10px;}
+  .form-title{text-align:center;font-size:19px;font-weight:800;margin:2px 0 14px;}
+  .section-bar{background:#CFE3F2;font-weight:bold;font-size:10.5px;text-transform:uppercase;padding:6px 14px;border-top:1px solid #000;border-bottom:1px solid #000;}
+  .section-body{padding:14px 18px;}
+  .kv-row{display:flex;margin-bottom:10px;font-size:10.5px;}
+  .kv-row .kv-item{width:50%;display:flex;}
+  .kv-row .kv-lbl{width:150px;flex-shrink:0;}
+  .kv-row .kv-line{flex:1;border-bottom:1px solid #333;padding-bottom:2px;min-height:14px;}
+  .reasons-cols{display:flex;gap:30px;}
+  .reasons-cols > div{flex:1;}
+  .comments-lines div{border-bottom:1px solid #333;height:22px;margin-bottom:4px;}
+  .sig-row{display:flex;gap:60px;margin-top:26px;}
+  .sig-block{flex:1;}
+  .sig-line{border-bottom:1px solid #333;height:24px;margin-bottom:4px;font-weight:bold;padding-bottom:2px;}
+  .sig-cap{font-size:9.5px;color:#333;}
+  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
+  .print-bar button{font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
+  @media print{ .print-bar{display:none;} }
+</style>
+</head>
+<body>
+  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
+
+  <div class="outer">
+    <div class="top-bar">
+      <img class="logo" src="${WCT_LOGO_DATA_URI}">
+      <div class="priv">PRIVATE &amp; CONFIDENTIAL</div>
+    </div>
+    <div class="form-title">EMPLOYEE EXIT INTERVIEW FORM</div>
+
+    <div class="section-bar">A: Employee Details</div>
+    <div class="section-body">
+      <div class="kv-row">
+        <div class="kv-item"><span class="kv-lbl">Name (as per NRIC) :</span><span class="kv-line">${fmt(a.name_nric)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Position :</span><span class="kv-line">${fmt(a.position_applying)}</span></div>
+      </div>
+      <div class="kv-row">
+        <div class="kv-item"><span class="kv-lbl">Immediate Superior :</span><span class="kv-line">${fmt(ei.immediate_superior)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Dept/Site :</span><span class="kv-line">${fmt(ei.dept_site)}</span></div>
+      </div>
+      <div class="kv-row">
+        <div class="kv-item"><span class="kv-lbl">Date Joined :</span><span class="kv-line">${fmtDate(ei.date_joined)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Notice Period :</span><span class="kv-line">${fmt(ei.notice_period)}</span></div>
+      </div>
+      <div class="kv-row">
+        <div class="kv-item"><span class="kv-lbl">Official Last Day of Employment:</span><span class="kv-line">${fmtDate(ei.official_last_day)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Actual Last Day of Employment:</span><span class="kv-line">${fmtDate(ei.actual_last_day)}</span></div>
+      </div>
+    </div>
+
+    <div class="section-bar">B: Please indicate reason(s) below, which contributed to your decision to resign from your current position</div>
+    <div class="section-body">
+      <div class="reasons-cols">
+        <div>${EXIT_REASONS_LEFT.map(reasonRow).join('')}</div>
+        <div>${EXIT_REASONS_RIGHT.map(reasonRow).join('')}</div>
+      </div>
+      <div style="margin-top:6px;font-size:10.5px;">${chk(reasons.includes('Others'))} Others, please specify</div>
+      <div style="border-bottom:1px solid #333;min-height:16px;margin:6px 0 2px 22px;">${fmt(ei.reasons_other_specify)}</div>
+    </div>
+
+    <div class="section-bar">C: Employee's Comment(s) / Suggestion(s) for Improvement(s)</div>
+    <div class="section-body">
+      <div class="comments-lines">
+        ${(String(ei.comments||'').match(/.{1,95}(\s|$)/g) || ['']).slice(0,4).map(line=>`<div>${esc(line.trim())}</div>`).join('')}
+      </div>
+      <div class="sig-row">
+        <div class="sig-block">
+          <div class="sig-line">${fmt(ei.employee_signed_name)}</div>
+          <div class="sig-cap">Employee Signature (digitally confirmed, no wet signature)</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line">${ei.employee_signed_at ? fmtDate(ei.employee_signed_at) : '—'}</div>
+          <div class="sig-cap">Date</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-bar">D: For HRD (HQ) Use Only — To Be Completed by HR Personnel</div>
+    <div class="section-body">
+      <div class="sig-row">
+        <div class="sig-block">
+          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_name) : '—'}</div>
+          <div class="sig-cap">Signature (digitally confirmed, no wet signature)</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_name) : '—'}</div>
+          <div class="sig-cap">Name in Full</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_position) : '—'}</div>
+          <div class="sig-cap">Position</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line">${ei.hr_signed ? fmtDate(ei.hr_signed_at) : '—'}</div>
+          <div class="sig-cap">Date</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>
+  `;
+}
 
 // ============================================================================
 // JOB POSTINGS — full page, reached via the header nav
@@ -1412,6 +1678,8 @@ function viewDetailHtml(a){
         ${drow('Submitted', a.submitted_at ? new Date(a.submitted_at).toLocaleString() : 'Not yet submitted')}
       </div>
 
+      ${(a.status==='offboarding' || exitInterviewData) ? exitInterviewSectionHtml(a) : ''}
+
       <div class="status-actions">
         <button class="btn btn-outline btn-sm" onclick="startEdit()">✎ Edit</button>
         <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf(selectedApp.id)">📄 Export Full PDF</button>
@@ -1425,7 +1693,7 @@ function viewDetailHtml(a){
       ` : ''}
       <div class="status-actions">
         ${STATUS_OPTIONS.map(s => {
-          const styleMap = { hired:'btn-success', shortlisted:'btn-shortlist', rejected:'btn-danger', blacklisted:'btn-blacklist' };
+          const styleMap = { hired:'btn-success', shortlisted:'btn-shortlist', rejected:'btn-danger', blacklisted:'btn-blacklist', offboarding:'btn-offboarding' };
           const cls = styleMap[s] || 'btn-outline';
           return `<button class="btn ${cls} btn-sm" onclick="updateStatus('${s}')">${STATUS_LABELS[s]}</button>`;
         }).join('')}
@@ -1480,10 +1748,16 @@ async function updateStatus(status){
   const label = STATUS_LABELS[status] || status;
   const warnMsg = status === 'blacklisted'
     ? 'Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email. This can be reversed later by changing their status.'
+    : status === 'offboarding'
+    ? `Move this application to "Offboarding"? The candidate will be prompted to complete their Exit Interview Form.`
     : `Change this application's status to "${label}"? The candidate will be notified by email.`;
   if(!confirm(warnMsg)) return;
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_update_status', {p_token: adminToken, p_id: selectedApp.id, p_status: status});
+    const rpcName = STATUS_VIA_DEDICATED_RPC[status] || 'rpc_admin_update_status';
+    const params = STATUS_VIA_DEDICATED_RPC[status]
+      ? { p_token: adminToken, p_id: selectedApp.id }
+      : { p_token: adminToken, p_id: selectedApp.id, p_status: status };
+    const { error } = await supabaseClient.rpc(rpcName, params);
     if(error) throw error;
     await openDetail(selectedApp.id);
     await Promise.all([loadApplications(), loadStats()]);
