@@ -75,7 +75,9 @@
 
   /* ---------- Layout pieces ---------- */
   .stat-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
-  .stat{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;flex:1;min-width:110px;box-shadow:var(--shadow-sm);}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;flex:1;min-width:110px;box-shadow:var(--shadow-sm);transition:border-color .15s ease,box-shadow .15s ease;}
+  .stat:hover{border-color:var(--accent);box-shadow:var(--shadow-md);}
+  .stat.stat-active{border-color:var(--navy);border-width:2px;box-shadow:var(--shadow-md);}
   .stat .n{font-size:24px;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;}
   .stat .l{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
 
@@ -104,12 +106,12 @@
   .badge{display:inline-block;padding:4px 11px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
   .badge.submitted{background:var(--info-tint);color:var(--info);}
   .badge.under_review{background:var(--warn-tint);color:var(--warn);}
-  .badge.shortlisted{background:var(--ok-tint);color:var(--ok);}
+  .badge.shortlisted{background:#FFF3D6;color:#8A6D1F;}
   .badge.interview_scheduled{background:#EEE8FB;color:#6A3FC0;} /* historical only, no longer selectable */
   .badge.offer_sent{background:#FCEFE0;color:#B9660E;} /* historical only, no longer selectable */
-  .badge.kiv{background:#FDF3E3;color:#9C7A0E;}
+  .badge.kiv{background:var(--warn-tint);color:var(--warn);}
   .badge.rejected{background:var(--danger-tint);color:var(--danger);}
-  .badge.hired{background:var(--navy);color:#fff;}
+  .badge.hired{background:var(--ok-tint);color:var(--ok);}
   .badge.withdrawn{background:#EDEDEC;color:var(--ink-soft);}
   .badge.blacklisted{background:#1a1a1a;color:#fff;}
 
@@ -350,6 +352,7 @@ function render(){
   if(navEl){
     navEl.innerHTML = adminToken ? `
       <a class="${currentView==='home'?'active':''}" onclick="setView('home')">Home</a>
+      ${adminScope==='ALL' ? `<a class="${currentView==='permissions'?'active':''}" onclick="setView('permissions')">Permission Settings</a>` : ''}
       ${adminScope==='ALL' ? `<a class="${currentView==='settings'?'active':''}" onclick="setView('settings')">Manager Settings</a>` : ''}
     ` : '';
   }
@@ -365,6 +368,7 @@ function render(){
   } else {
     let pageContent;
     if(currentView==='settings') pageContent = settingsPageView();
+    else if(currentView==='permissions') pageContent = permissionsPageView();
     root.innerHTML = `<div class="wrap">${pageContent}</div>`;
     lastRenderedView = currentView;
   }
@@ -373,6 +377,7 @@ function render(){
 async function setView(view){
   currentView = view;
   if(view==='settings'){ await loadSettingsForPage(); }
+  if(view==='permissions'){ await loadPermissionsForPage(); }
   render();
 }
 
@@ -444,7 +449,7 @@ function dashboardShellHtml(){
           <option value="Mall" ${filterBusinessUnit==='Mall'?'selected':''}>Mall</option>
         </select>
       ` : `<span class="badge" style="background:var(--navy);color:#fff;">${esc(adminScope)} ACCESS ONLY</span>`}
-      <select onchange="setFilter('status', this.value)">
+      <select id="statusFilterSelect" onchange="setFilter('status', this.value)">
         <option value="">All Statuses</option>
         <option value="submitted" ${filterStatus==='submitted'?'selected':''}>New</option>
         ${STATUS_OPTIONS.map(s=>`<option value="${s}" ${filterStatus===s?'selected':''}>${STATUS_LABELS[s]}</option>`).join('')}
@@ -458,14 +463,16 @@ function dashboardShellHtml(){
 }
 
 function statRowHtml(){
+  const statClick = (statusVal) => `onclick="setFilter('status', '${statusVal}')" style="cursor:pointer;"`;
+  const activeCls = (statusVal) => filterStatus === statusVal ? ' stat-active' : '';
   return `
-      <div class="stat"><div class="n">${stats.total||0}</div><div class="l">Total Applicants</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.submitted||0}</div><div class="l">New</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.under_review||0}</div><div class="l">Under Review</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.kiv||0}</div><div class="l">KIV</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
-      <div class="stat"><div class="n">${stats.by_status?.rejected||0}</div><div class="l">Rejected</div></div>
+      <div class="stat${filterStatus===''?' stat-active':''}" ${statClick('')}><div class="n">${stats.total||0}</div><div class="l">Total Applicants</div></div>
+      <div class="stat${activeCls('submitted')}" ${statClick('submitted')}><div class="n">${stats.by_status?.submitted||0}</div><div class="l">New</div></div>
+      <div class="stat${activeCls('under_review')}" ${statClick('under_review')}><div class="n">${stats.by_status?.under_review||0}</div><div class="l">Under Review</div></div>
+      <div class="stat${activeCls('shortlisted')}" ${statClick('shortlisted')}><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
+      <div class="stat${activeCls('kiv')}" ${statClick('kiv')}><div class="n">${stats.by_status?.kiv||0}</div><div class="l">KIV</div></div>
+      <div class="stat${activeCls('hired')}" ${statClick('hired')}><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
+      <div class="stat${activeCls('rejected')}" ${statClick('rejected')}><div class="n">${stats.by_status?.rejected||0}</div><div class="l">Rejected</div></div>
   `;
 }
 
@@ -550,7 +557,14 @@ function handleSearchInput(val){
 }
 function setFilter(key, val){
   if(key==='business_unit') filterBusinessUnit = val;
-  if(key==='status') filterStatus = val;
+  if(key==='status'){
+    filterStatus = val;
+    // Keep the toolbar's own dropdown in sync — it isn't part of the shell
+    // rebuild path, so if the filter changed via something other than the
+    // dropdown itself (e.g. clicking a stat card), it'd otherwise go stale.
+    const sel = document.getElementById('statusFilterSelect');
+    if(sel) sel.value = val;
+  }
   currentPage = 1;
   selectedIds.clear();
   openStatusPanelId = null;
@@ -788,17 +802,32 @@ function downloadApplicationsCsv(data, filename){
 // ============================================================================
 // DETAIL MODAL (view / edit / status / delete / export)
 // ============================================================================
+let otherBuMatches = [];
+let assignableCompanies = [];
+
 async function openDetail(id){
   try{
     const { data, error } = await supabaseClient.rpc('rpc_admin_get_application', {p_token: adminToken, p_id: id});
     if(error) throw error;
     selectedApp = data[0];
     editingApp = false;
+
+    // Best-effort extras — don't block opening the modal if either fails.
+    try{
+      const { data: obData } = await supabaseClient.rpc('rpc_admin_check_other_bu', { p_token: adminToken, p_id: id });
+      otherBuMatches = obData || [];
+    } catch(e){ otherBuMatches = []; }
+    try{
+      const { data: compData } = await supabaseClient.rpc('rpc_admin_list_companies', { p_token: adminToken });
+      assignableCompanies = compData || [];
+    } catch(e){ assignableCompanies = []; }
+
     render();
   } catch(e){ alert('Error: '+e.message); }
 }
 function closeDetail(){
   selectedApp=null; editingApp=false;
+  otherBuMatches = []; assignableCompanies = [];
   const existing = document.getElementById('modalRoot');
   if(existing) existing.remove();
   render();
@@ -864,6 +893,103 @@ async function saveSettings(){
   } catch(e){ document.getElementById('settingsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
 
+// ============================================================================
+// PERMISSION SETTINGS — All Units admin access only. Controls which of the
+// three core business-unit scopes (E&C, Land, Mall) may assign candidates
+// to companies in each entity category (E&C, Aviation, Hotel, Property,
+// F&B, Malls, REIT), per the WCT company listing.
+// ============================================================================
+let permissionMatrix = []; // [{category, unit_scope, granted}, ...]
+const PERMISSION_UNITS = ['E&C', 'Land', 'Mall'];
+
+async function loadPermissionsForPage(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_get_permission_matrix', { p_token: adminToken });
+    if(error) throw error;
+    permissionMatrix = data || [];
+  } catch(e){ alert('Error loading permissions: '+e.message); permissionMatrix = []; }
+}
+
+function permissionsPageView(){
+  if(adminScope !== 'ALL'){
+    return `<div class="empty-state">Permission Settings is only available to All Units admin access.</div>`;
+  }
+  const categories = [...new Set(permissionMatrix.map(r=>r.category))];
+  const isGranted = (category, unit) => permissionMatrix.some(r=>r.category===category && r.unit_scope===unit && r.granted);
+
+  return `
+    <div class="stat-row">
+      <div class="stat" style="flex:none;min-width:auto;">
+        <h2 style="font-size:20px;margin:0;">Permission Settings</h2>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Controls which business unit's admin team can assign candidates to companies in each entity category.</div>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr>
+        <th>Entity Category</th>
+        ${PERMISSION_UNITS.map(u=>`<th style="text-align:center;">${u}</th>`).join('')}
+      </tr></thead>
+      <tbody>
+        ${categories.map(cat=>`
+          <tr class="data-row">
+            <td><strong>${esc(cat)}</strong></td>
+            ${PERMISSION_UNITS.map(u=>`
+              <td style="text-align:center;">
+                <input type="checkbox" class="row-check" data-cat="${esc(cat)}" data-unit="${esc(u)}" ${isGranted(cat,u)?'checked':''} onchange="togglePermissionCheckbox(this)">
+              </td>
+            `).join('')}
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div id="permissionsErr" style="margin-top:14px;"></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="savePermissionChanges()">Save Changes</button>
+  `;
+}
+
+let pendingPermissionChanges = {}; // unit_scope -> Set of categories, only populated once touched
+function togglePermissionCheckbox(el){
+  const unit = el.dataset.unit, cat = el.dataset.cat;
+  // Track full desired category set per unit the first time that column is touched
+  if(!pendingPermissionChanges[unit]){
+    pendingPermissionChanges[unit] = new Set(
+      permissionMatrix.filter(r=>r.unit_scope===unit && r.granted).map(r=>r.category)
+    );
+  }
+  if(el.checked) pendingPermissionChanges[unit].add(cat);
+  else pendingPermissionChanges[unit].delete(cat);
+}
+
+async function savePermissionChanges(){
+  const units = Object.keys(pendingPermissionChanges);
+  if(units.length === 0){ document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">No changes to save.</div>`; return; }
+  showLoading('Saving permissions...');
+  try{
+    for(const unit of units){
+      const categories = Array.from(pendingPermissionChanges[unit]);
+      const { error } = await supabaseClient.rpc('rpc_admin_save_permissions', { p_token: adminToken, p_unit_scope: unit, p_categories: categories });
+      if(error) throw error;
+    }
+    pendingPermissionChanges = {};
+    await loadPermissionsForPage();
+    hideLoading();
+    render();
+    document.getElementById('permissionsErr').innerHTML = `<div class="success-banner">Saved.</div>`;
+  } catch(e){ hideLoading(); document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+}
+
+async function saveCompanyAssignment(id){
+  const companyId = document.getElementById('assignCompanySelect').value || null;
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_assign_company', { p_token: adminToken, p_id: id, p_company_id: companyId });
+    if(error) throw error;
+    await openDetail(id);
+    await loadApplications();
+  } catch(e){ document.getElementById('assignCompanyErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+}
+
 function renderModal(){
   const a = selectedApp;
   const existing = document.getElementById('modalRoot');
@@ -893,6 +1019,30 @@ function renderModal(){
 
 function viewDetailHtml(a){
   return `
+      ${otherBuMatches.length ? `
+      <div class="error-banner" style="background:#FDF3E3;border-color:#E2D3AC;color:#9C7A0E;">
+        <strong>Also applied elsewhere:</strong> this candidate has ${otherBuMatches.length===1?'an application':otherBuMatches.length+' applications'} under a different business unit —
+        ${otherBuMatches.map(m=>`${esc(m.reference_no)} (${esc(m.business_unit)}, ${STATUS_LABELS[m.status]||esc(m.status)})`).join('; ')}.
+      </div>
+      ` : ''}
+
+      <div class="detail-section">
+        <h4>Company / Entity</h4>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="assignCompanySelect" style="flex:1;min-width:220px;">
+            <option value="">— Not assigned —</option>
+            ${Object.entries(assignableCompanies.reduce((acc,c)=>{ (acc[c.category]=acc[c.category]||[]).push(c); return acc; },{})).map(([cat,list])=>`
+              <optgroup label="${esc(cat)}">
+                ${list.map(c=>`<option value="${c.id}" ${a.company_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
+              </optgroup>
+            `).join('')}
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="saveCompanyAssignment('${a.id}')">Save</button>
+        </div>
+        ${assignableCompanies.length===0 ? `<div class="hint">No companies available to assign — an All Units admin needs to grant your business unit permission via Permission Settings.</div>` : ''}
+        <div id="assignCompanyErr"></div>
+      </div>
+
       <div class="detail-section">
         <h4>Contact &amp; Personal Particulars</h4>
         ${drow('Mobile', a.mobile_phone)}
@@ -1012,9 +1162,15 @@ function editFormHtml(a){
       <div class="field"><label>Mobile Phone</label><input type="text" id="editMobile" value="${esc(a.mobile_phone)}"></div>
       <div class="field"><label>Position Applying</label><input type="text" id="editPosition" value="${esc(a.position_applying)}"></div>
       <div class="field"><label>Business Unit</label>
+        ${adminScope === 'ALL' ? `
         <select id="editBusinessUnit">
           ${['E&C','Land','Mall'].map(o=>`<option value="${o}" ${a.business_unit===o?'selected':''}>${o}</option>`).join('')}
         </select>
+        <div class="hint">Changing this transfers the application to another business unit's admin team.</div>
+        ` : `
+        <input type="text" value="${esc(a.business_unit)}" disabled style="background:#F0F0EE;color:var(--ink-soft);">
+        <div class="hint">Only an All Units admin can transfer an application to a different business unit.</div>
+        `}
       </div>
       <div style="display:flex;gap:10px;margin-top:14px;">
         <button class="btn btn-primary btn-sm" onclick="saveEdit()">Save Changes</button>
@@ -1027,13 +1183,14 @@ function startEdit(){ editingApp = true; render(); }
 function cancelEdit(){ editingApp = false; render(); }
 
 async function saveEdit(){
+  const buEl = document.getElementById('editBusinessUnit');
   const patch = {
     name_nric: document.getElementById('editName').value.trim(),
     email: document.getElementById('editEmail').value.trim(),
     mobile_phone: document.getElementById('editMobile').value.trim(),
-    position_applying: document.getElementById('editPosition').value.trim(),
-    business_unit: document.getElementById('editBusinessUnit').value
+    position_applying: document.getElementById('editPosition').value.trim()
   };
+  if(buEl) patch.business_unit = buEl.value; // only present for ALL-scope admins
   try{
     const { error } = await supabaseClient.rpc('rpc_admin_update_application', {p_token: adminToken, p_id: selectedApp.id, p_patch: patch});
     if(error) throw error;
