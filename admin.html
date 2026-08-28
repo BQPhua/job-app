@@ -979,7 +979,7 @@ function exitInterviewSectionHtml(a){
   return `
     <div class="detail-section">
       <h4>Employee Exit Interview Form</h4>
-      ${drow('Position', a.position_applying)}
+      ${drow('Position', ei.position)}
       ${drow('Immediate Superior', ei.immediate_superior)}
       ${drow('Dept/Site', ei.dept_site)}
       ${drow('Date Joined', fmtDate(ei.date_joined))}
@@ -1110,7 +1110,7 @@ function buildExitInterviewPdfHtml(a, ei){
     <div class="section-body">
       <div class="kv-row">
         <div class="kv-item"><span class="kv-lbl">Name (as per NRIC) :</span><span class="kv-line">${fmt(a.name_nric)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Position :</span><span class="kv-line">${fmt(a.position_applying)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Position :</span><span class="kv-line">${fmt(ei.position)}</span></div>
       </div>
       <div class="kv-row">
         <div class="kv-item"><span class="kv-lbl">Immediate Superior :</span><span class="kv-line">${fmt(ei.immediate_superior)}</span></div>
