@@ -1061,6 +1061,7 @@ function backFromExitInterview(){
 async function saveExitInterview(showAlert){
   try{
     const patch = {
+      position: document.getElementById('ei_position')?.value.trim() || '',
       immediate_superior: document.getElementById('ei_immediate_superior')?.value.trim() || '',
       dept_site: document.getElementById('ei_dept_site')?.value.trim() || '',
       date_joined: document.getElementById('ei_date_joined')?.value || '',
@@ -1130,7 +1131,7 @@ function tplExitInterviewReview(){
     <div class="review-block">
       <h4>A: Employee Details</h4>
       ${eiReviewRow('Name (as per NRIC)', a.name_nric)}
-      ${eiReviewRow('Position', a.position_applying)}
+      ${eiReviewRow('Position', ei.position)}
       ${eiReviewRow('Immediate Superior', ei.immediate_superior)}
       ${eiReviewRow('Dept/Site', ei.dept_site)}
       ${eiReviewRow('Date Joined', ei.date_joined)}
@@ -1182,7 +1183,7 @@ function tplExitInterviewEdit(){
     <div class="section-title" style="margin-top:0;">A: Employee Details</div>
     <div class="grid">
       <div class="field"><label>Name (as per NRIC)</label><input type="text" value="${esc(a.name_nric)}" disabled></div>
-      <div class="field"><label>Position</label><input type="text" value="${esc(a.position_applying)}" disabled></div>
+      <div class="field"><label>Position</label><input type="text" id="ei_position" placeholder="e.g. Site Engineer" value="${esc(ei.position)}" ${locked?'disabled':''}></div>
       <div class="field"><label>Immediate Superior</label><input type="text" id="ei_immediate_superior" value="${esc(ei.immediate_superior)}" ${locked?'disabled':''}></div>
       <div class="field"><label>Dept/Site</label><input type="text" id="ei_dept_site" value="${esc(ei.dept_site)}" ${locked?'disabled':''}></div>
       <div class="field"><label>Date Joined</label><input type="date" id="ei_date_joined" value="${ei.date_joined||''}" ${locked?'disabled':''}></div>
@@ -1272,7 +1273,7 @@ function exportMyExitInterviewPdf(){
     <div class="section-body">
       <div class="kv-row">
         <div class="kv-item"><span class="kv-lbl">Name (as per NRIC) :</span><span class="kv-line">${fmt(a.name_nric)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Position :</span><span class="kv-line">${fmt(a.position_applying)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Position :</span><span class="kv-line">${fmt(ei.position)}</span></div>
       </div>
       <div class="kv-row">
         <div class="kv-item"><span class="kv-lbl">Immediate Superior :</span><span class="kv-line">${fmt(ei.immediate_superior)}</span></div>
