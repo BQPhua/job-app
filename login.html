@@ -390,7 +390,8 @@
       }
 
       // If this login page was reached via a link carrying extra context —
-      // a "Complete Your Onboarding" email link (?onboarding=<id>) or a
+      // a "Complete Your Onboarding" email link (?onboarding=<id>), a
+      // signed Exit Interview notification link (?exit=<id>), or a
       // business-unit-specific application link (?bu=Mall etc.) — bounced
       // here because the candidate wasn't signed in yet, carry that same
       // parameter forward to index.html once they do sign in. Explicitly
@@ -400,6 +401,7 @@
         const params = new URLSearchParams(window.location.search);
         const forward = new URLSearchParams();
         if(params.get('onboarding')) forward.set('onboarding', params.get('onboarding'));
+        if(params.get('exit')) forward.set('exit', params.get('exit'));
         if(params.get('bu')) forward.set('bu', params.get('bu'));
         const qs = forward.toString();
         return basePath + (qs ? '?' + qs : '');
