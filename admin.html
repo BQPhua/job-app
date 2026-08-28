@@ -173,6 +173,18 @@
   .field label{font-size:12.5px;font-weight:600;color:var(--navy);}
   .field input, .field select{font-family:inherit;font-size:13.5px;padding:9px 11px;border:1px solid var(--line);border-radius:7px;}
 
+  /* Clean, styled <select> — used wherever a plain browser-default dropdown
+     (e.g. Company/Entity assignment) needs to match the rest of the design
+     system instead of looking like unstyled OS chrome. */
+  .select-clean{
+    font-family:inherit;font-size:13.5px;padding:9px 34px 9px 12px;border:1px solid var(--line);border-radius:8px;
+    background:#fff;color:var(--ink);appearance:none;-webkit-appearance:none;-moz-appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%236B6D70'/></svg>");
+    background-repeat:no-repeat;background-position:right 12px center;cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease;
+  }
+  .select-clean:hover{border-color:#C9C9C8;}
+  .select-clean:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-tint);}
+
   .loading-overlay{position:fixed;inset:0;background:rgba(10,10,10,.5);display:flex;align-items:center;justify-content:center;z-index:99;color:#fff;font-weight:600;}
   .spinner{width:32px;height:32px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;}
   @keyframes spin{to{transform:rotate(360deg);}}
@@ -326,7 +338,7 @@ const STATUS_LABELS = {
   // here so any existing historical record still in one of those statuses
   // displays its label correctly instead of showing "undefined".
   interview_scheduled:'Interview Scheduled', offer_sent:'Offer Sent', withdrawn:'Withdrawn',
-  kiv:'KIV', hired:'Hired', rejected:'Rejected', blacklisted:'Blacklisted'
+  kiv:'Keep In View', hired:'Hired', rejected:'Rejected', blacklisted:'Blacklisted'
 };
 const STATUS_OPTIONS = ['shortlisted','kiv','hired','rejected','blacklisted'];
 
@@ -358,6 +370,7 @@ function render(){
   if(navEl){
     navEl.innerHTML = adminToken ? `
       <a class="${currentView==='home'?'active':''}" onclick="setView('home')">Home</a>
+      <a class="${currentView==='companies'?'active':''}" onclick="setView('companies')">Company Settings</a>
       ${adminScope==='ALL' ? `<a class="${currentView==='permissions'?'active':''}" onclick="setView('permissions')">Permission Settings</a>` : ''}
       ${adminScope==='ALL' ? `<a class="${currentView==='settings'?'active':''}" onclick="setView('settings')">Manager Settings</a>` : ''}
     ` : '';
@@ -370,6 +383,16 @@ function render(){
       lastRenderedView = 'home';
     } else {
       renderDashboardResults();
+    }
+  } else if(currentView === 'companies'){
+    // Same shell-vs-results split as Home: rebuilding the whole page on
+    // every search keystroke would blow away focus/cursor position in the
+    // search input (see the note on `lastRenderedView` above).
+    if(lastRenderedView !== 'companies' || !document.getElementById('companyMgmtResults')){
+      root.innerHTML = `<div class="wrap">${companySettingsPageView()}</div>`;
+      lastRenderedView = 'companies';
+    } else {
+      renderCompanyMgmtResults();
     }
   } else {
     let pageContent;
@@ -384,6 +407,7 @@ async function setView(view){
   currentView = view;
   if(view==='settings'){ await loadSettingsForPage(); }
   if(view==='permissions'){ await loadPermissionsForPage(); }
+  if(view==='companies'){ companyMgmtAddOpen = false; companyMgmtEditId = null; companyMgmtSearch = ''; await loadCompanyMgmtList(); }
   render();
 }
 
@@ -475,7 +499,7 @@ function statRowHtml(){
       <div class="stat${filterStatus===''?' stat-active':''}" ${statClick('')}><div class="n">${stats.total||0}</div><div class="l">Total Applicants</div></div>
       <div class="stat${activeCls('submitted')}" ${statClick('submitted')}><div class="n">${stats.by_status?.submitted||0}</div><div class="l">New</div></div>
       <div class="stat${activeCls('shortlisted')}" ${statClick('shortlisted')}><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
-      <div class="stat${activeCls('kiv')}" ${statClick('kiv')}><div class="n">${stats.by_status?.kiv||0}</div><div class="l">KIV</div></div>
+      <div class="stat${activeCls('kiv')}" ${statClick('kiv')}><div class="n">${stats.by_status?.kiv||0}</div><div class="l">Keep In View</div></div>
       <div class="stat${activeCls('hired')}" ${statClick('hired')}><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
       <div class="stat${activeCls('rejected')}" ${statClick('rejected')}><div class="n">${stats.by_status?.rejected||0}</div><div class="l">Rejected</div></div>
   `;
@@ -1008,6 +1032,223 @@ async function savePermissionChanges(){
   } catch(e){ hideLoading(); document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
 
+// ============================================================================
+// COMPANY SETTINGS — available to every admin scope (unlike Permission/
+// Manager Settings, which are All Units only). A business-unit-scoped admin
+// (E&C/Land/Mall) can add, edit, and delete companies belonging ONLY to
+// their own business_unit; an All Units admin can manage every company
+// across all three units. This is a straight ownership check on
+// companies.business_unit — separate from, and simpler than, the
+// category-based admin_unit_permissions grants used for candidate
+// assignment (Permission Settings), which stays untouched by this feature.
+// ============================================================================
+let companyMgmtList = [];
+let companyMgmtSearch = '';
+let companyMgmtAddOpen = false;
+let companyMgmtEditId = null;
+
+async function loadCompanyMgmtList(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_list_companies_for_management', { p_token: adminToken });
+    if(error) throw error;
+    companyMgmtList = data || [];
+  } catch(e){ alert('Error loading companies: '+e.message); companyMgmtList = []; }
+}
+
+function filterCompanyMgmtList(v){
+  companyMgmtSearch = v;
+  renderCompanyMgmtResults();
+}
+
+function filteredCompanyMgmtList(){
+  const q = companyMgmtSearch.trim().toLowerCase();
+  if(!q) return companyMgmtList;
+  return companyMgmtList.filter(c =>
+    (c.name||'').toLowerCase().includes(q) ||
+    (c.category||'').toLowerCase().includes(q) ||
+    (c.business_unit||'').toLowerCase().includes(q)
+  );
+}
+
+function companySettingsPageView(){
+  const isAll = adminScope === 'ALL';
+  return `
+    <div class="stat-row">
+      <div class="stat" style="flex:none;min-width:auto;">
+        <h2 style="font-size:20px;margin:0;">Company Settings</h2>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">
+          ${isAll
+            ? 'Add, edit, or remove companies/entities across all business units. This list feeds the Company/Entity dropdown on each application.'
+            : `Add, edit, or remove companies/entities under <strong>${esc(adminScope)}</strong>. This list feeds the Company/Entity dropdown on each application.`}
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="companyMgmtSearchInput" placeholder="Search companies by name or category..." oninput="filterCompanyMgmtList(this.value)">
+      <button class="btn btn-primary btn-sm" onclick="toggleAddCompanyForm()">${companyMgmtAddOpen ? 'Cancel' : '+ Add Company'}</button>
+    </div>
+
+    ${companyMgmtAddOpen ? addCompanyFormHtml() : ''}
+
+    <div id="companyMgmtErr"></div>
+    <div id="companyMgmtResults">${companyMgmtResultsHtml()}</div>
+  `;
+}
+
+function addCompanyFormHtml(){
+  const isAll = adminScope === 'ALL';
+  const existingCategories = [...new Set(companyMgmtList.map(c=>c.category))];
+  return `
+    <div class="detail-section" style="background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow-sm);">
+      <h4 style="border-top:none;padding-top:0;">New Company / Entity</h4>
+      <div class="grid g3" style="display:grid;grid-template-columns:${isAll?'1fr 1fr 1fr':'1fr 1fr'};gap:14px;">
+        <div class="field"><label>Name <span style="color:var(--danger);">*</span></label>
+          <input type="text" id="newCompanyName" placeholder="e.g. WCT Berhad">
+        </div>
+        <div class="field"><label>Category <span style="color:var(--danger);">*</span></label>
+          <input type="text" id="newCompanyCategory" list="companyCategoryOptions" placeholder="e.g. E&amp;C, Hotel, Malls...">
+          <datalist id="companyCategoryOptions">${existingCategories.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+        </div>
+        ${isAll ? `
+        <div class="field"><label>Business Unit <span style="color:var(--danger);">*</span></label>
+          <select id="newCompanyBu" class="select-clean">
+            <option value="E&C">E&amp;C</option>
+            <option value="Land">Land</option>
+            <option value="Mall">Mall</option>
+          </select>
+        </div>` : ''}
+      </div>
+      ${!isAll ? `<div class="hint" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 12px;">Will be added under your own business unit: <strong>${esc(adminScope)}</strong>.</div>` : ''}
+      <button class="btn btn-primary btn-sm" onclick="submitAddCompany()">Save Company</button>
+    </div>
+  `;
+}
+
+function toggleAddCompanyForm(){
+  companyMgmtAddOpen = !companyMgmtAddOpen;
+  render();
+}
+
+async function submitAddCompany(){
+  const name = document.getElementById('newCompanyName').value.trim();
+  const category = document.getElementById('newCompanyCategory').value.trim();
+  const buEl = document.getElementById('newCompanyBu');
+  const business_unit = buEl ? buEl.value : adminScope;
+  if(!name || !category){
+    document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">Name and category are both required.</div>`;
+    return;
+  }
+  showLoading('Adding company...');
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_create_company', { p_token: adminToken, p_name: name, p_category: category, p_business_unit: business_unit });
+    if(error) throw error;
+    companyMgmtAddOpen = false;
+    await loadCompanyMgmtList();
+    await loadCompanyLookup();
+    hideLoading();
+    render();
+  } catch(e){ hideLoading(); document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+}
+
+function companyMgmtResultsHtml(){
+  const isAll = adminScope === 'ALL';
+  const list = filteredCompanyMgmtList();
+  if(companyMgmtList.length === 0){
+    return `<div class="empty-state">No companies yet${isAll ? '' : ` under ${esc(adminScope)}`}. Use "+ Add Company" above to create one.</div>`;
+  }
+  if(list.length === 0){
+    return `<div class="empty-state">No companies match "${esc(companyMgmtSearch)}".</div>`;
+  }
+  return `
+    <table>
+      <thead><tr>
+        <th>Name</th>
+        <th>Category</th>
+        ${isAll ? '<th>Business Unit</th>' : ''}
+        <th style="width:1%;white-space:nowrap;">Actions</th>
+      </tr></thead>
+      <tbody>
+        ${list.map(c => companyMgmtRowHtml(c, isAll)).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function companyMgmtRowHtml(c, isAll){
+  if(companyMgmtEditId === c.id){
+    return `
+      <tr class="data-row">
+        <td><input type="text" id="editCompanyName_${c.id}" value="${esc(c.name)}" style="width:100%;"></td>
+        <td><input type="text" id="editCompanyCategory_${c.id}" value="${esc(c.category)}" style="width:100%;"></td>
+        ${isAll ? `<td><span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);">${esc(c.business_unit)}</span></td>` : ''}
+        <td>
+          <div class="row-actions">
+            <button class="btn btn-primary btn-sm" onclick="submitEditCompany('${c.id}')">Save</button>
+            <button class="btn btn-outline btn-sm" onclick="cancelEditCompany()">Cancel</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+  return `
+    <tr class="data-row">
+      <td>${esc(c.name)}</td>
+      <td>${esc(c.category)}</td>
+      ${isAll ? `<td><span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);">${esc(c.business_unit)}</span></td>` : ''}
+      <td>
+        <div class="row-actions">
+          <button class="btn btn-outline btn-sm" onclick="startEditCompany('${c.id}')">Edit</button>
+          <button class="btn btn-outline-danger btn-sm" onclick="deleteCompanyRow('${c.id}', '${esc(c.name).replace(/'/g,"\\'")}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function renderCompanyMgmtResults(){
+  const el = document.getElementById('companyMgmtResults');
+  if(el) el.innerHTML = companyMgmtResultsHtml();
+}
+
+function startEditCompany(id){
+  companyMgmtEditId = id;
+  renderCompanyMgmtResults();
+}
+function cancelEditCompany(){
+  companyMgmtEditId = null;
+  renderCompanyMgmtResults();
+}
+
+async function submitEditCompany(id){
+  const name = document.getElementById('editCompanyName_'+id).value.trim();
+  const category = document.getElementById('editCompanyCategory_'+id).value.trim();
+  if(!name || !category){ alert('Name and category are both required.'); return; }
+  showLoading('Saving...');
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_update_company', { p_token: adminToken, p_id: id, p_name: name, p_category: category });
+    if(error) throw error;
+    companyMgmtEditId = null;
+    await loadCompanyMgmtList();
+    await loadCompanyLookup();
+    hideLoading();
+    render();
+  } catch(e){ hideLoading(); alert('Error saving: '+e.message); }
+}
+
+async function deleteCompanyRow(id, name){
+  if(!confirm(`Delete "${name}" from the company list? This cannot be undone, and will fail if any applications are currently assigned to it.`)) return;
+  showLoading('Deleting...');
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_delete_company', { p_token: adminToken, p_id: id });
+    if(error) throw error;
+    await loadCompanyMgmtList();
+    await loadCompanyLookup();
+    hideLoading();
+    render();
+  } catch(e){ hideLoading(); alert('Error deleting: '+e.message); }
+}
+
 async function saveCompanyAssignment(id){
   const companyId = document.getElementById('assignCompanySelect').value || null;
   try{
@@ -1057,7 +1298,7 @@ function viewDetailHtml(a){
       <div class="detail-section">
         <h4>Company / Entity</h4>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <select id="assignCompanySelect" style="flex:1;min-width:220px;">
+          <select id="assignCompanySelect" class="select-clean" style="flex:1;min-width:220px;">
             <option value="">— Not assigned —</option>
             ${Object.entries(assignableCompanies.reduce((acc,c)=>{ (acc[c.category]=acc[c.category]||[]).push(c); return acc; },{})).map(([cat,list])=>`
               <optgroup label="${esc(cat)}">
