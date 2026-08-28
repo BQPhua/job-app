@@ -475,7 +475,8 @@ async function doLogin(){
     sessionStorage.setItem('wct_admin_scope', adminScope);
     if(adminScope !== 'ALL') filterBusinessUnit = adminScope;
     render();
-    loadEverything();
+    await loadEverything();
+    await openDeepLinkedAppIfAny();
   } catch(e){
     document.getElementById('loginErr').innerHTML = `<div class="error-banner">Incorrect passcode.</div>`;
   }
@@ -490,6 +491,7 @@ function logout(){ sessionStorage.removeItem('wct_admin_token'); sessionStorage.
 // ============================================================================
 function dashboardShellHtml(){
   return `
+    <div id="pendingSignatureBanner">${pendingSignatureBannerHtml()}</div>
     <div class="stat-row" id="dashStats">${statRowHtml()}</div>
 
     <div class="toolbar">
@@ -512,6 +514,28 @@ function dashboardShellHtml(){
     </div>
 
     <div id="dashResults">${dashboardResultsHtml()}</div>
+  `;
+}
+
+// Employees can sign their own Exit Interview section without HR ever
+// completing Section D — nothing else in the UI would otherwise surface an
+// exit interview stuck in that state, so this banner exists specifically
+// to make sure a signed-by-employee-but-not-HR record doesn't get missed.
+let pendingExitSignatureCount = 0;
+async function loadPendingExitSignatureCount(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_count_pending_exit_signatures', { p_token: adminToken });
+    if(error) throw error;
+    pendingExitSignatureCount = data || 0;
+  } catch(e){ pendingExitSignatureCount = 0; }
+}
+function pendingSignatureBannerHtml(){
+  if(!pendingExitSignatureCount) return '';
+  return `
+    <div class="error-banner" style="background:#F2F1EE;border-color:#D8D6D0;color:#54524F;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <span>⚠ ${pendingExitSignatureCount} Exit Interview${pendingExitSignatureCount===1?'':'s'} signed by the employee, awaiting your HR signature.</span>
+      <button class="btn btn-outline btn-sm" style="background:#fff;" onclick="setFilter('status','offboarding')">Review Now →</button>
+    </div>
   `;
 }
 
@@ -597,6 +621,8 @@ function dashboardResultsHtml(){
 }
 
 function renderDashboardResults(){
+  const bannerEl = document.getElementById('pendingSignatureBanner');
+  if(bannerEl) bannerEl.innerHTML = pendingSignatureBannerHtml();
   const statsEl = document.getElementById('dashStats');
   if(statsEl) statsEl.innerHTML = statRowHtml();
   const resultsEl = document.getElementById('dashResults');
@@ -708,7 +734,7 @@ async function loadCompanyLookup(){
 
 async function loadEverything(){
   showLoading('Loading applications...');
-  await Promise.all([loadApplications(), loadStats(), loadCompanyLookup()]);
+  await Promise.all([loadApplications(), loadStats(), loadCompanyLookup(), loadPendingExitSignatureCount()]);
   hideLoading();
 }
 
@@ -1011,6 +1037,7 @@ async function hrSignExitInterview(applicationId){
     });
     if(error) throw error;
     exitInterviewData = data[0];
+    await loadPendingExitSignatureCount();
     hideLoading();
     render();
   } catch(e){ hideLoading(); document.getElementById('hrSignErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
@@ -1532,7 +1559,11 @@ async function saveCompanyAssignment(id){
   try{
     const { error } = await supabaseClient.rpc('rpc_admin_assign_company', { p_token: adminToken, p_id: id, p_company_id: companyId });
     if(error) throw error;
-    await openDetail(id);
+    // Assign-and-close, rather than reopening the same modal — the person
+    // already sees the updated Company column on the dashboard table
+    // immediately after loadApplications() below.
+    closeDetail();
+    await loadCompanyLookup();
     await loadApplications();
   } catch(e){ document.getElementById('assignCompanyErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
@@ -2283,9 +2314,25 @@ function buildFormalPdfHtml(a){
 // ============================================================================
 // BOOT
 // ============================================================================
+// Deep link from an email — admin.html?app=<application id> opens straight
+// into that application's detail modal (e.g. "an employee has submitted
+// their Exit Interview — click to review and sign") instead of the generic
+// dashboard. Same idea as index.html's ?onboarding=/?exit= links. Stripped
+// from the URL immediately so refreshing afterward doesn't keep re-opening
+// the same modal, and consumed once whichever of boot-with-existing-session
+// or doLogin() runs first actually has a token to fetch with.
+let deepLinkAppId = new URLSearchParams(window.location.search).get('app');
+if(deepLinkAppId) window.history.replaceState({}, '', window.location.pathname);
+async function openDeepLinkedAppIfAny(){
+  if(!deepLinkAppId) return;
+  const id = deepLinkAppId;
+  deepLinkAppId = null;
+  await openDetail(id);
+}
+
 if(adminToken && adminScope && adminScope !== 'ALL') filterBusinessUnit = adminScope;
 render();
-if(adminToken) loadEverything();
+if(adminToken) loadEverything().then(openDeepLinkedAppIfAny);
 
 // ============================================================================
 // AUTO-REFRESH — polls every 20 seconds while on the Home view, so new
@@ -2299,6 +2346,7 @@ setInterval(() => {
   if(adminToken && currentView === 'home' && !selectedApp){
     loadApplications();
     loadStats();
+    loadPendingExitSignatureCount().then(renderDashboardResults);
   }
 }, 20000);
 </script>
