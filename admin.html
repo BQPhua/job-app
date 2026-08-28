@@ -1085,7 +1085,7 @@ function companySettingsPageView(){
     </div>
 
     <div class="toolbar">
-      <input type="text" id="companyMgmtSearchInput" placeholder="Search companies by name or category..." oninput="filterCompanyMgmtList(this.value)">
+      <input type="text" id="companyMgmtSearchInput" placeholder="Search companies by name or category..." value="${esc(companyMgmtSearch)}" oninput="filterCompanyMgmtList(this.value)">
       <button class="btn btn-primary btn-sm" onclick="toggleAddCompanyForm()">${companyMgmtAddOpen ? 'Cancel' : '+ Add Company'}</button>
     </div>
 
@@ -1125,9 +1125,21 @@ function addCompanyFormHtml(){
   `;
 }
 
+function renderCompanySettingsShell(){
+  // Toggling the Add-Company form (and closing it after a successful save)
+  // changes the SHELL — the toolbar/button/form live outside
+  // #companyMgmtResults — so the lighter renderCompanyMgmtResults() can't
+  // pick it up. This forces a full shell rebuild for those cases, while
+  // renderCompanyMgmtResults() stays the right tool for search/edit/refresh
+  // (row-only changes that shouldn't touch the search input's focus).
+  const root = document.getElementById('root');
+  root.innerHTML = `<div class="wrap">${companySettingsPageView()}</div>`;
+  lastRenderedView = 'companies';
+}
+
 function toggleAddCompanyForm(){
   companyMgmtAddOpen = !companyMgmtAddOpen;
-  render();
+  renderCompanySettingsShell();
 }
 
 async function submitAddCompany(){
@@ -1147,7 +1159,7 @@ async function submitAddCompany(){
     await loadCompanyMgmtList();
     await loadCompanyLookup();
     hideLoading();
-    render();
+    renderCompanySettingsShell();
   } catch(e){ hideLoading(); document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
 
