@@ -143,6 +143,7 @@ function render(){
     case 'final': root.innerHTML = tplFinal(); break;
     case 'done': root.innerHTML = tplDone(); break;
     case 'onboarding': root.innerHTML = tplOnboarding(); break;
+    case 'exit-interview': root.innerHTML = tplExitInterview(); break;
     case 'my-application-detail': root.innerHTML = tplMyApplicationDetail(); break;
   }
 }
@@ -201,7 +202,9 @@ function tplStart(){
               <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
               <td>
                 <div class="history-actions">
-                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding Details</button>` : '<span style="color:var(--ink-soft);font-size:12.5px;">—</span>'}
+                  ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding Details</button>` : ''}
+                  ${a.status==='offboarding' ? `<button class="btn" style="background:#6B6D70;color:#fff;" onclick="openExitInterview('${a.id}')">Exit Interview Form</button>` : ''}
+                  ${a.status!=='hired' && a.status!=='offboarding' ? '<span style="color:var(--ink-soft);font-size:12.5px;">—</span>' : ''}
                 </div>
               </td>
             </tr>
@@ -1003,6 +1006,289 @@ function tplObReview(){
   `;
 }
 
+// ============================================================================
+// EXIT INTERVIEW / OFFBOARDING — digitized "Employee Exit Interview Form".
+// Opened via the "Exit Interview Form" button in "Your Previous Applications"
+// (shown when status==='offboarding') or via an emailed link of the form
+// index.html?exit=<application id> (see boot() below), same pattern as the
+// existing ?onboarding=<id> deep link.
+//
+// Unlike onboarding this is a SINGLE page, not a multi-step wizard — the
+// paper form is short enough that splitting it into steps would add
+// friction without helping anyone, so it's just Sections A/B/C on one
+// screen with a Save Draft + Sign & Submit action. Section D (HR sign-off)
+// is admin.html-only — the candidate never sees or edits that part.
+// ============================================================================
+let exitInterviewAppId = null;
+let exitInterviewData = null;
+
+// Same fixed reason list/order as admin.html's EXIT_REASONS_LEFT/RIGHT —
+// duplicated rather than shared since this project has no build step or
+// shared module system between index.html and admin.html.
+const EXIT_REASONS_LEFT = ['Compensation (Salary / Benefits)','Better Offer','Career Advancement','Lack of promotional opportunities','Lack of training','Working Hours'];
+const EXIT_REASONS_RIGHT = ['Conflict with colleague/superior','Relocation','Retirement','Health','Return to Study','Distance travelled to work'];
+
+async function openExitInterview(applicationId){
+  showLoading('Loading your Exit Interview Form...');
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_get_my_exit_interview', { p_application_id: applicationId });
+    if(error) throw error;
+    exitInterviewAppId = applicationId;
+    exitInterviewData = data[0];
+    hideLoading();
+    goStep('exit-interview');
+  } catch(e){
+    hideLoading();
+    alert('Could not load your Exit Interview Form: ' + e.message);
+  }
+}
+
+function toggleExitReason(reason, checked){
+  const set = new Set(exitInterviewData.reasons || []);
+  if(checked) set.add(reason); else set.delete(reason);
+  exitInterviewData.reasons = Array.from(set);
+}
+
+function backFromExitInterview(){
+  exitInterviewAppId = null; exitInterviewData = null;
+  goStep('start');
+}
+
+async function saveExitInterview(showAlert){
+  try{
+    const patch = {
+      immediate_superior: document.getElementById('ei_immediate_superior')?.value.trim() || '',
+      dept_site: document.getElementById('ei_dept_site')?.value.trim() || '',
+      date_joined: document.getElementById('ei_date_joined')?.value || '',
+      notice_period: document.getElementById('ei_notice_period')?.value.trim() || '',
+      official_last_day: document.getElementById('ei_official_last_day')?.value || '',
+      actual_last_day: document.getElementById('ei_actual_last_day')?.value || '',
+      reasons: exitInterviewData.reasons || [],
+      reasons_other_specify: document.getElementById('ei_reasons_other')?.value.trim() || '',
+      comments: document.getElementById('ei_comments')?.value.trim() || ''
+    };
+    Object.keys(patch).forEach(key => {
+      if(patch[key] === '' ) delete patch[key];
+    });
+    // reasons is always sent (even if empty array) since it's read from
+    // state, not the DOM, so it's always accurate regardless of this being
+    // a single-page form (no "off-screen field" risk like onboarding's
+    // multi-step save has).
+    patch.reasons = exitInterviewData.reasons || [];
+    const { data, error } = await supabaseClient.rpc('rpc_save_my_exit_interview', { p_application_id: exitInterviewAppId, p_patch: patch });
+    if(error) throw error;
+    exitInterviewData = data[0];
+    if(showAlert) alert('Saved.');
+    return true;
+  } catch(e){ alert('Error saving: ' + e.message); return false; }
+}
+
+async function submitExitInterview(){
+  if(!confirm('Submit and sign your Exit Interview Form? Once signed, you won\'t be able to edit Sections A–C anymore, and HR will be notified to complete their review.')) return;
+  const ok = await saveExitInterview(false);
+  if(!ok) return;
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_submit_my_exit_interview', { p_application_id: exitInterviewAppId });
+    if(error) throw error;
+    exitInterviewData = data[0];
+    render();
+    window.scrollTo(0,0);
+  } catch(e){ alert('Error submitting: ' + e.message); }
+}
+
+function tplExitInterview(){
+  const ei = exitInterviewData;
+  const a = myApplications.find(x=>x.id===exitInterviewAppId) || {};
+  const locked = ei.employee_signed;
+  const reasonCheckbox = (r) => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;padding:5px 0;">
+      <input type="checkbox" ${(ei.reasons||[]).includes(r)?'checked':''} ${locked?'disabled':''} onchange="toggleExitReason('${r.replace(/'/g,"\\'")}', this.checked)">
+      ${esc(r)}
+    </label>`;
+
+  return `
+    <div class="step-eyebrow">Offboarding</div>
+    <h2>Employee Exit Interview Form</h2>
+    <p class="step-desc">${a.reference_no ? esc(a.reference_no)+' · ' : ''}Private &amp; confidential.</p>
+
+    ${locked ? `<div class="success-banner">Submitted and signed on ${new Date(ei.employee_signed_at).toLocaleString()}. This form is now locked — HR will complete their review next.</div>` : ''}
+
+    <div class="section-title" style="margin-top:0;">A: Employee Details</div>
+    <div class="grid">
+      <div class="field"><label>Name (as per NRIC)</label><input type="text" value="${esc(a.name_nric)}" disabled></div>
+      <div class="field"><label>Position</label><input type="text" value="${esc(a.position_applying)}" disabled></div>
+      <div class="field"><label>Immediate Superior</label><input type="text" id="ei_immediate_superior" value="${esc(ei.immediate_superior)}" ${locked?'disabled':''}></div>
+      <div class="field"><label>Dept/Site</label><input type="text" id="ei_dept_site" value="${esc(ei.dept_site)}" ${locked?'disabled':''}></div>
+      <div class="field"><label>Date Joined</label><input type="date" id="ei_date_joined" value="${ei.date_joined||''}" ${locked?'disabled':''}></div>
+      <div class="field"><label>Notice Period</label><input type="text" id="ei_notice_period" value="${esc(ei.notice_period)}" ${locked?'disabled':''}></div>
+      <div class="field"><label>Official Last Day of Employment</label><input type="date" id="ei_official_last_day" value="${ei.official_last_day||''}" ${locked?'disabled':''}></div>
+      <div class="field"><label>Actual Last Day of Employment</label><input type="date" id="ei_actual_last_day" value="${ei.actual_last_day||''}" ${locked?'disabled':''}></div>
+    </div>
+
+    <div class="section-title">B: Please indicate reason(s) below, which contributed to your decision to resign from your current position</div>
+    <div class="grid">
+      <div>${EXIT_REASONS_LEFT.map(reasonCheckbox).join('')}</div>
+      <div>${EXIT_REASONS_RIGHT.map(reasonCheckbox).join('')}</div>
+    </div>
+    <div class="field" style="margin-top:8px;">
+      <label>Others, please specify</label>
+      <input type="text" id="ei_reasons_other" value="${esc(ei.reasons_other_specify)}" ${locked?'disabled':''}>
+    </div>
+
+    <div class="section-title">C: Employee's Comment(s) / Suggestion(s) for Improvement(s)</div>
+    <div class="field">
+      <textarea id="ei_comments" rows="4" ${locked?'disabled':''}>${esc(ei.comments)}</textarea>
+    </div>
+
+    ${!locked ? `
+      <div class="checkbox-row" style="background:#FBFAF7;border-color:var(--line);">
+        <input type="checkbox" id="ei_sign_confirm">
+        <label for="ei_sign_confirm">I confirm the information above is true and correct. Checking this box and submitting acts as my signature — no physical signature is required. Today's date will be recorded automatically.</label>
+      </div>
+    ` : ''}
+
+    <div class="btn-row">
+      <button class="btn btn-ghost" onclick="backFromExitInterview()">← Back to My Applications</button>
+      <div class="right">
+        ${!locked ? `
+          <button class="btn btn-ghost" onclick="saveExitInterview(true)">Save Draft</button>
+          <button class="btn btn-primary" onclick="handleSubmitExitInterview()">Sign &amp; Submit →</button>
+        ` : `
+          <button class="btn btn-primary" onclick="exportMyExitInterviewPdf()">📄 Download as PDF</button>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function handleSubmitExitInterview(){
+  if(!document.getElementById('ei_sign_confirm').checked){
+    alert('Please check the confirmation box to sign and submit.');
+    return;
+  }
+  submitExitInterview();
+}
+
+function exportMyExitInterviewPdf(){
+  if(!exitInterviewData || !exitInterviewAppId){ alert('No exit interview data loaded.'); return; }
+  const a = myApplications.find(x=>x.id===exitInterviewAppId) || {};
+  const ei = exitInterviewData;
+  const chk = (checked) => `<span style="display:inline-block;width:13px;height:13px;border:1.5px solid #333;margin-right:8px;vertical-align:middle;text-align:center;line-height:11px;font-size:11px;font-weight:bold;">${checked?'✓':''}</span>`;
+  const reasons = ei.reasons || [];
+  const reasonRow = (label) => `<div style="padding:4px 0;font-size:10.5px;">${chk(reasons.includes(label))}${esc(label)}</div>`;
+
+  const html = `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Exit Interview — ${esc(a.reference_no||'')} — WCT Group</title>
+<style>
+  @page{ size:A4; margin:14mm; }
+  *{box-sizing:border-box;}
+  body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;margin:0;line-height:1.5;}
+  .outer{border:2px solid #000;}
+  .top-bar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px 6px;}
+  .top-bar img.logo{height:44px;}
+  .top-bar .priv{font-weight:bold;font-size:10px;}
+  .form-title{text-align:center;font-size:19px;font-weight:800;margin:2px 0 14px;}
+  .section-bar{background:#CFE3F2;font-weight:bold;font-size:10.5px;text-transform:uppercase;padding:6px 14px;border-top:1px solid #000;border-bottom:1px solid #000;}
+  .section-body{padding:14px 18px;}
+  .kv-row{display:flex;margin-bottom:10px;font-size:10.5px;}
+  .kv-row .kv-item{width:50%;display:flex;}
+  .kv-row .kv-lbl{width:150px;flex-shrink:0;}
+  .kv-row .kv-line{flex:1;border-bottom:1px solid #333;padding-bottom:2px;min-height:14px;}
+  .reasons-cols{display:flex;gap:30px;}
+  .reasons-cols > div{flex:1;}
+  .comments-lines div{border-bottom:1px solid #333;height:22px;margin-bottom:4px;}
+  .sig-row{display:flex;gap:60px;margin-top:26px;}
+  .sig-block{flex:1;}
+  .sig-line{border-bottom:1px solid #333;height:24px;margin-bottom:4px;font-weight:bold;padding-bottom:2px;}
+  .sig-cap{font-size:9.5px;color:#333;}
+  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
+  .print-bar button{font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
+  @media print{ .print-bar{display:none;} }
+</style>
+</head>
+<body>
+  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
+  <div class="outer">
+    <div class="top-bar">
+      <img class="logo" src="${WCT_LOGO_DATA_URI}">
+      <div class="priv">PRIVATE &amp; CONFIDENTIAL</div>
+    </div>
+    <div class="form-title">EMPLOYEE EXIT INTERVIEW FORM</div>
+
+    <div class="section-bar">A: Employee Details</div>
+    <div class="section-body">
+      <div class="kv-row">
+        <div class="kv-item"><span class="kv-lbl">Name (as per NRIC) :</span><span class="kv-line">${fmt(a.name_nric)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Position :</span><span class="kv-line">${fmt(a.position_applying)}</span></div>
+      </div>
+      <div class="kv-row">
+        <div class="kv-item"><span class="kv-lbl">Immediate Superior :</span><span class="kv-line">${fmt(ei.immediate_superior)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Dept/Site :</span><span class="kv-line">${fmt(ei.dept_site)}</span></div>
+      </div>
+      <div class="kv-row">
+        <div class="kv-item"><span class="kv-lbl">Date Joined :</span><span class="kv-line">${fmtDate(ei.date_joined)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Notice Period :</span><span class="kv-line">${fmt(ei.notice_period)}</span></div>
+      </div>
+      <div class="kv-row">
+        <div class="kv-item"><span class="kv-lbl">Official Last Day of Employment:</span><span class="kv-line">${fmtDate(ei.official_last_day)}</span></div>
+        <div class="kv-item"><span class="kv-lbl">Actual Last Day of Employment:</span><span class="kv-line">${fmtDate(ei.actual_last_day)}</span></div>
+      </div>
+    </div>
+
+    <div class="section-bar">B: Please indicate reason(s) below, which contributed to your decision to resign from your current position</div>
+    <div class="section-body">
+      <div class="reasons-cols">
+        <div>${EXIT_REASONS_LEFT.map(reasonRow).join('')}</div>
+        <div>${EXIT_REASONS_RIGHT.map(reasonRow).join('')}</div>
+      </div>
+      <div style="margin-top:6px;font-size:10.5px;">${chk(!!ei.reasons_other_specify)} Others, please specify</div>
+      <div style="border-bottom:1px solid #333;min-height:16px;margin:6px 0 2px 22px;">${fmt(ei.reasons_other_specify)}</div>
+    </div>
+
+    <div class="section-bar">C: Employee's Comment(s) / Suggestion(s) for Improvement(s)</div>
+    <div class="section-body">
+      <div class="comments-lines">
+        ${(String(ei.comments||'').match(/.{1,95}(\s|$)/g) || ['']).slice(0,4).map(line=>`<div>${esc(line.trim())}</div>`).join('')}
+      </div>
+      <div class="sig-row">
+        <div class="sig-block">
+          <div class="sig-line">${fmt(ei.employee_signed_name)}</div>
+          <div class="sig-cap">Employee Signature (digitally confirmed, no wet signature)</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line">${ei.employee_signed_at ? fmtDate(ei.employee_signed_at) : '—'}</div>
+          <div class="sig-cap">Date</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-bar">D: For HRD (HQ) Use Only — To Be Completed by HR Personnel</div>
+    <div class="section-body">
+      <div class="sig-row">
+        <div class="sig-block">
+          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_name) : '—'}</div>
+          <div class="sig-cap">Signature (digitally confirmed, no wet signature)</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_name) : '—'}</div>
+          <div class="sig-cap">Name in Full</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_position) : '—'}</div>
+          <div class="sig-cap">Position</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-line">${ei.hr_signed ? fmtDate(ei.hr_signed_at) : '—'}</div>
+          <div class="sig-cap">Date</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>
+  `;
+  openPrintWindow(html);
+}
 
 function handleCitizenChange(val){
   state.citizen = val;
@@ -1999,5 +2285,14 @@ async function signOut(){
     window.history.replaceState({}, '', window.location.pathname);
     await openOnboarding(onboardingId);
   }
+
+  // Same deep-link pattern as onboarding above, but for the HR-signed Exit
+  // Interview notification email: index.html?exit=<application id>.
+  const exitId = new URLSearchParams(window.location.search).get('exit');
+  if(exitId){
+    window.history.replaceState({}, '', window.location.pathname);
+    await openExitInterview(exitId);
+  }
+
   render();
 })();
