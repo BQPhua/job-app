@@ -29,13 +29,28 @@
       }
       body {
         margin: 0;
-        background: var(--cream);
         color: var(--ink);
         min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 30px 16px;
+        position: relative;
+      }
+      /* Blurred/darkened WCT building photo as a backdrop — separate fixed
+         layers (not a plain body background-image) so the blur/brightness
+         filter never touches the actual sign-in content sitting on top. */
+      .login-bg-layer {
+        position: fixed; inset: -24px;
+        background-size: cover; background-position: center;
+        filter: blur(7px) brightness(.55) saturate(1.15);
+        transform: scale(1.1);
+        z-index: -2;
+      }
+      .login-overlay {
+        position: fixed; inset: 0;
+        background: linear-gradient(160deg, rgba(16,27,45,.92), rgba(16,27,45,.72) 45%, rgba(62,92,118,.55));
+        z-index: -1;
       }
       h1,
       h2 {
@@ -70,19 +85,19 @@
       .brand-text .name {
         font-weight: 700;
         font-size: 15px;
-        color: var(--navy);
+        color: #fff;
       }
       .brand-text .sub {
         font-size: 14.5px;
         font-weight: 600;
-        color: var(--navy);
+        color: #C9D3DE;
       }
       .card {
-        background: var(--paper);
+        background: rgba(255, 255, 255, .98);
         border: 1px solid var(--line);
         border-radius: 12px;
         padding: 34px;
-        box-shadow: 0 1px 3px rgba(18, 37, 63, 0.05);
+        box-shadow: 0 24px 60px rgba(0,0,0,.35);
       }
       .tabs {
         display: flex;
@@ -300,12 +315,13 @@
         text-align: center;
         margin-top: 18px;
         font-size: 13px;
-        color: var(--ink-soft);
+        color: #C9D3DE;
       }
+      .admin-strip a { color: #fff; font-weight: 600; }
       .footer-note {
         text-align: center;
         font-size: 11.5px;
-        color: var(--ink-soft);
+        color: #AEB9C4;
         margin-top: 18px;
       }
 
@@ -324,6 +340,8 @@
     </style>
   </head>
   <body>
+    <div class="login-bg-layer" id="loginBgLayer"></div>
+    <div class="login-overlay"></div>
     <div class="wrap">
       <div class="brand">
         <img
@@ -350,10 +368,13 @@
 
     <script src="config.js"></script>
     <script src="logo.js"></script>
+    <script src="login-bg.js"></script>
     <script>
       document
         .querySelectorAll('.wct-logo-img')
         .forEach((el) => (el.src = WCT_LOGO_DATA_URI));
+      document.getElementById('loginBgLayer').style.backgroundImage =
+        "url('" + CANDIDATE_LOGIN_BG_DATA_URI + "')";
     </script>
     <script>
       let tab = 'signin'; // signin | register | forgot
