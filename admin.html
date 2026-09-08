@@ -633,7 +633,13 @@ function render(){
       <a class="${currentView==='aiInsights'?'active':''}" onclick="setView('aiInsights')" title="AI Insights">${NAV_ICONS.aiInsights}<span class="nav-label">AI Insights</span></a>
       <a class="${currentView==='companies'?'active':''}" onclick="setView('companies')" title="Company Settings">${NAV_ICONS.companies}<span class="nav-label">Company Settings</span></a>
       ${adminScope==='ALL' ? `<a class="${currentView==='permissions'?'active':''}" onclick="setView('permissions')" title="Business Unit Settings">${NAV_ICONS.permissions}<span class="nav-label">Business Unit Settings</span></a>` : ''}
-      ${adminScope==='ALL' ? `<a class="${currentView==='settings'?'active':''}" onclick="setView('settings')" title="Manager Settings">${NAV_ICONS.settings}<span class="nav-label">Manager Settings</span></a>` : ''}
+      <!-- Manager Settings retired — notification recipients are now derived
+           live from Admin Access (admin_grants) instead of a manually-typed
+           email per business unit. See retire_manager_settings.sql. The
+           underlying settingsPageView()/rpc_admin_get_settings() are left in
+           place, unused, same "never drop, just stop using" pattern as
+           everything else orphaned in this project. -->
+      
       ${adminScope==='ALL' ? `<a class="${currentView==='adminAccess'?'active':''}" onclick="setView('adminAccess')" title="Admin Access">${NAV_ICONS.adminAccess}<span class="nav-label">Admin Access</span></a>` : ''}
     ` : '';
   }
