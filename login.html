@@ -41,15 +41,15 @@
          layers (not a plain body background-image) so the blur/brightness
          filter never touches the actual sign-in content sitting on top. */
       .login-bg-layer {
-        position: fixed; inset: -24px;
+        position: fixed; inset: -10px;
         background-size: cover; background-position: center;
-        filter: blur(7px) brightness(.55) saturate(1.15);
-        transform: scale(1.1);
+        filter: blur(2px) brightness(.72) saturate(1.1);
+        transform: scale(1.03);
         z-index: -2;
       }
       .login-overlay {
         position: fixed; inset: 0;
-        background: linear-gradient(160deg, rgba(16,27,45,.92), rgba(16,27,45,.72) 45%, rgba(62,92,118,.55));
+        background: linear-gradient(160deg, rgba(16,27,45,.62), rgba(16,27,45,.42) 45%, rgba(62,92,118,.3));
         z-index: -1;
       }
       h1,
