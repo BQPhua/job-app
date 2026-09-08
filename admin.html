@@ -406,6 +406,10 @@
 // ============================================================================
 let adminToken = sessionStorage.getItem('wct_admin_token');
 let adminScope = sessionStorage.getItem('wct_admin_scope');
+// Entra ID login flow state — see doMicrosoftLogin()/attemptAdminBootstrap()
+let loginStage = 'signin'; // 'signin' | 'choosing_bu' | 'error'
+let loginErrorMsg = '';
+let availableBuGrants = [];
 let applications = [];
 let totalCount = 0;
 let stats = { total: 0, by_status: {} };
@@ -454,14 +458,16 @@ const NAV_ICONS = {
   analytics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
   companies: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/></svg>',
   permissions: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>',
-  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>'
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>',
+  adminAccess: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
 };
 const PAGE_TITLES = {
   home: ['Dashboard', 'All candidate applications'],
   analytics: ['Analytics', 'Trends across your applications'],
   companies: ['Company Settings', 'Manage the company/entity list'],
   permissions: ['Permission Settings', 'Cross-business-unit assignment access'],
-  settings: ['Manager Settings', 'Notification email routing']
+  settings: ['Manager Settings', 'Notification email routing'],
+  adminAccess: ['Admin Access', 'Manage who can sign in and what they can see']
 };
 
 // ---------------------------------------------------------------------------
@@ -554,6 +560,7 @@ function render(){
       <a class="${currentView==='companies'?'active':''}" onclick="setView('companies')" title="Company Settings">${NAV_ICONS.companies}<span class="nav-label">Company Settings</span></a>
       ${adminScope==='ALL' ? `<a class="${currentView==='permissions'?'active':''}" onclick="setView('permissions')" title="Permission Settings">${NAV_ICONS.permissions}<span class="nav-label">Permission Settings</span></a>` : ''}
       ${adminScope==='ALL' ? `<a class="${currentView==='settings'?'active':''}" onclick="setView('settings')" title="Manager Settings">${NAV_ICONS.settings}<span class="nav-label">Manager Settings</span></a>` : ''}
+      ${adminScope==='ALL' ? `<a class="${currentView==='adminAccess'?'active':''}" onclick="setView('adminAccess')" title="Admin Access">${NAV_ICONS.adminAccess}<span class="nav-label">Admin Access</span></a>` : ''}
     ` : '';
   }
   const titleEl = document.getElementById('pageTitle');
@@ -591,6 +598,15 @@ function render(){
     // first — renderAnalyticsCharts() runs right after this innerHTML
     // assignment completes, not before.
     renderAnalyticsCharts();
+  } else if(currentView === 'adminAccess'){
+    // Same shell-vs-results split as Companies — the invite form lives in
+    // the shell, not the results container.
+    if(lastRenderedView !== 'adminAccess' || !document.getElementById('adminMgmtResults')){
+      root.innerHTML = `<div class="wrap">${adminAccessPageView()}</div>`;
+      lastRenderedView = 'adminAccess';
+    } else {
+      renderAdminMgmtResults();
+    }
   } else {
     let pageContent;
     if(currentView==='settings') pageContent = settingsPageView();
@@ -607,6 +623,7 @@ async function setView(view){
   if(view==='permissions'){ await loadPermissionsForPage(); }
   if(view==='companies'){ companyMgmtAddOpen = false; companyMgmtEditId = null; companyMgmtSearch = ''; await loadCompanyMgmtList(); }
   if(view==='analytics'){ await loadAnalyticsData(); }
+  if(view==='adminAccess'){ adminMgmtInviteOpen = false; adminMgmtGrantFormFor = null; await loadAdminMgmtList(); }
   render();
 }
 
@@ -614,29 +631,125 @@ async function setView(view){
 // LOGIN
 // ============================================================================
 function loginView(){
+  const bgHtml = `
+    <div class="login-bg-layer" style="background-image:url('${ADMIN_LOGIN_BG_DATA_URI}');"></div>
+    <div class="login-overlay"></div>
+  `;
+  if(loginStage === 'choosing_bu'){
+    return `
+      <div class="login-page">
+        ${bgHtml}
+        <div class="login-card">
+          <img class="wct-logo-img login-card-logo" src="${WCT_LOGO_DATA_URI}" alt="WCT Group">
+          <div class="login-eyebrow">HR Admin Portal</div>
+          <h2>Choose Business Unit</h2>
+          <p style="color:var(--ink-soft);font-size:13px;">You have access to more than one business unit. Choose which one to work in for this session — you can sign in again later to switch.</p>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
+            ${availableBuGrants.map(bu=>`<button class="btn btn-outline" style="justify-content:center;" onclick="chooseBuAndContinue('${bu}')">${esc(bu)}</button>`).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  if(loginStage === 'error'){
+    return `
+      <div class="login-page">
+        ${bgHtml}
+        <div class="login-card">
+          <img class="wct-logo-img login-card-logo" src="${WCT_LOGO_DATA_URI}" alt="WCT Group">
+          <div class="login-eyebrow">HR Admin Portal</div>
+          <h2>Sign-in Failed</h2>
+          <div class="error-banner">${esc(loginErrorMsg)}</div>
+          <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px;" onclick="retryLogin()">← Try Again</button>
+          <a href="login.html" class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:16px;text-decoration:none;">← Main Site</a>
+        </div>
+      </div>
+    `;
+  }
   return `
     <div class="login-page">
-      <div class="login-bg-layer" style="background-image:url('${ADMIN_LOGIN_BG_DATA_URI}');"></div>
-      <div class="login-overlay"></div>
+      ${bgHtml}
       <div class="login-card">
         <img class="wct-logo-img login-card-logo" src="${WCT_LOGO_DATA_URI}" alt="WCT Group">
         <div class="login-eyebrow">HR Admin Portal</div>
-        <h2>Admin Login</h2>
-        <p style="color:var(--ink-soft);font-size:13px;">Enter the HR admin passcode to view applications.</p>
-        <div class="field" style="margin-top:14px;text-align:left;">
-          <label>Admin Passcode <span style="color:var(--danger);">*</span></label>
-          <div style="position:relative;">
-            <input type="password" id="passcodeInput" placeholder="Enter passcode" autocomplete="off" data-lpignore="true" data-1p-ignore style="padding-right:44px;margin-top:0;" onkeydown="if(event.key==='Enter') doLogin()">
-            <button type="button" id="passcodeToggleBtn" class="pw-toggle-btn" onclick="togglePasscodeVisibility()" title="Show passcode" aria-label="Show passcode">${ICON_EYE_OPEN}</button>
-          </div>
-        </div>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px;" onclick="doLogin()">Log In</button>
+        <h2>Admin Sign In</h2>
+        <p style="color:var(--ink-soft);font-size:13px;">Sign in with your WCT Microsoft account.</p>
+        <button class="btn btn-primary" style="width:100%;justify-content:center;gap:10px;margin-top:16px;" onclick="doMicrosoftLogin()">
+          <svg width="16" height="16" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>
+          Sign in with Microsoft
+        </button>
         <div id="loginErr"></div>
         <a href="login.html" class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:16px;text-decoration:none;">← Main Site</a>
       </div>
     </div>
   `;
 }
+
+// ============================================================================
+// ENTRA ID (AZURE AD) LOGIN — replaces the shared passcode entirely. The
+// Azure provider itself is configured in the Supabase dashboard restricted
+// to the WCT tenant, so only @wct.my accounts can complete sign-in at all —
+// but that alone doesn't mean someone SHOULD have dashboard access, only
+// that they're a real WCT employee. rpc_admin_get_my_grants() is the actual
+// authorization gate: an authenticated-but-not-invited employee gets signed
+// straight back out with a clear message, never silently let through.
+//
+// The old passcode system (admin_config, rpc_admin_login, doLogin(),
+// togglePasscodeVisibility()) is left completely in place further down —
+// just no longer linked from this login screen — as a manual break-glass
+// fallback, matching this project's established "never drop, just stop
+// using" convention.
+// ============================================================================
+async function doMicrosoftLogin(){
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: 'azure',
+    options: {
+      redirectTo: window.location.origin + window.location.pathname,
+      scopes: 'email openid profile'
+    }
+  });
+  if(error){ loginStage = 'error'; loginErrorMsg = error.message; render(); }
+}
+
+async function attemptAdminBootstrap(chosenBU){
+  try{
+    const { data: grantsData, error: grantsErr } = await supabaseClient.rpc('rpc_admin_get_my_grants');
+    if(grantsErr) throw grantsErr;
+    const g = grantsData && grantsData[0];
+    if(!g || !g.authorized){
+      await supabaseClient.auth.signOut();
+      loginStage = 'error';
+      loginErrorMsg = "Your account isn't set up as an admin yet. Contact your Super Admin to be added.";
+      render();
+      return;
+    }
+    if(!g.is_super_admin && (g.bu_grants||[]).length > 1 && !chosenBU){
+      availableBuGrants = g.bu_grants;
+      loginStage = 'choosing_bu';
+      render();
+      return;
+    }
+    const p_business_unit = g.is_super_admin ? null : (chosenBU || (g.bu_grants||[])[0] || null);
+    const { data: sessionData, error: sessionErr } = await supabaseClient.rpc('rpc_admin_create_session', { p_business_unit });
+    if(sessionErr) throw sessionErr;
+    adminToken = sessionData[0].token;
+    adminScope = sessionData[0].unit_scope;
+    sessionStorage.setItem('wct_admin_token', adminToken);
+    sessionStorage.setItem('wct_admin_scope', adminScope);
+    if(adminScope !== 'ALL') filterBusinessUnit = adminScope;
+    loginStage = 'signin';
+    render();
+    await loadEverything();
+    await openDeepLinkedAppIfAny();
+  } catch(e){
+    loginStage = 'error';
+    loginErrorMsg = e.message || String(e);
+    render();
+  }
+}
+function chooseBuAndContinue(bu){ attemptAdminBootstrap(bu); }
+function retryLogin(){ loginStage = 'signin'; loginErrorMsg = ''; render(); }
+
 function togglePasscodeVisibility(){
   const el = document.getElementById('passcodeInput');
   const btn = document.getElementById('passcodeToggleBtn');
@@ -663,7 +776,10 @@ async function doLogin(){
     document.getElementById('loginErr').innerHTML = `<div class="error-banner">Incorrect passcode.</div>`;
   }
 }
-function logout(){ sessionStorage.removeItem('wct_admin_token'); sessionStorage.removeItem('wct_admin_scope'); adminToken=null; adminScope=null; render(); }
+function logout(){
+  supabaseClient.auth.signOut();
+  sessionStorage.removeItem('wct_admin_token'); sessionStorage.removeItem('wct_admin_scope'); adminToken=null; adminScope=null; render();
+}
 
 // ============================================================================
 // DASHBOARD: shell (search/filters — built once) + results (rebuilt on
@@ -1688,6 +1804,191 @@ function renderAnalyticsCharts(){
 }
 
 // ============================================================================
+// ADMIN ACCESS — Super Admin only. Replaces manual SQL for managing who can
+// sign in and what they're granted, per the Entra ID model: invite a person
+// by @wct.my email (creates an admin_users row, unlinked until their first
+// Microsoft sign-in), then grant them Super Admin or Business Unit Admin
+// (one grant per BU — a person can hold several, which is what lets someone
+// cover e.g. both Land and Mall without needing a separate account). Entity
+// Admin (per-company access) isn't available yet — see Phase 2 note in
+// add_entra_id_admin_auth.sql.
+// ============================================================================
+let adminMgmtList = []; // grouped client-side from the flat rows rpc_admin_list_admins returns
+let adminMgmtInviteOpen = false;
+let adminMgmtGrantFormFor = null; // which admin_user_id currently has its "add grant" mini-form open
+
+async function loadAdminMgmtList(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_list_admins', { p_token: adminToken });
+    if(error) throw error;
+    const byId = {};
+    (data||[]).forEach(row => {
+      if(!byId[row.admin_user_id]){
+        byId[row.admin_user_id] = { id: row.admin_user_id, email: row.email, display_name: row.display_name, is_active: row.is_active, linked: row.linked, grants: [] };
+      }
+      if(row.grant_id){ byId[row.admin_user_id].grants.push({ id: row.grant_id, role: row.role, business_unit: row.business_unit }); }
+    });
+    adminMgmtList = Object.values(byId);
+  } catch(e){ alert('Error loading admin list: '+e.message); adminMgmtList = []; }
+}
+
+function renderAdminAccessShell(){
+  const root = document.getElementById('root');
+  root.innerHTML = `<div class="wrap">${adminAccessPageView()}</div>`;
+  lastRenderedView = 'adminAccess';
+}
+
+function toggleInviteAdminForm(){
+  adminMgmtInviteOpen = !adminMgmtInviteOpen;
+  renderAdminAccessShell();
+}
+
+function adminAccessPageView(){
+  return `
+    <div class="stat-row">
+      <div class="stat" style="flex:none;min-width:auto;">
+        <h2 style="font-size:20px;margin:0;">Admin Access</h2>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Invite admins by their @wct.my email, then grant Super Admin or Business Unit Admin access. A person can hold more than one Business Unit grant.</div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div style="flex:1;"></div>
+      <button class="btn btn-primary btn-sm" onclick="toggleInviteAdminForm()">${adminMgmtInviteOpen ? 'Cancel' : '+ Invite Admin'}</button>
+    </div>
+
+    ${adminMgmtInviteOpen ? `
+      <div class="detail-section" style="background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow-sm);">
+        <h4 style="border-top:none;padding-top:0;">Invite Admin</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div class="field"><label>Email <span style="color:var(--danger);">*</span></label><input type="text" id="newAdminEmail" placeholder="name@wct.my"></div>
+          <div class="field"><label>Display Name</label><input type="text" id="newAdminName" placeholder="Optional"></div>
+        </div>
+        <div class="hint" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 12px;">They'll appear below as "not yet signed in" until they complete their first Microsoft sign-in — grant their access now, it takes effect the moment they do.</div>
+        <div id="adminMgmtErr"></div>
+        <button class="btn btn-primary btn-sm" onclick="submitInviteAdmin()">Send Invite</button>
+      </div>
+    ` : ''}
+
+    <div id="adminMgmtResults">${adminMgmtResultsHtml()}</div>
+  `;
+}
+
+function adminMgmtResultsHtml(){
+  if(adminMgmtList.length === 0){
+    return `<div class="empty-state">No admins yet. Use "+ Invite Admin" above — don't forget to also seed your own Super Admin row directly in Supabase first (see the migration file), or you won't be able to sign in at all.</div>`;
+  }
+  return adminMgmtList.map(a => adminMgmtCardHtml(a)).join('');
+}
+
+const ROLE_LABELS = { super_admin: 'Super Admin', bu_admin: 'Business Unit Admin', entity_admin: 'Entity Admin (Phase 2)' };
+
+function adminMgmtCardHtml(a){
+  const existingRoleEl = document.getElementById('newGrantRole_'+a.id);
+  const grantRoleSel = existingRoleEl ? existingRoleEl.value : 'bu_admin';
+  return `
+    <div class="detail-section" style="background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px 20px;margin-bottom:12px;box-shadow:var(--shadow-sm);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="font-weight:700;font-size:14.5px;">${esc(a.display_name || a.email)}</div>
+          <div style="font-size:12.5px;color:var(--ink-soft);">${esc(a.email)} · ${a.linked ? 'Signed in before' : 'Not yet signed in'}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span class="badge" style="background:${a.is_active?'var(--ok-tint)':'var(--danger-tint)'};color:${a.is_active?'var(--ok)':'var(--danger)'};">${a.is_active?'Active':'Deactivated'}</span>
+          <button class="btn btn-outline btn-sm" onclick="toggleAdminActive('${a.id}', ${!a.is_active})">${a.is_active?'Deactivate':'Reactivate'}</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;">
+        ${a.grants.length === 0 ? `<span style="color:var(--ink-soft);font-size:12.5px;">No grants yet — this person cannot sign in until granted something below.</span>` : a.grants.map(g => `
+          <span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);">
+            ${g.role==='super_admin' ? 'Super Admin' : esc(g.business_unit)+' Admin'}
+            <span style="cursor:pointer;margin-left:6px;font-weight:700;" title="Revoke" onclick="revokeGrant('${g.id}')">✕</span>
+          </span>
+        `).join('')}
+      </div>
+
+      ${adminMgmtGrantFormFor === a.id ? `
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+          <select id="newGrantRole_${a.id}" class="select-clean" onchange="renderAdminMgmtResults()">
+            <option value="bu_admin" ${grantRoleSel!=='super_admin'?'selected':''}>Business Unit Admin</option>
+            <option value="super_admin" ${grantRoleSel==='super_admin'?'selected':''}>Super Admin</option>
+          </select>
+          <select id="newGrantBu_${a.id}" class="select-clean" ${grantRoleSel==='super_admin'?'disabled':''}>
+            <option value="E&C">E&amp;C</option>
+            <option value="Land">Land</option>
+            <option value="Mall">Mall</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="submitAddGrant('${a.id}')">Add Grant</button>
+          <button class="btn btn-outline btn-sm" onclick="adminMgmtGrantFormFor=null;renderAdminMgmtResults();">Cancel</button>
+        </div>
+      ` : `
+        <button class="btn btn-outline btn-sm" style="margin-top:12px;" onclick="adminMgmtGrantFormFor='${a.id}';renderAdminMgmtResults();">+ Add Grant</button>
+      `}
+    </div>
+  `;
+}
+
+function renderAdminMgmtResults(){
+  const el = document.getElementById('adminMgmtResults');
+  if(el) el.innerHTML = adminMgmtResultsHtml();
+}
+
+async function submitInviteAdmin(){
+  const email = document.getElementById('newAdminEmail').value.trim();
+  const name = document.getElementById('newAdminName').value.trim();
+  if(!email){ document.getElementById('adminMgmtErr').innerHTML = `<div class="error-banner">Email is required.</div>`; return; }
+  showLoading('Inviting...');
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_invite_admin', { p_token: adminToken, p_email: email, p_display_name: name });
+    if(error) throw error;
+    adminMgmtInviteOpen = false;
+    await loadAdminMgmtList();
+    hideLoading();
+    renderAdminAccessShell();
+  } catch(e){ hideLoading(); document.getElementById('adminMgmtErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+}
+
+async function submitAddGrant(adminUserId){
+  const role = document.getElementById('newGrantRole_'+adminUserId).value;
+  const buEl = document.getElementById('newGrantBu_'+adminUserId);
+  const businessUnit = role === 'bu_admin' ? buEl.value : null;
+  showLoading('Adding grant...');
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_grant_role', { p_token: adminToken, p_admin_user_id: adminUserId, p_role: role, p_business_unit: businessUnit });
+    if(error) throw error;
+    adminMgmtGrantFormFor = null;
+    await loadAdminMgmtList();
+    hideLoading();
+    renderAdminMgmtResults();
+  } catch(e){ hideLoading(); alert('Error: '+e.message); }
+}
+
+async function revokeGrant(grantId){
+  if(!confirm('Revoke this grant? The admin will lose that access immediately.')) return;
+  showLoading('Revoking...');
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_revoke_grant', { p_token: adminToken, p_grant_id: grantId });
+    if(error) throw error;
+    await loadAdminMgmtList();
+    hideLoading();
+    renderAdminMgmtResults();
+  } catch(e){ hideLoading(); alert('Error: '+e.message); }
+}
+
+async function toggleAdminActive(adminUserId, newActive){
+  if(!newActive && !confirm('Deactivate this admin? They will be signed out and unable to sign in again until reactivated.')) return;
+  showLoading('Updating...');
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_set_admin_active', { p_token: adminToken, p_admin_user_id: adminUserId, p_is_active: newActive });
+    if(error) throw error;
+    await loadAdminMgmtList();
+    hideLoading();
+    renderAdminMgmtResults();
+  } catch(e){ hideLoading(); alert('Error: '+e.message); }
+}
+
+// ============================================================================
 // COMPANY SETTINGS — available to every admin scope (unlike Permission/
 // Manager Settings, which are All Units only). A business-unit-scoped admin
 // (E&C/Land/Mall) can add, edit, and delete companies belonging ONLY to
@@ -2695,6 +2996,22 @@ async function openDeepLinkedAppIfAny(){
 if(adminToken && adminScope && adminScope !== 'ALL') filterBusinessUnit = adminScope;
 render();
 if(adminToken) loadEverything().then(openDeepLinkedAppIfAny);
+
+// ============================================================================
+// Detect a Microsoft sign-in — either just completed (redirected back with
+// the auth code still in the URL, which supabase-js exchanges automatically
+// on load) or an existing browser session from earlier today. Either way,
+// if there's a real Supabase Auth session but no admin_sessions token yet,
+// run the authorization check and (if allowed) issue one.
+// ============================================================================
+(async () => {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if(session && !adminToken){ await attemptAdminBootstrap(); }
+})();
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if(event === 'SIGNED_IN' && session && !adminToken){ attemptAdminBootstrap(); }
+});
+
 window.addEventListener('resize', () => {
   // Crossing the mobile breakpoint mid-session (rotating a tablet, resizing
   // a desktop window) shouldn't leave the drawer stuck open over a now-wide
@@ -2705,10 +3022,6 @@ window.addEventListener('resize', () => {
 // ============================================================================
 // AUTO-REFRESH — polls every 20 seconds while on the Home view, so new
 // submissions and status changes appear without needing a manual refresh.
-// (True push-based Supabase Realtime isn't used here since it requires RLS
-// policies permitting SELECT access, which would undo the locked-down
-// table access this whole system was deliberately built around — polling
-// gets the same practical result without that tradeoff.)
 // ============================================================================
 setInterval(() => {
   if(adminToken && currentView === 'home' && !selectedApp){
