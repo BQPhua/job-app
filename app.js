@@ -1456,6 +1456,16 @@ function addLangRow(){ state.language_ability.push({language:'',spoken:'',writte
 function educationOptionsHtml(selected){
   return `<option value="">Select</option>` + HIGHEST_EDUCATION_OPTIONS.map(o=>`<option ${selected===o?'selected':''}>${o}</option>`).join('');
 }
+// Covers a couple of school-going years past today (for an in-progress/expected
+// qualification's "To" year) down to a wide range of birth years back, newest first.
+function yearOptionsHtml(selected){
+  const now = new Date().getFullYear();
+  let opts = `<option value="">Year</option>`;
+  for(let y=now+10; y>=now-80; y--){
+    opts += `<option value="${y}" ${String(selected)===String(y)?'selected':''}>${y}</option>`;
+  }
+  return opts;
+}
 
 function tplEducation(){
   const rows = state.education.map((r,i)=>`
@@ -1466,8 +1476,8 @@ function tplEducation(){
         </select>
       </td>
       <td><input type="text" placeholder="Institution name" value="${esc(r.name)}" oninput="updateArrayField('education',${i},'name',this.value)"></td>
-      <td style="width:80px;"><input type="text" placeholder="From" value="${esc(r.from_year)}" oninput="updateArrayField('education',${i},'from_year',this.value)"></td>
-      <td style="width:80px;"><input type="text" placeholder="To" value="${esc(r.to_year)}" oninput="updateArrayField('education',${i},'to_year',this.value)"></td>
+      <td style="width:90px;"><select onchange="updateArrayField('education',${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></td>
+      <td style="width:90px;"><select onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></td>
       <td style="min-width:170px;"><select onchange="updateArrayField('education',${i},'qualification',this.value)">${educationOptionsHtml(r.qualification)}</select></td>
       <td style="min-width:150px;"><input type="text" value="${esc(r.course_name)}" oninput="updateArrayField('education',${i},'course_name',this.value)"></td>
       <td><button class="remove-x" onclick="removeRow('education',${i})">✕</button></td>
@@ -1534,9 +1544,19 @@ function toggleCurrentJob(i, checked){
   if(checked) state.working_experience[i].to = '';
   render();
 }
+// An entry nobody has touched yet (every field still at its default) is not
+// held to the required-field rules below — leaving it blank and clicking
+// Next is allowed, same as if the row weren't there. The moment any field on
+// the row has something in it, the whole row becomes required; the way out
+// at that point is either to finish it or remove the entry.
+function isExpRowEmpty(r){
+  return !r.employer.trim() && !r.position.trim() && !r.from && !r.to &&
+    !r.is_current && !r.remuneration.trim() && !r.responsibilities.trim();
+}
 function validateExperienceStep(){
   const errs = [];
   state.working_experience.forEach((r,i)=>{
+    if(isExpRowEmpty(r)) return;
     if(!r.employer.trim()) errs.push(`Work experience ${i+1}: please enter the employer name and address.`);
     if(!r.position.trim()) errs.push(`Work experience ${i+1}: please enter the last position held.`);
     if(!r.from) errs.push(`Work experience ${i+1}: please provide the "From" month/year.`);
