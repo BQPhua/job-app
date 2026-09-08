@@ -169,7 +169,7 @@
   tr.data-row:hover{background:#FAFAF9;}
   .row-actions{display:flex;gap:6px;flex-wrap:wrap;}
 
-  .badge{display:inline-block;padding:4px 11px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
+  .badge{display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:5px 11px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
   .badge.submitted{background:var(--info-tint);color:var(--info);}
   .badge.under_review{background:var(--warn-tint);color:var(--warn);}
   .badge.shortlisted{background:#FFF3D6;color:#8A6D1F;}
@@ -459,15 +459,17 @@ const NAV_ICONS = {
   companies: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/></svg>',
   permissions: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>',
-  adminAccess: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+  adminAccess: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  aiInsights: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3Z"/><path d="M5 17l.75 2.25L8 20l-2.25.75L5 23l-.75-2.25L2 20l2.25-.75L5 17Z"/><path d="M19 15l.5 1.5L21 17l-1.5.5L19 19l-.5-1.5L17 17l1.5-.5L19 15Z"/></svg>'
 };
 const PAGE_TITLES = {
   home: ['Dashboard', 'All candidate applications'],
   analytics: ['Analytics', 'Trends across your applications'],
   companies: ['Company Settings', 'Manage the company/entity list'],
-  permissions: ['Permission Settings', 'Cross-business-unit assignment access'],
+  permissions: ['Business Unit Settings', 'Cross-business-unit assignment access'],
   settings: ['Manager Settings', 'Notification email routing'],
-  adminAccess: ['Admin Access', 'Manage who can sign in and what they can see']
+  adminAccess: ['Admin Access', 'Manage who can sign in and what they can see'],
+  aiInsights: ['AI Insights', 'AI-generated trends and Q&A over your applicant data']
 };
 
 // ---------------------------------------------------------------------------
@@ -557,8 +559,9 @@ function render(){
     navEl.innerHTML = adminToken ? `
       <a class="${currentView==='home'?'active':''}" onclick="setView('home')" title="Dashboard">${NAV_ICONS.home}<span class="nav-label">Dashboard</span>${newCount>0?`<span class="nav-badge">${newCount}</span>`:''}</a>
       <a class="${currentView==='analytics'?'active':''}" onclick="setView('analytics')" title="Analytics">${NAV_ICONS.analytics}<span class="nav-label">Analytics</span></a>
+      <a class="${currentView==='aiInsights'?'active':''}" onclick="setView('aiInsights')" title="AI Insights">${NAV_ICONS.aiInsights}<span class="nav-label">AI Insights</span></a>
       <a class="${currentView==='companies'?'active':''}" onclick="setView('companies')" title="Company Settings">${NAV_ICONS.companies}<span class="nav-label">Company Settings</span></a>
-      ${adminScope==='ALL' ? `<a class="${currentView==='permissions'?'active':''}" onclick="setView('permissions')" title="Permission Settings">${NAV_ICONS.permissions}<span class="nav-label">Permission Settings</span></a>` : ''}
+      ${adminScope==='ALL' ? `<a class="${currentView==='permissions'?'active':''}" onclick="setView('permissions')" title="Business Unit Settings">${NAV_ICONS.permissions}<span class="nav-label">Business Unit Settings</span></a>` : ''}
       ${adminScope==='ALL' ? `<a class="${currentView==='settings'?'active':''}" onclick="setView('settings')" title="Manager Settings">${NAV_ICONS.settings}<span class="nav-label">Manager Settings</span></a>` : ''}
       ${adminScope==='ALL' ? `<a class="${currentView==='adminAccess'?'active':''}" onclick="setView('adminAccess')" title="Admin Access">${NAV_ICONS.adminAccess}<span class="nav-label">Admin Access</span></a>` : ''}
     ` : '';
@@ -598,6 +601,9 @@ function render(){
     // first — renderAnalyticsCharts() runs right after this innerHTML
     // assignment completes, not before.
     renderAnalyticsCharts();
+  } else if(currentView === 'aiInsights'){
+    root.innerHTML = `<div class="wrap">${aiInsightsPageView()}</div>`;
+    lastRenderedView = 'aiInsights';
   } else if(currentView === 'adminAccess'){
     // Same shell-vs-results split as Companies — the invite form lives in
     // the shell, not the results container.
@@ -621,8 +627,9 @@ async function setView(view){
   closeMobileSidebar(); // tapping a nav item on mobile should dismiss the drawer, not leave it covering the new page
   if(view==='settings'){ await loadSettingsForPage(); }
   if(view==='permissions'){ await loadPermissionsForPage(); }
-  if(view==='companies'){ companyMgmtAddOpen = false; companyMgmtEditId = null; companyMgmtSearch = ''; await loadCompanyMgmtList(); }
+  if(view==='companies'){ companyMgmtAddOpen = false; companyMgmtEditId = null; companyMgmtSearch = ''; await Promise.all([loadCompanyMgmtList(), loadEntityCategoryList()]); }
   if(view==='analytics'){ await loadAnalyticsData(); }
+  if(view==='aiInsights'){ aiChatOpen = true; aiReviewCandidate = null; aiReviewNotFound = false; aiRecommendation = ''; aiDocResult = ''; aiDocConsent = false; await loadAnalyticsData(); }
   if(view==='adminAccess'){ adminMgmtInviteOpen = false; adminMgmtGrantFormFor = null; await loadAdminMgmtList(); }
   render();
 }
@@ -1555,7 +1562,7 @@ async function loadPermissionsForPage(){
 
 function permissionsPageView(){
   if(adminScope !== 'ALL'){
-    return `<div class="empty-state">Permission Settings is only available to All Units admin access.</div>`;
+    return `<div class="empty-state">Business Unit Settings is only available to All Units admin access.</div>`;
   }
   const categories = [...new Set(permissionMatrix.map(r=>r.category))];
   const isGranted = (category, unit) => permissionMatrix.some(r=>r.category===category && r.unit_scope===unit && r.granted);
@@ -1563,10 +1570,16 @@ function permissionsPageView(){
   return `
     <div class="stat-row">
       <div class="stat" style="flex:none;min-width:auto;">
-        <h2 style="font-size:20px;margin:0;">Permission Settings</h2>
+        <h2 style="font-size:20px;margin:0;">Business Unit Settings</h2>
         <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Controls which business unit's admin team can assign candidates to companies in each entity category.</div>
       </div>
     </div>
+
+    <div class="toolbar">
+      <input type="text" id="newEntityCategoryInput" placeholder="e.g. Data Centre" style="flex:1;min-width:220px;">
+      <button class="btn btn-primary btn-sm" onclick="submitAddEntityCategory()">+ Add Entity</button>
+    </div>
+    <div id="addEntityErr"></div>
 
     <table>
       <thead><tr>
@@ -1590,6 +1603,21 @@ function permissionsPageView(){
     <div id="permissionsErr" style="margin-top:14px;"></div>
     <button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="savePermissionChanges()">Save Changes</button>
   `;
+}
+
+async function submitAddEntityCategory(){
+  const input = document.getElementById('newEntityCategoryInput');
+  const name = input.value.trim();
+  if(!name){ document.getElementById('addEntityErr').innerHTML = `<div class="error-banner">Entity name is required.</div>`; return; }
+  showLoading('Adding entity...');
+  try{
+    const { error } = await supabaseClient.rpc('rpc_admin_add_entity_category', { p_token: adminToken, p_category: name });
+    if(error) throw error;
+    input.value = '';
+    await loadPermissionsForPage();
+    hideLoading();
+    render();
+  } catch(e){ hideLoading(); document.getElementById('addEntityErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
 
 let pendingPermissionChanges = {}; // unit_scope -> Set of categories, only populated once touched
@@ -1794,6 +1822,229 @@ function aiChatPanelHtml(){
   `;
 }
 
+// ---------------------------------------------------------------------------
+// AI CANDIDATE REVIEW — look up one application by reference number, send
+// its non-PII fields (education, experience, salary expectations, etc. —
+// same "identify only by reference_no" rule as the chat above) to Gemini,
+// get back a Shortlist/KIV/Reject recommendation. This is a suggestion for
+// a human to weigh, never an automatic decision — the prompt says so
+// explicitly, and nothing in this UI applies the recommendation
+// automatically to the real application record.
+// ---------------------------------------------------------------------------
+let aiReviewCandidate = null; // the matched raw row from analyticsRows, once found
+let aiReviewNotFound = false;
+let aiRecommendation = '';
+let aiRecommendLoading = false;
+
+function findCandidateByRef(){
+  const input = document.getElementById('aiReviewRefInput');
+  const ref = input.value.trim().toLowerCase();
+  aiRecommendation = '';
+  if(!ref){ aiReviewCandidate = null; aiReviewNotFound = false; renderAiReviewSection(); return; }
+  aiReviewCandidate = analyticsRows.find(r => (r.reference_no||'').toLowerCase() === ref) || null;
+  aiReviewNotFound = !aiReviewCandidate;
+  renderAiReviewSection();
+}
+
+function buildCandidateReviewPayload(row){
+  return {
+    reference_no: row.reference_no,
+    business_unit: row.business_unit,
+    position_applying: row.position_applying || null,
+    status: row.status,
+    education: row.education || [],
+    working_experience: row.working_experience || [],
+    language_ability: row.language_ability || [],
+    expected_basic_salary: row.expected_basic_salary || null,
+    notice_period: row.notice_period || null,
+    resignation_notice_required: row.resignation_notice_required || null,
+    own_transport_motorcar: row.own_transport_motorcar || null,
+    own_transport_motorcycle: row.own_transport_motorcycle || null,
+    willing_based_outside_klang_valley: row.willing_based_outside_klang_valley || null,
+    referral_person: row.referral_person === 'Yes'
+  };
+}
+
+async function generateAiRecommendation(){
+  if(!aiReviewCandidate) return;
+  aiRecommendLoading = true;
+  renderAiReviewSection();
+  try{
+    aiRecommendation = await callAiAnalyticsFunction({ mode: 'recommend', data: buildCandidateReviewPayload(aiReviewCandidate) });
+  } catch(e){
+    aiRecommendation = 'Error: ' + e.message;
+  }
+  aiRecommendLoading = false;
+  renderAiReviewSection();
+}
+
+function renderAiReviewSection(){
+  const el = document.getElementById('aiReviewSection');
+  if(el) el.innerHTML = aiReviewSectionInnerHtml();
+}
+
+const RECOMMEND_BADGE_COLOR = { Shortlist: 'var(--ok)', KIV: 'var(--warn)', Reject: 'var(--danger)' };
+function formatRecommendationHtml(text){
+  const firstLine = text.split('\n')[0] || '';
+  const match = firstLine.match(/Recommendation:\s*(Shortlist|KIV|Reject)/i);
+  if(!match) return `<p style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;">${esc(text)}</p>`;
+  const label = match[1];
+  const color = RECOMMEND_BADGE_COLOR[label] || 'var(--ink)';
+  const rest = text.slice(firstLine.length).trim();
+  return `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <span class="badge" style="background:${color};color:#fff;">${esc(label)}</span>
+      <span style="font-size:11.5px;color:var(--ink-soft);">AI-suggested — not a final decision</span>
+    </div>
+    <p style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;margin:0;">${esc(rest)}</p>
+  `;
+}
+
+function aiReviewSectionInnerHtml(){
+  if(!aiReviewCandidate){
+    return aiReviewNotFound
+      ? `<p style="color:var(--danger);font-size:13px;">No application found with that reference number in the currently loaded data.</p>`
+      : `<p style="color:var(--ink-soft);font-size:13px;">Enter a reference number above and press Enter, or click Look Up.</p>`;
+  }
+  const c = aiReviewCandidate;
+  return `
+    <div style="background:var(--cream);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;">
+      <strong>${esc(c.reference_no)}</strong> · ${esc(c.business_unit)} · ${esc(c.position_applying || 'Position not set')} · current status: <span class="badge ${c.status}">${STATUS_LABELS[c.status]||c.status}</span>
+    </div>
+    ${!aiRecommendation && !aiRecommendLoading ? `
+      <button class="btn btn-primary btn-sm" onclick="generateAiRecommendation()">Get AI Recommendation</button>
+    ` : aiRecommendLoading ? `
+      <p style="color:var(--ink-soft);font-size:13px;">Analyzing...</p>
+    ` : `
+      ${formatRecommendationHtml(aiRecommendation)}
+      <button class="btn btn-outline btn-sm" style="margin-top:10px;" onclick="generateAiRecommendation()">Regenerate</button>
+    `}
+  `;
+}
+
+function aiReviewSectionHtml(){
+  return `
+    <div class="chart-card full-width" style="margin-bottom:16px;">
+      <h3>🎯 AI Candidate Review</h3>
+      <p style="color:var(--ink-soft);font-size:13px;margin:0 0 12px;">Look up one application by reference number and get an AI-suggested status recommendation, based on education/experience/expectations only — no names or contact details are sent.</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input type="text" id="aiReviewRefInput" placeholder="e.g. WCT-2026-000123" style="flex:1;font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;" onkeydown="if(event.key==='Enter') findCandidateByRef()">
+        <button class="btn btn-outline btn-sm" onclick="findCandidateByRef()">Look Up</button>
+      </div>
+      <div id="aiReviewSection">${aiReviewSectionInnerHtml()}</div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// AI DOCUMENT ANALYSIS — sends an actual uploaded attachment's file bytes to
+// Gemini. UNLIKE every other AI feature on this page, this ONE does NOT
+// anonymize its input — a resume/CV very likely contains the candidate's
+// real name and other personal details, and there's no way to usefully
+// analyze a document without its actual content. That's a real, deliberate
+// trade-off, not an oversight — gated behind an explicit consent checkbox
+// that must be checked before any "Analyze" button is enabled, and the
+// warning stays visible the whole time this section is used.
+// ---------------------------------------------------------------------------
+let aiDocConsent = false;
+let aiDocLoading = false;
+let aiDocResult = '';
+let aiDocActiveName = '';
+
+function toggleAiDocConsent(checked){
+  aiDocConsent = checked;
+  renderAiDocSection();
+}
+
+async function blobToBase64(blob){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function analyzeAttachment(url, name, mimeType){
+  if(!aiDocConsent) return;
+  aiDocLoading = true;
+  aiDocActiveName = name;
+  aiDocResult = '';
+  renderAiDocSection();
+  try{
+    const fileRes = await fetch(url);
+    if(!fileRes.ok) throw new Error('Could not download the file to analyze');
+    const blob = await fileRes.blob();
+    const fileBase64 = await blobToBase64(blob);
+    aiDocResult = await callAiAnalyticsFunction({
+      mode: 'document',
+      fileBase64,
+      mimeType: mimeType || blob.type || 'application/octet-stream',
+      data: { position_applying: aiReviewCandidate ? aiReviewCandidate.position_applying : null }
+    });
+  } catch(e){
+    aiDocResult = 'Error: ' + e.message;
+  }
+  aiDocLoading = false;
+  renderAiDocSection();
+}
+
+function renderAiDocSection(){
+  const el = document.getElementById('aiDocSection');
+  if(el) el.innerHTML = aiDocSectionInnerHtml();
+}
+
+function aiDocSectionInnerHtml(){
+  const attachments = (aiReviewCandidate && aiReviewCandidate.attachments) || [];
+  return `
+    <div style="background:#FDEDEC;border:1px solid #F3C6C4;border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start;">
+      <input type="checkbox" id="aiDocConsentCheckbox" ${aiDocConsent?'checked':''} onchange="toggleAiDocConsent(this.checked)" style="margin-top:2px;">
+      <label for="aiDocConsentCheckbox" style="font-size:12.5px;">I understand that analyzing a document sends its actual file content — which very likely includes the candidate's real name and other personal details — to Google's Gemini API. This is different from every other AI feature on this page, which never sends personal data.</label>
+    </div>
+    ${!aiReviewCandidate ? `
+      <p style="color:var(--ink-soft);font-size:13px;">Look up a candidate above first, then their attachments will appear here.</p>
+    ` : attachments.length === 0 ? `
+      <p style="color:var(--ink-soft);font-size:13px;">This candidate has no uploaded attachments.</p>
+    ` : `
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${attachments.map(f => `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;">
+            <span style="font-size:13px;word-break:break-all;">${esc(f.name)}</span>
+            <button class="btn btn-outline btn-sm" ${!aiDocConsent?'disabled':''} onclick="analyzeAttachment('${f.url}', '${esc(f.name).replace(/'/g,"\\'")}', '${f.type||''}')">Analyze</button>
+          </div>
+        `).join('')}
+      </div>
+      ${aiDocLoading ? `<p style="color:var(--ink-soft);font-size:13px;margin-top:10px;">Analyzing "${esc(aiDocActiveName)}"...</p>` : ''}
+      ${aiDocResult && !aiDocLoading ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);"><p style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;">${esc(aiDocResult)}</p></div>` : ''}
+    `}
+  `;
+}
+
+function aiDocSectionHtml(){
+  return `
+    <div class="chart-card full-width" style="margin-bottom:16px;">
+      <h3>📄 AI Document Analysis</h3>
+      <p style="color:var(--ink-soft);font-size:13px;margin:0 0 12px;">Look up a candidate above, then analyze one of their uploaded documents (resume, supporting attachment, etc.) with AI.</p>
+      <div id="aiDocSection">${aiDocSectionInnerHtml()}</div>
+    </div>
+  `;
+}
+
+function aiInsightsPageView(){
+  return `
+    <div class="stat-row">
+      <div class="stat" style="flex:none;min-width:auto;">
+        <h2 style="font-size:20px;margin:0;">AI Insights</h2>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">A separate space for reviewing and asking questions about your applicant data with AI — kept apart from the Analytics charts on purpose.</div>
+      </div>
+    </div>
+    <div id="aiInsightSection">${aiInsightSectionHtml()}</div>
+    ${aiReviewSectionHtml()}
+    ${aiDocSectionHtml()}
+    ${aiChatPanelHtml()}
+  `;
+}
+
 
 async function loadAnalyticsData(){
   showLoading('Loading analytics...');
@@ -1857,8 +2108,6 @@ function analyticsPageView(){
       </div>
     </div>
 
-    <div id="aiInsightSection">${aiInsightSectionHtml()}</div>
-
     ${analyticsRows.length===0 ? `<div class="empty-state">No application data yet to chart.</div>` : `
     <div class="chart-grid">
       <div class="chart-card">
@@ -1885,8 +2134,6 @@ function analyticsPageView(){
       `}
     </div>
     `}
-
-    ${aiChatPanelHtml()}
   `;
 }
 
@@ -2162,6 +2409,16 @@ let companyMgmtList = [];
 let companyMgmtSearch = '';
 let companyMgmtAddOpen = false;
 let companyMgmtEditId = null;
+let entityCategoryList = []; // options for the Entity dropdown — from rpc_admin_list_entity_categories
+let showNewEntityInput = false; // toggles the "+ Add new entity" free-text fallback on the Add form
+
+async function loadEntityCategoryList(){
+  try{
+    const { data, error } = await supabaseClient.rpc('rpc_admin_list_entity_categories', { p_token: adminToken });
+    if(error) throw error;
+    entityCategoryList = data || [];
+  } catch(e){ entityCategoryList = []; }
+}
 
 async function loadCompanyMgmtList(){
   try{
@@ -2214,7 +2471,6 @@ function companySettingsPageView(){
 
 function addCompanyFormHtml(){
   const isAll = adminScope === 'ALL';
-  const existingCategories = [...new Set(companyMgmtList.map(c=>c.category))];
   return `
     <div class="detail-section" style="background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow-sm);">
       <h4 style="border-top:none;padding-top:0;">New Company / Entity</h4>
@@ -2222,9 +2478,19 @@ function addCompanyFormHtml(){
         <div class="field"><label>Name <span style="color:var(--danger);">*</span></label>
           <input type="text" id="newCompanyName" placeholder="e.g. WCT Berhad">
         </div>
-        <div class="field"><label>Category <span style="color:var(--danger);">*</span></label>
-          <input type="text" id="newCompanyCategory" list="companyCategoryOptions" placeholder="e.g. E&amp;C, Hotel, Malls...">
-          <datalist id="companyCategoryOptions">${existingCategories.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+        <div class="field"><label>Entity <span style="color:var(--danger);">*</span></label>
+          ${!showNewEntityInput ? `
+            <select id="newCompanyCategory" class="select-clean" onchange="if(this.value==='__new__'){ showNewEntityInput=true; renderCompanySettingsShell(); }">
+              ${entityCategoryList.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+              <option value="__new__">+ Add new entity...</option>
+            </select>
+          ` : `
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="newCompanyCategory" placeholder="e.g. Aviation" style="flex:1;">
+              <button type="button" class="btn btn-outline btn-sm" title="Choose an existing entity instead" onclick="showNewEntityInput=false; renderCompanySettingsShell();">✕</button>
+            </div>
+            <div class="hint" style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">This creates a brand-new entity type — it'll also appear in Business Unit Settings automatically so an All Units admin can grant assignment permission for it.</div>
+          `}
         </div>
         ${isAll ? `
         <div class="field"><label>Business Unit <span style="color:var(--danger);">*</span></label>
@@ -2255,6 +2521,7 @@ function renderCompanySettingsShell(){
 
 function toggleAddCompanyForm(){
   companyMgmtAddOpen = !companyMgmtAddOpen;
+  showNewEntityInput = false;
   renderCompanySettingsShell();
 }
 
@@ -2263,8 +2530,8 @@ async function submitAddCompany(){
   const category = document.getElementById('newCompanyCategory').value.trim();
   const buEl = document.getElementById('newCompanyBu');
   const business_unit = buEl ? buEl.value : adminScope;
-  if(!name || !category){
-    document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">Name and category are both required.</div>`;
+  if(!name || !category || category === '__new__'){
+    document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">Name and entity are both required.</div>`;
     return;
   }
   showLoading('Adding company...');
@@ -2272,12 +2539,13 @@ async function submitAddCompany(){
     const { error } = await supabaseClient.rpc('rpc_admin_create_company', { p_token: adminToken, p_name: name, p_category: category, p_business_unit: business_unit });
     if(error) throw error;
     companyMgmtAddOpen = false;
-    await loadCompanyMgmtList();
-    await loadCompanyLookup();
+    showNewEntityInput = false;
+    await Promise.all([loadCompanyMgmtList(), loadEntityCategoryList(), loadCompanyLookup()]);
     hideLoading();
     renderCompanySettingsShell();
   } catch(e){ hideLoading(); document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
+
 
 function companyMgmtResultsHtml(){
   const isAll = adminScope === 'ALL';
@@ -2292,7 +2560,7 @@ function companyMgmtResultsHtml(){
     <table>
       <thead><tr>
         <th>Name</th>
-        <th>Category</th>
+        <th>Entity</th>
         ${isAll ? '<th>Business Unit</th>' : ''}
         <th style="width:1%;white-space:nowrap;">Actions</th>
       </tr></thead>
@@ -2308,7 +2576,11 @@ function companyMgmtRowHtml(c, isAll){
     return `
       <tr class="data-row">
         <td><input type="text" id="editCompanyName_${c.id}" value="${esc(c.name)}" style="width:100%;"></td>
-        <td><input type="text" id="editCompanyCategory_${c.id}" value="${esc(c.category)}" style="width:100%;"></td>
+        <td>
+          <select id="editCompanyCategory_${c.id}" class="select-clean" style="width:100%;">
+            ${[...new Set([c.category, ...entityCategoryList])].map(cat=>`<option value="${esc(cat)}" ${cat===c.category?'selected':''}>${esc(cat)}</option>`).join('')}
+          </select>
+        </td>
         ${isAll ? `<td><span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);">${esc(c.business_unit)}</span></td>` : ''}
         <td>
           <div class="row-actions">
@@ -2440,7 +2712,7 @@ function viewDetailHtml(a){
           </select>
           <button class="btn btn-outline btn-sm" onclick="saveCompanyAssignment('${a.id}')">Save</button>
         </div>
-        ${assignableCompanies.length===0 ? `<div class="hint">No companies available to assign — an All Units admin needs to grant your business unit permission via Permission Settings.</div>` : ''}
+        ${assignableCompanies.length===0 ? `<div class="hint">No companies available to assign — an All Units admin needs to grant your business unit permission via Business Unit Settings.</div>` : ''}
         <div id="assignCompanyErr"></div>
       </div>
 
