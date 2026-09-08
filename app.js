@@ -1669,8 +1669,8 @@ function tplReferees(){
     <div class="field">
       <label>(B) I declare that save and except for the following I am not involved in, a party to nor the subject of any law suits, arbitral proceedings, disciplinary proceedings, criminal inquiry, investigation and/or conviction and/or any other legal or quasi-legal proceedings. <span class="req-star">*</span></label>
       <div class="radio-row">
-        <label class="radio-opt"><input type="radio" name="declaration_lawsuit" value="Yes" ${state.declaration_lawsuit==='Yes'?'checked':''} onchange="updateField('declaration_lawsuit', this.value)"> Yes</label>
-        <label class="radio-opt"><input type="radio" name="declaration_lawsuit" value="No" ${state.declaration_lawsuit==='No'?'checked':''} onchange="updateField('declaration_lawsuit', this.value)"> No</label>
+        <label class="radio-opt"><input type="radio" name="declaration_lawsuit" value="Yes" ${state.declaration_lawsuit==='Yes'?'checked':''} onchange="updateField('declaration_lawsuit', this.value); render();"> Yes</label>
+        <label class="radio-opt"><input type="radio" name="declaration_lawsuit" value="No" ${state.declaration_lawsuit==='No'?'checked':''} onchange="updateField('declaration_lawsuit', this.value); render();"> No</label>
       </div>
     </div>
     ${state.declaration_lawsuit==='Yes' ? `<div class="field"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('declaration_lawsuit_specify', this.value)">${esc(state.declaration_lawsuit_specify)}</textarea><div class="hint">Add an attachment on the next step if you need more space.</div></div>` : ''}
@@ -1678,8 +1678,8 @@ function tplReferees(){
     <div class="field">
       <label>(C) I declare that save and except for the following I am not aware of any matter or information that may affect my personal and/or professional public standing or repute or that might adversely affect your consideration of my application for employment. <span class="req-star">*</span></label>
       <div class="radio-row">
-        <label class="radio-opt"><input type="radio" name="declaration_other_matters" value="Yes" ${state.declaration_other_matters==='Yes'?'checked':''} onchange="updateField('declaration_other_matters', this.value)"> Yes</label>
-        <label class="radio-opt"><input type="radio" name="declaration_other_matters" value="No" ${state.declaration_other_matters==='No'?'checked':''} onchange="updateField('declaration_other_matters', this.value)"> No</label>
+        <label class="radio-opt"><input type="radio" name="declaration_other_matters" value="Yes" ${state.declaration_other_matters==='Yes'?'checked':''} onchange="updateField('declaration_other_matters', this.value); render();"> Yes</label>
+        <label class="radio-opt"><input type="radio" name="declaration_other_matters" value="No" ${state.declaration_other_matters==='No'?'checked':''} onchange="updateField('declaration_other_matters', this.value); render();"> No</label>
       </div>
     </div>
     ${state.declaration_other_matters==='Yes' ? `<div class="field"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('declaration_other_matters_specify', this.value)">${esc(state.declaration_other_matters_specify)}</textarea><div class="hint">Add an attachment on the next step if you need more space.</div></div>` : ''}
