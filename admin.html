@@ -1639,6 +1639,162 @@ let analyticsCharts = {}; // Chart.js instances, keyed by canvas id — destroye
 // underlying data can change shape (e.g. a business unit going from 0 to 1
 // applications) between visits, and this page doesn't need live-refresh.
 
+// ---------------------------------------------------------------------------
+// AI ANALYTICS — calls the ai-analytics Supabase Edge Function (holds the
+// Gemini API key server-side; never exposed to the browser). Two modes:
+//   'summary' — gets ONLY the aggregate numbers already computed for the
+//               charts above (analyticsMetrics() + the counts used to draw
+//               them) — no candidate-level data at all, nothing to protect.
+//   'chat'    — gets a per-application list, but every direct identifier
+//               (name, NRIC, email, phone, address, DOB) is stripped before
+//               it ever leaves the browser; each row is identified only by
+//               its reference_no. See buildAnonymizedDataset() below.
+// ---------------------------------------------------------------------------
+let aiInsightText = '';
+let aiInsightLoading = false;
+let aiChatMessages = []; // [{role:'user'|'assistant', content:text}]
+let aiChatLoading = false;
+let aiChatOpen = false;
+
+async function callAiAnalyticsFunction(body){
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if(!session){
+    throw new Error('AI features need a Microsoft sign-in session — sign out and back in with "Sign in with Microsoft" to use them (the old passcode fallback doesn\'t carry the session this needs).');
+  }
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-analytics`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+    body: JSON.stringify(body)
+  });
+  const resJson = await res.json();
+  if(!res.ok) throw new Error(resJson.error || 'AI request failed');
+  return resJson.text;
+}
+
+// Only non-identifying fields — see the privacy note above. Deliberately
+// conservative: if you want the chat to reason about more fields, add them
+// here explicitly rather than ever passing a raw application row through.
+function buildAnonymizedDataset(){
+  return analyticsRows.map(r => ({
+    reference_no: r.reference_no,
+    status: r.status,
+    business_unit: r.business_unit,
+    position_applying: r.position_applying || null,
+    submitted_at: r.submitted_at,
+    referred: r.referral_person === 'Yes'
+  }));
+}
+
+async function generateAiInsights(){
+  aiInsightLoading = true;
+  renderAnalyticsAiSection();
+  try{
+    const m = analyticsMetrics();
+    const statusOrder = ['submitted','shortlisted','kiv','hired','offboarding','rejected','blacklisted'];
+    const statusCounts = {};
+    statusOrder.forEach(s => { statusCounts[STATUS_LABELS[s]||s] = analyticsRows.filter(r=>r.status===s).length; });
+    const summaryData = {
+      total_applications: m.total,
+      hire_rate_percent: m.hireRate,
+      hired_count: m.hired,
+      submitted_count: m.submittedCount,
+      avg_days_to_hire_approx: m.avgDays,
+      currently_offboarding: m.offboarding,
+      status_breakdown: statusCounts,
+      referred_count: analyticsRows.filter(r=>r.referral_person==='Yes').length,
+      not_referred_count: analyticsRows.filter(r=>r.referral_person!=='Yes').length,
+      business_unit_scope: adminScope
+    };
+    aiInsightText = await callAiAnalyticsFunction({ mode: 'summary', data: summaryData });
+  } catch(e){
+    aiInsightText = 'Error: ' + e.message;
+  }
+  aiInsightLoading = false;
+  renderAnalyticsAiSection();
+}
+
+function renderAnalyticsAiSection(){
+  const el = document.getElementById('aiInsightSection');
+  if(el) el.innerHTML = aiInsightSectionHtml();
+}
+function aiInsightSectionHtml(){
+  return `
+    <div class="chart-card full-width" style="margin-bottom:16px;">
+      <h3>✨ AI Insights</h3>
+      ${!aiInsightText && !aiInsightLoading ? `
+        <p style="color:var(--ink-soft);font-size:13px;margin:0 0 12px;">Generate a plain-language summary of the trends above, using only the aggregate counts — no candidate data is sent.</p>
+        <button class="btn btn-primary btn-sm" onclick="generateAiInsights()">Generate Insights</button>
+      ` : aiInsightLoading ? `
+        <p style="color:var(--ink-soft);font-size:13px;">Generating...</p>
+      ` : `
+        <p style="font-size:13.5px;line-height:1.6;color:var(--ink);white-space:pre-wrap;">${esc(aiInsightText)}</p>
+        <button class="btn btn-outline btn-sm" onclick="generateAiInsights()">Regenerate</button>
+      `}
+    </div>
+  `;
+}
+
+function toggleAiChat(){
+  aiChatOpen = !aiChatOpen;
+  render();
+}
+async function sendAiChatMessage(){
+  const input = document.getElementById('aiChatInput');
+  const question = input.value.trim();
+  if(!question || aiChatLoading) return;
+  input.value = '';
+  aiChatMessages.push({ role: 'user', content: question });
+  aiChatLoading = true;
+  renderAiChatMessages();
+  try{
+    const answer = await callAiAnalyticsFunction({
+      mode: 'chat',
+      data: buildAnonymizedDataset(),
+      question,
+      history: aiChatMessages.slice(0, -1).slice(-10) // last few turns, excluding the question just added
+    });
+    aiChatMessages.push({ role: 'assistant', content: answer });
+  } catch(e){
+    aiChatMessages.push({ role: 'assistant', content: 'Error: ' + e.message });
+  }
+  aiChatLoading = false;
+  renderAiChatMessages();
+}
+function renderAiChatMessages(){
+  const el = document.getElementById('aiChatMessages');
+  if(!el) return;
+  el.innerHTML = aiChatMessagesHtml();
+  el.scrollTop = el.scrollHeight;
+}
+function aiChatMessagesHtml(){
+  const bubbles = aiChatMessages.map(m => `
+    <div style="display:flex;justify-content:${m.role==='user'?'flex-end':'flex-start'};margin-bottom:8px;">
+      <div style="max-width:80%;padding:8px 12px;border-radius:10px;font-size:13px;white-space:pre-wrap;background:${m.role==='user'?'var(--navy)':'#F0F0EE'};color:${m.role==='user'?'#fff':'var(--ink)'};">${esc(m.content)}</div>
+    </div>
+  `).join('');
+  const loadingBubble = aiChatLoading ? `<div style="display:flex;justify-content:flex-start;"><div style="padding:8px 12px;border-radius:10px;font-size:13px;background:#F0F0EE;color:var(--ink-soft);">Thinking...</div></div>` : '';
+  return bubbles + loadingBubble || `<p style="color:var(--ink-soft);font-size:13px;text-align:center;margin-top:20px;">Ask about your applications by reference number, status, business unit, or trends — e.g. "How many applications are still in Shortlisted?"</p>`;
+}
+function aiChatPanelHtml(){
+  return `
+    <div class="chart-card full-width" style="margin-top:16px;">
+      <h3 style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" onclick="toggleAiChat()">
+        <span>💬 Ask AI About Your Applications</span>
+        <span style="font-size:12px;color:var(--ink-soft);">${aiChatOpen ? '▲ Collapse' : '▼ Expand'}</span>
+      </h3>
+      ${aiChatOpen ? `
+        <div id="aiChatMessages" style="max-height:280px;overflow-y:auto;padding:10px;background:var(--cream);border-radius:8px;margin-bottom:10px;">${aiChatMessagesHtml()}</div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="aiChatInput" placeholder="Ask a question..." style="flex:1;font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;" onkeydown="if(event.key==='Enter') sendAiChatMessage()">
+          <button class="btn btn-primary btn-sm" onclick="sendAiChatMessage()">Send</button>
+        </div>
+        <p style="font-size:11px;color:var(--ink-soft);margin:8px 0 0;">Candidates are only ever referenced by their reference number here — no names or contact details are sent to the AI.</p>
+      ` : ''}
+    </div>
+  `;
+}
+
+
 async function loadAnalyticsData(){
   showLoading('Loading analytics...');
   try{
@@ -1701,6 +1857,8 @@ function analyticsPageView(){
       </div>
     </div>
 
+    <div id="aiInsightSection">${aiInsightSectionHtml()}</div>
+
     ${analyticsRows.length===0 ? `<div class="empty-state">No application data yet to chart.</div>` : `
     <div class="chart-grid">
       <div class="chart-card">
@@ -1727,6 +1885,8 @@ function analyticsPageView(){
       `}
     </div>
     `}
+
+    ${aiChatPanelHtml()}
   `;
 }
 
