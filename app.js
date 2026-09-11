@@ -10,7 +10,7 @@ let state = {
   id: null,
   reference_no: null,
   status: 'draft',
-  business_unit: '', position_applying: '',
+  business_unit: '',
   name_nric: '', alias: '',
   permanent_address: '', permanent_postcode: '',
   correspondence_address: '', correspondence_postcode: '',
@@ -52,7 +52,7 @@ const HIGHEST_EDUCATION_OPTIONS = [
   'Professional Degree (MD, JD, DDS, etc.)','Post-Doctoral Studies','Other'
 ];
 
-let currentUser = null; // populated at boot from Supabase Auth session
+let currentUser = null; // populated at boot from the cached login/register/oauth response (see api.js getUser())
 
 const root = document.getElementById('cardRoot');
 const progressBar = document.getElementById('progressBar');
@@ -91,9 +91,9 @@ async function saveDraft(){
   showLoading('Saving your progress...');
   let success = true;
   try{
-    const { error } = await supabaseClient.rpc('rpc_save_application', {
-      p_id: state.id, p_reference_no: state.reference_no, p_patch: currentPatch()
-    });
+    const { error } = await apiTry(() => api.patch(`/applications/${state.id}`, {
+      reference_no: state.reference_no, patch: currentPatch()
+    }));
     if(error){
       console.error(error);
       success = false;
@@ -177,7 +177,7 @@ function tplStart(){
         <div class="draft-banner">
           <div class="draft-banner-icon">📝</div>
           <div class="draft-banner-body">
-            <div class="draft-banner-title">${esc(a.reference_no)} — ${esc(a.position_applying||'Untitled')}</div>
+            <div class="draft-banner-title">${esc(a.reference_no)}</div>
             <div class="draft-banner-meta">${esc(a.business_unit)} · Draft in progress</div>
           </div>
           <div class="draft-banner-actions" style="display:flex;gap:8px;">
@@ -191,12 +191,11 @@ function tplStart(){
     ${others.length ? `
       <div class="section-title" style="margin-top:${drafts.length?'22px':'0'};">Your Previous Applications</div>
       <table class="history-table">
-        <thead><tr><th>Reference</th><th>Position</th><th>Unit</th><th>Status</th><th>Submitted</th><th style="width:160px;">Actions</th></tr></thead>
+        <thead><tr><th>Reference</th><th>Unit</th><th>Status</th><th>Submitted</th><th style="width:160px;">Actions</th></tr></thead>
         <tbody>
           ${others.map(a=>`
             <tr>
               <td><strong><a href="#" onclick="viewMyApplication('${a.id}'); return false;" style="color:var(--navy-2);text-decoration:underline;">${esc(a.reference_no)}</a></strong></td>
-              <td>${esc(a.position_applying)}</td>
               <td>${esc(a.business_unit)}</td>
               <td>${statusBadgeHtml(a.status)}</td>
               <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
@@ -235,7 +234,7 @@ async function deleteDraft(id, referenceNo){
   if(!confirm(`Permanently delete the draft application "${referenceNo}"? This cannot be undone.`)) return;
   showLoading('Deleting draft...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_delete_my_draft_application', { p_id: id });
+    const { error } = await apiTry(() => api.del(`/applications/${id}`));
     if(error) throw error;
     await loadMyApplications();
     render();
@@ -271,7 +270,7 @@ function tplMyApplicationDetail(){
   const refs = [a.referee1, a.referee2].filter(r => r && r.name);
   return `
     <div class="step-eyebrow">${esc(a.reference_no)}</div>
-    <h2>${esc(a.position_applying || 'Application Details')}</h2>
+    <h2>Application Details</h2>
     <p class="step-desc">${esc(a.business_unit)} · ${statusBadgeHtml(a.status)} · Submitted ${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</p>
 
     <div class="review-block">
@@ -320,7 +319,7 @@ function tplMyApplicationDetail(){
 
 async function loadMyApplications(){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_get_my_applications');
+    const { data, error } = await apiTry(() => api.get('/applications/mine'));
     if(error) throw error;
     myApplications = data || [];
   } catch(e){ console.error(e); myApplications = []; }
@@ -333,9 +332,9 @@ async function startNewApplication(){
   }
   showLoading('Creating your application...');
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_create_draft', { p_business_unit: linkBusinessUnit });
+    const { data, error } = await apiTry(() => api.post('/applications', { business_unit: linkBusinessUnit }));
     if(error) throw error;
-    state.id = data[0].id; state.reference_no = data[0].reference_no;
+    state.id = data.id; state.reference_no = data.reference_no;
     state.business_unit = linkBusinessUnit;
     // Pre-fill from the signed-in account
     if(currentUser){
@@ -496,10 +495,10 @@ let onboardingStep = 'statutory';
 async function openOnboarding(applicationId){
   showLoading('Loading onboarding forms...');
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_get_my_onboarding', { p_application_id: applicationId });
+    const { data, error } = await apiTry(() => api.get(`/onboarding/${applicationId}`));
     if(error) throw error;
     onboardingAppId = applicationId;
-    onboardingState = data[0];
+    onboardingState = data;
     onboardingStep = onboardingState.status === 'completed' ? 'review' : 'statutory';
     // If a salary account no. was already saved and differs from the bank
     // account no., the candidate deliberately diverged them — don't clobber
@@ -551,9 +550,9 @@ async function saveOnboarding(showAlert){
     Object.keys(patch).forEach(key => {
       if(patch[key] === '') delete patch[key];
     });
-    const { data, error } = await supabaseClient.rpc('rpc_save_my_onboarding', { p_application_id: onboardingAppId, p_patch: patch });
+    const { data, error } = await apiTry(() => api.patch(`/onboarding/${onboardingAppId}`, { patch }));
     if(error) throw error;
-    onboardingState = data[0];
+    onboardingState = data;
     if(showAlert) alert('Saved.');
     return true;
   } catch(e){ alert('Error saving: ' + e.message); return false; }
@@ -619,17 +618,17 @@ function updateEmergencyContact(i, key, val){ onboardingState.emergency_contacts
 async function confirmOnboardingSection(section){
   await saveOnboarding(false);
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_confirm_onboarding_section', { p_application_id: onboardingAppId, p_section: section });
+    const { data, error } = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section }));
     if(error) throw error;
-    onboardingState = data[0];
+    onboardingState = data;
     // TP3 has been removed from the candidate-facing flow entirely, but the
     // server-side "all sections confirmed → completed" logic may still
     // expect it — so it's silently confirmed the moment personal_details
     // is, with no UI ever shown for it. This avoids needing to touch
     // rpc_confirm_onboarding_section's internal completion logic.
     if(section === 'personal_details' && !onboardingState.tp3_confirmed){
-      const { data: tp3Data, error: tp3Error } = await supabaseClient.rpc('rpc_confirm_onboarding_section', { p_application_id: onboardingAppId, p_section: 'tp3' });
-      if(!tp3Error) onboardingState = tp3Data[0];
+      const { data: tp3Data, error: tp3Error } = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section: 'tp3' }));
+      if(!tp3Error) onboardingState = tp3Data;
     }
     if(onboardingState.status === 'completed') onboardingStep = 'review';
     render();
@@ -978,9 +977,9 @@ async function submitOnboarding(){
   const ok = await saveOnboarding(false);
   if(!ok) return;
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_confirm_onboarding_section', { p_application_id: onboardingAppId, p_section: 'salary_crediting' });
+    const { data, error } = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section: 'salary_crediting' }));
     if(error) throw error;
-    onboardingState = data[0];
+    onboardingState = data;
     onboardingStep = 'review';
     render();
     window.scrollTo(0,0);
@@ -1035,10 +1034,10 @@ const EXIT_REASONS_RIGHT = ['Conflict with colleague/superior','Relocation','Ret
 async function openExitInterview(applicationId){
   showLoading('Loading your Exit Interview Form...');
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_get_my_exit_interview', { p_application_id: applicationId });
+    const { data, error } = await apiTry(() => api.get(`/exit-interviews/${applicationId}`));
     if(error) throw error;
     exitInterviewAppId = applicationId;
-    exitInterviewData = data[0];
+    exitInterviewData = data;
     hideLoading();
     goStep('exit-interview');
   } catch(e){
@@ -1080,9 +1079,9 @@ async function saveExitInterview(showAlert){
     // a single-page form (no "off-screen field" risk like onboarding's
     // multi-step save has).
     patch.reasons = exitInterviewData.reasons || [];
-    const { data, error } = await supabaseClient.rpc('rpc_save_my_exit_interview', { p_application_id: exitInterviewAppId, p_patch: patch });
+    const { data, error } = await apiTry(() => api.patch(`/exit-interviews/${exitInterviewAppId}`, { patch }));
     if(error) throw error;
-    exitInterviewData = data[0];
+    exitInterviewData = data;
     if(showAlert) alert('Saved.');
     return true;
   } catch(e){ alert('Error saving: ' + e.message); return false; }
@@ -1103,9 +1102,9 @@ async function submitExitInterview(){
   }
   if(!confirm('Submit and sign your Exit Interview Form? Once signed, you won\'t be able to edit Sections A–C anymore, and HR will be notified to complete their review.')) return;
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_submit_my_exit_interview', { p_application_id: exitInterviewAppId });
+    const { data, error } = await apiTry(() => api.post(`/exit-interviews/${exitInterviewAppId}/submit`));
     if(error) throw error;
-    exitInterviewData = data[0];
+    exitInterviewData = data;
     exitInterviewMode = 'edit'; // the locked edit view now doubles as the final read-only view
     render();
     window.scrollTo(0,0);
@@ -1766,27 +1765,18 @@ function validateAttachmentsStep(){
   return errs;
 }
 
-// Supabase Storage rejects certain characters in file paths (spaces,
-// parentheses, brackets, etc). We keep the original name for display in the
-// attachment list, but the actual storage key uses a sanitized version.
-function sanitizeFilename(name){
-  const lastDot = name.lastIndexOf('.');
-  const base = lastDot > -1 ? name.slice(0, lastDot) : name;
-  const ext = lastDot > -1 ? name.slice(lastDot) : '';
-  const safeBase = base.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 80);
-  const safeExt = ext.replace(/[^a-zA-Z0-9.]+/g, '');
-  return safeBase + safeExt;
-}
+// Filename sanitization now happens server-side (backend/src/routes/uploads.js
+// sanitizeFilename()) before the blob is actually named — this client-side
+// copy no longer needs to produce the real storage key, just something
+// reasonable to show while uploading.
 
 async function handleProfileUpload(file){
   if(!file) return;
   showLoading('Uploading passport size photo...');
   try{
-    const path = `${state.id}/profile_${Date.now()}_${sanitizeFilename(file.name)}`;
-    const { error } = await supabaseClient.storage.from('profile-pictures').upload(path, file, {upsert:true});
+    const { data, error } = await apiTry(() => api.upload('/uploads/profile-picture', file));
     if(error) throw error;
-    const { data } = supabaseClient.storage.from('profile-pictures').getPublicUrl(path);
-    state.profile_picture_url = data.publicUrl;
+    state.profile_picture_url = data.url;
   } catch(e){ alert('Upload failed: '+e.message); }
   hideLoading(); render();
 }
@@ -1795,11 +1785,9 @@ async function handleAttachmentUpload(file){
   if(!file) return;
   showLoading('Uploading document...');
   try{
-    const path = `${state.id}/${Date.now()}_${sanitizeFilename(file.name)}`;
-    const { error } = await supabaseClient.storage.from('attachments').upload(path, file, {upsert:true});
+    const { data, error } = await apiTry(() => api.upload('/uploads/attachment', file));
     if(error) throw error;
-    const { data } = supabaseClient.storage.from('attachments').getPublicUrl(path);
-    state.attachments.push({name:file.name, url:data.publicUrl, type:file.type, uploaded_at:new Date().toISOString()});
+    state.attachments.push(data);
   } catch(e){ alert('Upload failed: '+e.message); }
   hideLoading(); render();
 }
@@ -1820,7 +1808,6 @@ function tplReview(){
     <div class="review-block">
       ${reviewHeader('Position', 'start')}
       ${rrow('Business Unit', state.business_unit)}
-      ${rrow('Position Applying', state.position_applying)}
     </div>
 
     <div class="review-block">
@@ -1970,10 +1957,14 @@ async function submitPdpa(){
     // already collected earlier in the form, no extra candidate input) in
     // case anything server-side still expects jts_agreed to be true before
     // allowing final submission — same defensive pattern used for TP3.
-    const jtsResult = await supabaseClient.rpc('rpc_agree_jts', {p_id:state.id, p_reference_no:state.reference_no, p_name:state.name_nric, p_nric:state.nric_new, p_mobile:state.mobile_phone});
+    const jtsResult = await apiTry(() => api.post(`/applications/${state.id}/consent/jts`, {
+      reference_no: state.reference_no, name: state.name_nric, nric: state.nric_new, mobile: state.mobile_phone
+    }));
     if(!jtsResult.error) state.jts_agreed = true;
 
-    const { error } = await supabaseClient.rpc('rpc_agree_pdpa', {p_id:state.id, p_reference_no:state.reference_no, p_name:name, p_nric:nric});
+    const { error } = await apiTry(() => api.post(`/applications/${state.id}/consent/pdpa`, {
+      reference_no: state.reference_no, name, nric
+    }));
     if(error) throw error;
     state.pdpa_agreed = true;
     hideLoading();
@@ -2001,7 +1992,7 @@ function tplFinal(){
 async function finalSubmit(){
   showLoading('Submitting your application...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_submit_application', {p_id:state.id, p_reference_no:state.reference_no});
+    const { error } = await apiTry(() => api.post(`/applications/${state.id}/submit`, { reference_no: state.reference_no }));
     if(error) throw error;
     hideLoading();
     goStep('done');
@@ -2297,8 +2288,8 @@ function exportMyOnboardingPdf(){
 // ---------------------------------------------------------------------------
 // Boot: require sign-in, load the user's profile + saved applications
 // ---------------------------------------------------------------------------
-async function signOut(){
-  await supabaseClient.auth.signOut();
+function signOut(){
+  api.clearSession();
   // Preserve ?bu=... (and anything else in the URL) so someone who signed
   // in via a business-unit-specific link and then signs out doesn't lose
   // that context — without this, logging back in would land on a bare
@@ -2308,31 +2299,40 @@ async function signOut(){
 }
 
 (async function boot(){
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if(!session){
-    // Preserve any ?error=...&error_description=... from a failed OAuth
-    // attempt so login.html can show what actually went wrong.
-    const query = window.location.search || (window.location.hash.includes('error') ? '?'+window.location.hash.slice(1) : '');
-    window.location.href = 'login.html' + query;
+  if(!api.getToken()){
+    window.location.href = 'login.html' + window.location.search;
     return;
   }
 
-  // Blacklist check — must happen before anything else loads
+  // Blacklist check — must happen before anything else loads. Uses
+  // GET /api/blacklist-check (backend/src/routes/applications.js
+  // blacklistCheck, mounted at the app level) — a defense-in-depth check
+  // independent of the one already enforced at login/register/oauth time,
+  // in case an account is blacklisted AFTER a still-valid token was issued.
   try{
-    const { data: isBlacklisted, error } = await supabaseClient.rpc('rpc_check_blacklist');
-    if(error) throw error;
-    if(isBlacklisted){
-      await supabaseClient.auth.signOut();
+    const { data, error } = await apiTry(() => api.get('/blacklist-check'));
+    if(error){
+      // An expired/invalid token surfaces here as a 401 — treat it the same
+      // as "not signed in" rather than silently failing later on.
+      if(error.status === 401){
+        api.clearSession();
+        window.location.href = 'login.html?session_expired=1';
+        return;
+      }
+      throw error;
+    }
+    if(data.blacklisted){
+      api.clearSession();
       window.location.href = 'login.html?blacklisted=1';
       return;
     }
   } catch(e){ console.error('Blacklist check failed:', e); }
 
-  const user = session.user;
+  const user = api.getUser();
   currentUser = {
-    id: user.id,
-    email: user.email,
-    name: user.user_metadata?.full_name || user.user_metadata?.name || ''
+    id: user?.id || '',
+    email: user?.email || '',
+    name: user?.name || ''
   };
 
   showLoading('Loading your applications...');

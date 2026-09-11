@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WCT Group — HR Admin Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://alcdn.msauth.net/browser/3.24.0/js/msal-browser.min.js"></script>
 <style>
   :root{
     --navy:#101B2D;
@@ -409,7 +409,8 @@
   </div>
 </div>
 
-<script src="config.js"></script>
+<script src="api.js"></script>
+<script src="oauth.js"></script>
 <script src="logo.js"></script>
 <script src="login-bg.js"></script>
 <script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);</script>
@@ -417,7 +418,7 @@
 // ============================================================================
 // STATE
 // ============================================================================
-let adminToken = sessionStorage.getItem('wct_admin_token');
+let adminToken = api.getAdminToken();
 let adminScope = sessionStorage.getItem('wct_admin_scope');
 // Entra ID login flow state — see doMicrosoftLogin()/attemptAdminBootstrap()
 let loginStage = 'signin'; // 'signin' | 'choosing_bu' | 'error'
@@ -481,19 +482,14 @@ function renderSidebarChrome(){
 let currentUserProfile = null; // {name, email} once signed in via Microsoft
 let userMenuOpen = false;
 
-async function loadCurrentUserProfile(){
-  try{
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    if(session && session.user){
-      const meta = session.user.user_metadata || {};
-      currentUserProfile = {
-        name: meta.name || meta.full_name || meta.preferred_username || session.user.email,
-        email: session.user.email
-      };
-    } else {
-      currentUserProfile = null; // e.g. the dormant passcode-login fallback has no real session to read
-    }
-  } catch(e){ currentUserProfile = null; }
+// Populated directly from the Microsoft ID token's own claims at sign-in
+// time (see attemptAdminBootstrap()) rather than a separate session lookup —
+// there's no server-side "get my profile" endpoint, and the ID token already
+// carries name + email. Nothing to (re)populate on a page reload since MSAL's
+// popup flow doesn't persist a session the way Supabase's did; the admin
+// simply signs in again if profile display is needed after a reload (the
+// admin JWT itself still works for every other call in the meantime).
+function loadCurrentUserProfile(){
   renderTopbarUser();
 }
 function toggleUserMenu(){ userMenuOpen = !userMenuOpen; renderTopbarUser(); }
@@ -770,38 +766,43 @@ function loginView(){
 }
 
 // ============================================================================
-// ENTRA ID (AZURE AD) LOGIN — replaces the shared passcode entirely. The
-// Azure provider itself is configured in the Supabase dashboard restricted
-// to the WCT tenant, so only @wct.my accounts can complete sign-in at all —
-// but that alone doesn't mean someone SHOULD have dashboard access, only
-// that they're a real WCT employee. rpc_admin_get_my_grants() is the actual
-// authorization gate: an authenticated-but-not-invited employee gets signed
-// straight back out with a clear message, never silently let through.
+// ENTRA ID (AZURE AD) LOGIN — replaces the shared passcode entirely.
+// MSAL.js (oauth.js, same Azure app registration as candidate Microsoft
+// sign-in) gets a signed ID token directly from Microsoft in a popup — no
+// page redirect/reload round-trip anymore, so there's no "restore state
+// after coming back from the OAuth provider" step either. That ID token is
+// verified SERVER-SIDE (backend/src/lib/oauthVerify.js) by two endpoints:
+//   POST /api/admin/auth/microsoft  — resolves grants (the authorization
+//     gate: the Azure app itself allows any Microsoft account to sign in,
+//     "All Microsoft account users" — being invited via admin_grants is
+//     what actually restricts dashboard access, same as before).
+//   POST /api/admin/auth/session    — re-verifies the SAME id_token and
+//     mints the actual admin session JWT, once the business unit (if
+//     needed) is known.
 //
-// The old passcode system (admin_config, rpc_admin_login, doLogin(),
+// The old passcode system (admin_config, doLogin(),
 // togglePasscodeVisibility()) is left completely in place further down —
 // just no longer linked from this login screen — as a manual break-glass
-// fallback, matching this project's established "never drop, just stop
-// using" convention.
+// fallback (POST /api/admin/auth/login), matching this project's
+// established "never drop, just stop using" convention.
 // ============================================================================
+let pendingMsIdToken = null; // held only between the grants check and BU choice/session mint
+
 async function doMicrosoftLogin(){
-  const { error } = await supabaseClient.auth.signInWithOAuth({
-    provider: 'azure',
-    options: {
-      redirectTo: window.location.origin + window.location.pathname,
-      scopes: 'email openid profile'
-    }
-  });
-  if(error){ loginStage = 'error'; loginErrorMsg = error.message; render(); }
+  try{
+    const idToken = await signInWithMicrosoft();
+    await attemptAdminBootstrap(idToken);
+  } catch(e){
+    loginStage = 'error'; loginErrorMsg = e.message || String(e); render();
+  }
 }
 
-async function attemptAdminBootstrap(chosenBU){
+async function attemptAdminBootstrap(idToken, chosenBU){
   try{
-    const { data: grantsData, error: grantsErr } = await supabaseClient.rpc('rpc_admin_get_my_grants');
+    const tokenToUse = idToken || pendingMsIdToken;
+    const { data: g, error: grantsErr } = await apiTry(() => api.post('/admin/auth/microsoft', { id_token: tokenToUse }));
     if(grantsErr) throw grantsErr;
-    const g = grantsData && grantsData[0];
     if(!g || !g.authorized){
-      await supabaseClient.auth.signOut();
       loginStage = 'error';
       loginErrorMsg = "Your account isn't set up as an admin yet. Contact your Super Admin to be added.";
       render();
@@ -809,30 +810,34 @@ async function attemptAdminBootstrap(chosenBU){
     }
     if(!g.is_super_admin && (g.bu_grants||[]).length > 1 && !chosenBU){
       availableBuGrants = g.bu_grants;
+      pendingMsIdToken = tokenToUse;
       loginStage = 'choosing_bu';
       render();
       return;
     }
-    const p_business_unit = g.is_super_admin ? null : (chosenBU || (g.bu_grants||[])[0] || null);
-    const { data: sessionData, error: sessionErr } = await supabaseClient.rpc('rpc_admin_create_session', { p_business_unit });
+    const business_unit = g.is_super_admin ? null : (chosenBU || (g.bu_grants||[])[0] || null);
+    const { data: sessionData, error: sessionErr } = await apiTry(() => api.post('/admin/auth/session', { id_token: tokenToUse, business_unit }));
     if(sessionErr) throw sessionErr;
-    adminToken = sessionData[0].token;
-    adminScope = sessionData[0].unit_scope;
-    sessionStorage.setItem('wct_admin_token', adminToken);
+    adminToken = sessionData.token;
+    adminScope = sessionData.unit_scope;
+    api.setAdminToken(adminToken);
     sessionStorage.setItem('wct_admin_scope', adminScope);
+    pendingMsIdToken = null;
+    const claims = decodeJwtPayload(tokenToUse) || {};
+    currentUserProfile = { name: claims.name || g.email || '', email: g.email || claims.preferred_username || '' };
     if(adminScope !== 'ALL') filterBusinessUnit = adminScope;
     loginStage = 'signin';
     render();
     await loadEverything();
     await openDeepLinkedAppIfAny();
-    await loadCurrentUserProfile();
+    loadCurrentUserProfile();
   } catch(e){
     loginStage = 'error';
     loginErrorMsg = e.message || String(e);
     render();
   }
 }
-function chooseBuAndContinue(bu){ attemptAdminBootstrap(bu); }
+function chooseBuAndContinue(bu){ attemptAdminBootstrap(null, bu); }
 function retryLogin(){ loginStage = 'signin'; loginErrorMsg = ''; render(); }
 
 function togglePasscodeVisibility(){
@@ -847,11 +852,11 @@ function togglePasscodeVisibility(){
 async function doLogin(){
   const pass = document.getElementById('passcodeInput').value;
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_login', { p_passcode: pass });
+    const { data, error } = await apiTry(() => api.post('/admin/auth/login', { passcode: pass }));
     if(error) throw error;
-    adminToken = data[0].token;
-    adminScope = data[0].unit_scope;
-    sessionStorage.setItem('wct_admin_token', adminToken);
+    adminToken = data.token;
+    adminScope = data.unit_scope;
+    api.setAdminToken(adminToken);
     sessionStorage.setItem('wct_admin_scope', adminScope);
     if(adminScope !== 'ALL') filterBusinessUnit = adminScope;
     render();
@@ -862,9 +867,8 @@ async function doLogin(){
   }
 }
 function logout(){
-  supabaseClient.auth.signOut();
   currentUserProfile = null; userMenuOpen = false;
-  sessionStorage.removeItem('wct_admin_token'); sessionStorage.removeItem('wct_admin_scope'); adminToken=null; adminScope=null; render();
+  api.setAdminToken(null); sessionStorage.removeItem('wct_admin_scope'); adminToken=null; adminScope=null; render();
 }
 
 // ============================================================================
@@ -908,9 +912,9 @@ function dashboardShellHtml(){
 let pendingExitSignatureCount = 0;
 async function loadPendingExitSignatureCount(){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_count_pending_exit_signatures', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/exit-interviews/pending-count', {admin: true}));
     if(error) throw error;
-    pendingExitSignatureCount = data || 0;
+    pendingExitSignatureCount = (data && data.count) || 0;
   } catch(e){ pendingExitSignatureCount = 0; }
 }
 function pendingSignatureBannerHtml(){
@@ -1060,13 +1064,15 @@ async function applyBulkStatus(){
   if(status !== 'offboarding' && !confirm(`Change status to "${STATUS_LABELS[status]}" for ${count} selected application(s)?`)) return;
   showLoading(`Updating ${count} application(s)...`);
   let failed = 0;
-  const rpcName = STATUS_VIA_DEDICATED_RPC[status] || 'rpc_admin_update_status';
   for(const id of Array.from(selectedIds)){
     try{
-      const params = STATUS_VIA_DEDICATED_RPC[status]
-        ? { p_token: adminToken, p_id: id }
-        : { p_token: adminToken, p_id: id, p_status: status };
-      const { error } = await supabaseClient.rpc(rpcName, params);
+      let result;
+      if(STATUS_VIA_DEDICATED_RPC[status]){
+        result = await apiTry(() => api.post(`/admin/applications/${id}/offboarding`, {}, {admin: true}));
+      } else {
+        result = await apiTry(() => api.post(`/admin/applications/${id}/status`, {status}, {admin: true}));
+      }
+      const { error } = result;
       if(error) failed++;
     } catch(e){ failed++; }
   }
@@ -1083,7 +1089,7 @@ async function bulkDelete(){
   let failed = 0;
   for(const id of Array.from(selectedIds)){
     try{
-      const { error } = await supabaseClient.rpc('rpc_admin_delete_application', {p_token: adminToken, p_id: id});
+      const { error } = await apiTry(() => api.del(`/admin/applications/${id}`, {admin: true}));
       if(error) failed++;
     } catch(e){ failed++; }
   }
@@ -1096,7 +1102,7 @@ async function bulkDelete(){
 async function bulkExportCsv(){
   showLoading('Preparing export of selected applications...');
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_export_all', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/export', {admin: true}));
     if(error) throw error;
     const filtered = (data||[]).filter(a => selectedIds.has(a.id));
     downloadApplicationsCsv(filtered, `wct-applications-selected-export-${new Date().toISOString().slice(0,10)}.csv`);
@@ -1109,7 +1115,7 @@ let companyNameById = {}; // for the dashboard table's Company column — fetche
 
 async function loadCompanyLookup(){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_list_companies', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/companies', {admin: true}));
     if(error) throw error;
     companyNameById = {};
     (data||[]).forEach(c => { companyNameById[c.id] = c.name; });
@@ -1127,14 +1133,13 @@ let searchRequestSeq = 0; // guards against a slow/stale response overwriting a 
 async function loadApplications(){
   const mySeq = ++searchRequestSeq;
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_search_applications', {
-      p_token: adminToken,
-      p_search: searchTerm || null,
-      p_business_unit: filterBusinessUnit || null,
-      p_status: filterStatus || null,
-      p_page: currentPage,
-      p_page_size: PAGE_SIZE
-    });
+    const qs = new URLSearchParams();
+    qs.set('page', currentPage);
+    qs.set('page_size', PAGE_SIZE);
+    if(searchTerm) qs.set('search', searchTerm);
+    if(filterBusinessUnit) qs.set('business_unit', filterBusinessUnit);
+    if(filterStatus) qs.set('status', filterStatus);
+    const { data, error } = await apiTry(() => api.get(`/admin/applications?${qs.toString()}`, {admin: true}));
     if(error) throw error;
     if(mySeq !== searchRequestSeq) return; // a newer search/filter/page change has since started — drop this stale result
     applications = data.rows || [];
@@ -1149,7 +1154,7 @@ async function loadApplications(){
 
 async function loadStats(){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_get_stats', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/stats', {admin: true}));
     if(error) throw error;
     stats = data;
     render();
@@ -1182,11 +1187,13 @@ async function quickUpdateStatus(id, status){
   if(!confirm(warnMsg)){ openStatusPanelId = null; loadApplications(); return; }
   openStatusPanelId = null;
   try{
-    const rpcName = STATUS_VIA_DEDICATED_RPC[status] || 'rpc_admin_update_status';
-    const params = STATUS_VIA_DEDICATED_RPC[status]
-      ? { p_token: adminToken, p_id: id }
-      : { p_token: adminToken, p_id: id, p_status: status };
-    const { error } = await supabaseClient.rpc(rpcName, params);
+    let result;
+    if(STATUS_VIA_DEDICATED_RPC[status]){
+      result = await apiTry(() => api.post(`/admin/applications/${id}/offboarding`, {}, {admin: true}));
+    } else {
+      result = await apiTry(() => api.post(`/admin/applications/${id}/status`, {status}, {admin: true}));
+    }
+    const { error } = result;
     if(error) throw error;
     await Promise.all([loadApplications(), loadStats()]);
   } catch(e){ alert('Error: '+e.message); loadApplications(); }
@@ -1195,7 +1202,7 @@ async function quickUpdateStatus(id, status){
 async function confirmDelete(id, name){
   if(!confirm(`Permanently delete ${name}'s application? This cannot be undone.`)) return;
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_delete_application', {p_token: adminToken, p_id: id});
+    const { error } = await apiTry(() => api.del(`/admin/applications/${id}`, {admin: true}));
     if(error) throw error;
     await Promise.all([loadApplications(), loadStats()]);
   } catch(e){ alert('Error deleting: '+e.message); }
@@ -1204,7 +1211,7 @@ async function confirmDelete(id, name){
 async function exportCsv(){
   showLoading('Preparing full export...');
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_export_all', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/export', {admin: true}));
     if(error) throw error;
     downloadApplicationsCsv(data||[], `wct-applications-full-export-${new Date().toISOString().slice(0,10)}.csv`);
   } catch(e){ alert('Error exporting: '+e.message); }
@@ -1308,23 +1315,23 @@ let exitInterviewData = null; // this application's exit_interviews row, if any 
 
 async function openDetail(id){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_get_application', {p_token: adminToken, p_id: id});
+    const { data, error } = await apiTry(() => api.get(`/admin/applications/${id}`, {admin: true}));
     if(error) throw error;
-    selectedApp = data[0];
+    selectedApp = data;
     editingApp = false;
 
     // Best-effort extras — don't block opening the modal if either fails.
     try{
-      const { data: obData } = await supabaseClient.rpc('rpc_admin_check_other_bu', { p_token: adminToken, p_id: id });
+      const { data: obData } = await apiTry(() => api.get(`/admin/applications/${id}/other-bu`, {admin: true}));
       otherBuMatches = obData || [];
     } catch(e){ otherBuMatches = []; }
     try{
-      const { data: compData } = await supabaseClient.rpc('rpc_admin_list_companies', { p_token: adminToken });
+      const { data: compData } = await apiTry(() => api.get('/admin/companies', {admin: true}));
       assignableCompanies = compData || [];
     } catch(e){ assignableCompanies = []; }
     try{
-      const { data: eiData } = await supabaseClient.rpc('rpc_admin_get_exit_interview', { p_token: adminToken, p_application_id: id });
-      exitInterviewData = (eiData && eiData[0]) || null;
+      const { data: eiData } = await apiTry(() => api.get(`/admin/applications/${id}/exit-interview`, {admin: true}));
+      exitInterviewData = eiData || null;
     } catch(e){ exitInterviewData = null; }
 
     render();
@@ -1416,11 +1423,9 @@ async function hrSignExitInterview(applicationId){
   if(!confirm('Sign this Exit Interview Form? This is final — the candidate will be emailed a link to their signed copy immediately.')) return;
   showLoading('Signing...');
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_sign_exit_interview', {
-      p_token: adminToken, p_application_id: applicationId, p_hr_name: name, p_hr_position: position
-    });
+    const { data, error } = await apiTry(() => api.post(`/admin/exit-interviews/${applicationId}/sign`, { hr_name: name, hr_position: position }, {admin: true}));
     if(error) throw error;
-    exitInterviewData = data[0];
+    exitInterviewData = data;
     await loadPendingExitSignatureCount();
     hideLoading();
     render();
@@ -1575,7 +1580,7 @@ let settingsData = {};
 
 async function loadSettingsForPage(){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_get_settings', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/settings', {admin: true}));
     if(error) throw error;
     settingsData = data || {};
   } catch(e){ alert('Error loading settings: '+e.message); settingsData = {}; }
@@ -1615,7 +1620,7 @@ async function saveSettings(){
     manager_email_land: document.getElementById('set_mgr_land').value.trim()
   };
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_update_settings', { p_token: adminToken, p_settings: patch });
+    const { data, error } = await apiTry(() => apiRequest('/admin/settings', {method: 'PUT', body: patch, admin: true}));
     if(error) throw error;
     settingsData = data;
     document.getElementById('settingsErr').innerHTML = `<div class="success-banner">Saved.</div>`;
@@ -1633,7 +1638,7 @@ const PERMISSION_UNITS = ['E&C', 'Land', 'Mall'];
 
 async function loadPermissionsForPage(){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_get_permission_matrix', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/permission-matrix', {admin: true}));
     if(error) throw error;
     permissionMatrix = data || [];
   } catch(e){ alert('Error loading permissions: '+e.message); permissionMatrix = []; }
@@ -1690,7 +1695,7 @@ async function submitAddEntityCategory(){
   if(!name){ document.getElementById('addEntityErr').innerHTML = `<div class="error-banner">Entity name is required.</div>`; return; }
   showLoading('Adding entity...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_add_entity_category', { p_token: adminToken, p_category: name });
+    const { error } = await apiTry(() => api.post('/admin/entity-categories', { category: name }, {admin: true}));
     if(error) throw error;
     input.value = '';
     await loadPermissionsForPage();
@@ -1719,7 +1724,7 @@ async function savePermissionChanges(){
   try{
     for(const unit of units){
       const categories = Array.from(pendingPermissionChanges[unit]);
-      const { error } = await supabaseClient.rpc('rpc_admin_save_permissions', { p_token: adminToken, p_unit_scope: unit, p_categories: categories });
+      const { error } = await apiTry(() => apiRequest('/admin/permission-matrix', {method: 'PUT', body: {unit_scope: unit, categories}, admin: true}));
       if(error) throw error;
     }
     pendingPermissionChanges = {};
@@ -1764,18 +1769,18 @@ let aiChatLoading = false;
 let aiChatOpen = false;
 
 async function callAiAnalyticsFunction(body){
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if(!session){
+  // No Supabase Auth session exists anymore — the only credential we hold is
+  // the admin JWT already in localStorage (api.getAdminToken()/adminToken).
+  // Backed by the migrated Node/Express endpoint POST /api/admin/ai-insights
+  // (src/routes/aiInsights.js) — a byte-for-byte reimplementation of the
+  // original Supabase 'ai-analytics' Edge Function, using the same
+  // GEMINI_API_KEY server-side. No Supabase session/URL involved anymore.
+  if(!adminToken){
     throw new Error('AI features need a Microsoft sign-in session — sign out and back in with "Sign in with Microsoft" to use them (the old passcode fallback doesn\'t carry the session this needs).');
   }
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-analytics`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-    body: JSON.stringify(body)
-  });
-  const resJson = await res.json();
-  if(!res.ok) throw new Error(resJson.error || 'AI request failed');
-  return resJson.text;
+  const { data, error } = await apiTry(() => api.post('/admin/ai-insights', body, {admin: true}));
+  if(error) throw error;
+  return data.text;
 }
 
 // Only non-identifying fields — see the privacy note above. Deliberately
@@ -2128,7 +2133,7 @@ function aiInsightsPageView(){
 async function loadAnalyticsData(){
   showLoading('Loading analytics...');
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_export_all', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/export', {admin: true}));
     if(error) throw error;
     analyticsRows = data || [];
     await loadPendingExitSignatureCount();
@@ -2518,7 +2523,7 @@ let adminMgmtGrantFormFor = null; // which admin_user_id currently has its "add 
 
 async function loadAdminMgmtList(){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_list_admins', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/admins', {admin: true}));
     if(error) throw error;
     const byId = {};
     (data||[]).forEach(row => {
@@ -2575,7 +2580,7 @@ function adminAccessPageView(){
 
 function adminMgmtResultsHtml(){
   if(adminMgmtList.length === 0){
-    return `<div class="empty-state">No admins yet. Use "+ Invite Admin" above — don't forget to also seed your own Super Admin row directly in Supabase first (see the migration file), or you won't be able to sign in at all.</div>`;
+    return `<div class="empty-state">No admins yet. Use "+ Invite Admin" above — don't forget to also seed your own Super Admin row directly in the database first (see the migration file), or you won't be able to sign in at all.</div>`;
   }
   return adminMgmtList.map(a => adminMgmtCardHtml(a)).join('');
 }
@@ -2639,7 +2644,7 @@ async function submitInviteAdmin(){
   if(!email){ document.getElementById('adminMgmtErr').innerHTML = `<div class="error-banner">Email is required.</div>`; return; }
   showLoading('Inviting...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_invite_admin', { p_token: adminToken, p_email: email, p_display_name: name });
+    const { error } = await apiTry(() => api.post('/admin/admins', { email, display_name: name }, {admin: true}));
     if(error) throw error;
     adminMgmtInviteOpen = false;
     await loadAdminMgmtList();
@@ -2654,7 +2659,7 @@ async function submitAddGrant(adminUserId){
   const businessUnit = role === 'bu_admin' ? buEl.value : null;
   showLoading('Adding grant...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_grant_role', { p_token: adminToken, p_admin_user_id: adminUserId, p_role: role, p_business_unit: businessUnit });
+    const { error } = await apiTry(() => api.post(`/admin/admins/${adminUserId}/grants`, { role, business_unit: businessUnit }, {admin: true}));
     if(error) throw error;
     adminMgmtGrantFormFor = null;
     await loadAdminMgmtList();
@@ -2667,7 +2672,7 @@ async function revokeGrant(grantId){
   if(!confirm('Revoke this grant? The admin will lose that access immediately.')) return;
   showLoading('Revoking...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_revoke_grant', { p_token: adminToken, p_grant_id: grantId });
+    const { error } = await apiTry(() => api.del(`/admin/grants/${grantId}`, {admin: true}));
     if(error) throw error;
     await loadAdminMgmtList();
     hideLoading();
@@ -2679,7 +2684,7 @@ async function toggleAdminActive(adminUserId, newActive){
   if(!newActive && !confirm('Deactivate this admin? They will be signed out and unable to sign in again until reactivated.')) return;
   showLoading('Updating...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_set_admin_active', { p_token: adminToken, p_admin_user_id: adminUserId, p_is_active: newActive });
+    const { error } = await apiTry(() => api.patch(`/admin/admins/${adminUserId}/active`, { is_active: newActive }, {admin: true}));
     if(error) throw error;
     await loadAdminMgmtList();
     hideLoading();
@@ -2706,7 +2711,7 @@ let showNewEntityInput = false; // toggles the "+ Add new entity" free-text fall
 
 async function loadEntityCategoryList(){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_list_entity_categories', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/entity-categories', {admin: true}));
     if(error) throw error;
     entityCategoryList = data || [];
   } catch(e){ entityCategoryList = []; }
@@ -2714,7 +2719,7 @@ async function loadEntityCategoryList(){
 
 async function loadCompanyMgmtList(){
   try{
-    const { data, error } = await supabaseClient.rpc('rpc_admin_list_companies_for_management', { p_token: adminToken });
+    const { data, error } = await apiTry(() => api.get('/admin/companies/manage', {admin: true}));
     if(error) throw error;
     companyMgmtList = data || [];
   } catch(e){ alert('Error loading companies: '+e.message); companyMgmtList = []; }
@@ -2828,7 +2833,7 @@ async function submitAddCompany(){
   }
   showLoading('Adding company...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_create_company', { p_token: adminToken, p_name: name, p_category: category, p_business_unit: business_unit });
+    const { error } = await apiTry(() => api.post('/admin/companies', { name, category, business_unit }, {admin: true}));
     if(error) throw error;
     companyMgmtAddOpen = false;
     showNewEntityInput = false;
@@ -2918,7 +2923,7 @@ async function submitEditCompany(id){
   if(!name || !category){ alert('Name and category are both required.'); return; }
   showLoading('Saving...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_update_company', { p_token: adminToken, p_id: id, p_name: name, p_category: category });
+    const { error } = await apiTry(() => api.patch(`/admin/companies/${id}`, { name, category }, {admin: true}));
     if(error) throw error;
     companyMgmtEditId = null;
     await loadCompanyMgmtList();
@@ -2932,7 +2937,7 @@ async function deleteCompanyRow(id, name){
   if(!confirm(`Delete "${name}" from the company list? This cannot be undone, and will fail if any applications are currently assigned to it.`)) return;
   showLoading('Deleting...');
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_delete_company', { p_token: adminToken, p_id: id });
+    const { error } = await apiTry(() => api.del(`/admin/companies/${id}`, {admin: true}));
     if(error) throw error;
     await loadCompanyMgmtList();
     await loadCompanyLookup();
@@ -2944,7 +2949,7 @@ async function deleteCompanyRow(id, name){
 async function saveCompanyAssignment(id){
   const companyId = document.getElementById('assignCompanySelect').value || null;
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_assign_company', { p_token: adminToken, p_id: id, p_company_id: companyId });
+    const { error } = await apiTry(() => api.post(`/admin/applications/${id}/company`, { company_id: companyId }, {admin: true}));
     if(error) throw error;
     // Assign-and-close, rather than reopening the same modal — the person
     // already sees the updated Company column on the dashboard table
@@ -3127,7 +3132,6 @@ function editFormHtml(a){
       <div class="field"><label>Name (per NRIC)</label><input type="text" id="editName" value="${esc(a.name_nric)}"></div>
       <div class="field"><label>Email</label><input type="text" id="editEmail" value="${esc(a.email)}"></div>
       <div class="field"><label>Mobile Phone</label><input type="text" id="editMobile" value="${esc(a.mobile_phone)}"></div>
-      <div class="field"><label>Position Applying</label><input type="text" id="editPosition" value="${esc(a.position_applying)}"></div>
       <div class="field"><label>Business Unit</label>
         <select id="editBusinessUnit">
           ${['E&C','Land','Mall'].map(o=>`<option value="${o}" ${a.business_unit===o?'selected':''}>${o}</option>`).join('')}
@@ -3149,12 +3153,11 @@ async function saveEdit(){
   const patch = {
     name_nric: document.getElementById('editName').value.trim(),
     email: document.getElementById('editEmail').value.trim(),
-    mobile_phone: document.getElementById('editMobile').value.trim(),
-    position_applying: document.getElementById('editPosition').value.trim()
+    mobile_phone: document.getElementById('editMobile').value.trim()
   };
   if(buEl) patch.business_unit = buEl.value; // only present for ALL-scope admins
   try{
-    const { error } = await supabaseClient.rpc('rpc_admin_update_application', {p_token: adminToken, p_id: selectedApp.id, p_patch: patch});
+    const { error } = await apiTry(() => api.patch(`/admin/applications/${selectedApp.id}`, patch, {admin: true}));
     if(error) throw error;
     editingApp = false;
     await openDetail(selectedApp.id);
@@ -3171,11 +3174,13 @@ async function updateStatus(status){
     : `Change this application's status to "${label}"? The candidate will be notified by email.`;
   if(!confirm(warnMsg)) return;
   try{
-    const rpcName = STATUS_VIA_DEDICATED_RPC[status] || 'rpc_admin_update_status';
-    const params = STATUS_VIA_DEDICATED_RPC[status]
-      ? { p_token: adminToken, p_id: selectedApp.id }
-      : { p_token: adminToken, p_id: selectedApp.id, p_status: status };
-    const { error } = await supabaseClient.rpc(rpcName, params);
+    let result;
+    if(STATUS_VIA_DEDICATED_RPC[status]){
+      result = await apiTry(() => api.post(`/admin/applications/${selectedApp.id}/offboarding`, {}, {admin: true}));
+    } else {
+      result = await apiTry(() => api.post(`/admin/applications/${selectedApp.id}/status`, {status}, {admin: true}));
+    }
+    const { error } = result;
     if(error) throw error;
     await openDetail(selectedApp.id);
     await Promise.all([loadApplications(), loadStats()]);
@@ -3198,15 +3203,15 @@ async function openOnboardingView(applicationId){
   try{
     const needsAppFetch = !(selectedApp && selectedApp.id === applicationId);
     const [obRes, appRes] = await Promise.all([
-      supabaseClient.rpc('rpc_admin_get_onboarding', { p_token: adminToken, p_application_id: applicationId }),
+      apiTry(() => api.get(`/admin/applications/${applicationId}/onboarding`, {admin: true})),
       needsAppFetch
-        ? supabaseClient.rpc('rpc_admin_get_application', { p_token: adminToken, p_id: applicationId })
-        : Promise.resolve({ data: [selectedApp], error: null })
+        ? apiTry(() => api.get(`/admin/applications/${applicationId}`, {admin: true}))
+        : Promise.resolve({ data: selectedApp, error: null })
     ]);
     if(obRes.error) throw obRes.error;
     if(appRes.error) throw appRes.error;
-    onboardingData = obRes.data[0];
-    onboardingAppInfo = appRes.data[0];
+    onboardingData = obRes.data;
+    onboardingAppInfo = appRes.data;
     renderOnboardingModal();
   } catch(e){ alert('Error loading onboarding details: '+e.message); }
 }
@@ -3473,9 +3478,9 @@ async function exportCandidatePdf(id){
   let a = applications.find(x=>x.id===id);
   if(!a || (selectedApp && a.id !== selectedApp.id)){
     try{
-      const { data, error } = await supabaseClient.rpc('rpc_admin_get_application', {p_token: adminToken, p_id: id});
+      const { data, error } = await apiTry(() => api.get(`/admin/applications/${id}`, {admin: true}));
       if(error) throw error;
-      a = data[0];
+      a = data;
     } catch(e){ alert('Could not load record for export: '+e.message); return; }
   }
   const html = buildFormalPdfHtml(a);
@@ -3722,19 +3727,15 @@ render();
 if(adminToken) loadEverything().then(openDeepLinkedAppIfAny).then(loadCurrentUserProfile);
 
 // ============================================================================
-// Detect a Microsoft sign-in — either just completed (redirected back with
-// the auth code still in the URL, which supabase-js exchanges automatically
-// on load) or an existing browser session from earlier today. Either way,
-// if there's a real Supabase Auth session but no admin_sessions token yet,
-// run the authorization check and (if allowed) issue one.
+// Microsoft sign-in no longer has a persistent Supabase Auth session to
+// restore or an onAuthStateChange event to listen for — MSAL.js (oauth.js)
+// gets the ID token via a popup and attemptAdminBootstrap() is called
+// directly from doMicrosoftLogin() the moment that happens. The only thing
+// that needs restoring across page loads is the plain admin JWT string,
+// which is already loaded from localStorage into `adminToken` at the top of
+// this script (via api.getAdminToken()) and handled by the `if(adminToken)`
+// check above — so there's nothing left to do here.
 // ============================================================================
-(async () => {
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if(session && !adminToken){ await attemptAdminBootstrap(); }
-})();
-supabaseClient.auth.onAuthStateChange((event, session) => {
-  if(event === 'SIGNED_IN' && session && !adminToken){ attemptAdminBootstrap(); }
-});
 
 window.addEventListener('resize', () => {
   // Crossing the mobile breakpoint mid-session (rotating a tablet, resizing

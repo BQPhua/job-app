@@ -8,7 +8,8 @@
       href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://alcdn.msauth.net/browser/3.24.0/js/msal-browser.min.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
       :root {
         --navy:#101B2D;
@@ -366,7 +367,8 @@
       </div>
     </div>
 
-    <script src="config.js"></script>
+    <script src="api.js"></script>
+    <script src="oauth.js"></script>
     <script src="logo.js"></script>
     <script src="login-bg.js"></script>
     <script>
@@ -545,29 +547,35 @@
         );
       }
 
+      // OAuth here is a two-step client/server split (spec §3.1, backend
+      // src/routes/auth.js): the provider's own SDK (MSAL.js / Google
+      // Identity Services, oauth.js) gets a signed ID token directly from
+      // Google/Microsoft on the client, then THIS backend verifies that
+      // token server-side (signature/audience/issuer) before ever trusting
+      // the email inside it — see backend/src/lib/oauthVerify.js. There is
+      // no redirect-based flow or ?error= callback param anymore; failures
+      // surface as a normal thrown error from the popup/prompt itself.
       async function signInOAuth(provider) {
-        const options = {
-          redirectTo: indexRedirectUrl(
-            window.location.origin +
-              window.location.pathname.replace('login.html', 'index.html')
-          ),
-        };
-        // Force an explicit account picker instead of a silent background sign-in
-        // attempt. The silent attempt is what shows "Trying to sign you in" with
-        // no account picker — when the browser's cached session is stale or the
-        // required cookies are blocked (common in sandboxed dev previews), that
-        // silent attempt hangs or retries instead of failing cleanly, which is
-        // the intermittent loop. Prompting explicitly removes that flakiness.
-        if (provider === 'azure') {
-          options.queryParams = { prompt: 'select_account' };
-        } else if (provider === 'google') {
-          options.queryParams = { prompt: 'select_account' };
+        try {
+          const idToken =
+            provider === 'azure'
+              ? await signInWithMicrosoft()
+              : await signInWithGoogle();
+          const path = provider === 'azure' ? '/auth/oauth/microsoft' : '/auth/oauth/google';
+          const { data, error } = await apiTry(() => api.post(path, { id_token: idToken }));
+          if (error) {
+            if (error.data && error.data.error === 'blacklisted') {
+              showMsg('error', 'This account has been blacklisted and can no longer sign in or submit applications. If you believe this is a mistake, please contact HR directly.');
+            } else {
+              showMsg('error', error.message);
+            }
+            return;
+          }
+          api.setToken(data.token); api.setUser(data.user);
+          window.location.href = indexRedirectUrl('index.html');
+        } catch (err) {
+          showMsg('error', err.message || 'Sign-in was cancelled or failed.');
         }
-        const { error } = await supabaseClient.auth.signInWithOAuth({
-          provider,
-          options,
-        });
-        if (error) showMsg('error', error.message);
       }
 
       async function doSignIn() {
@@ -577,14 +585,16 @@
           showMsg('error', 'Please enter your email and password.');
           return;
         }
-        const { error } = await supabaseClient.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { data, error } = await apiTry(() => api.post('/auth/login', { email, password }));
         if (error) {
-          showMsg('error', error.message);
+          if (error.data && error.data.error === 'blacklisted') {
+            showMsg('error', 'This account has been blacklisted and can no longer sign in or submit applications. If you believe this is a mistake, please contact HR directly.');
+          } else {
+            showMsg('error', error.message);
+          }
           return;
         }
+        api.setToken(data.token); api.setUser(data.user);
         window.location.href = indexRedirectUrl('index.html');
       }
 
@@ -592,20 +602,18 @@
         const name = document.getElementById('regName').value.trim();
         const email = document.getElementById('regEmail').value.trim();
         const password = document.getElementById('regPassword').value;
-        const { error } = await supabaseClient.auth.signUp({
-          email,
-          password,
-          options: { data: { full_name: name } },
-        });
+        // Unlike the original Supabase flow, the backend's /auth/register
+        // (spec §3.1) issues a session token immediately — there is no
+        // separate "confirm your email" step, since this backend doesn't
+        // yet send verification emails at all (see backend TODOs).
+        const { data, error } = await apiTry(() => api.post('/auth/register', { email, password, full_name: name }));
         if (error) {
           showMsg('error', error.message);
           return;
         }
-        showMsg(
-          'success',
-          'Account created! Check your email to confirm your address, then sign in.'
-        );
-        setTimeout(() => setTab('signin'), 2500);
+        api.setToken(data.token); api.setUser(data.user);
+        showMsg('success', 'Account created! Redirecting...');
+        setTimeout(() => { window.location.href = indexRedirectUrl('index.html'); }, 1200);
       }
 
       async function doForgotPassword() {
@@ -614,17 +622,7 @@
           showMsg('error', 'Please enter your email.');
           return;
         }
-        const { error } = await supabaseClient.auth.resetPasswordForEmail(
-          email,
-          {
-            redirectTo:
-              window.location.origin +
-              window.location.pathname.replace(
-                'login.html',
-                'reset-password.html'
-              ),
-          }
-        );
+        const { error } = await apiTry(() => api.post('/auth/reset-password/request', { email }));
         if (error) {
           showMsg('error', error.message);
           return;
@@ -643,39 +641,31 @@
           }">${text}</div>`;
       }
 
-      // If we just bounced back from a failed OAuth attempt (Google/Microsoft),
-      // Supabase appends ?error=...&error_description=... to the URL instead of
-      // silently doing nothing. Show it instead of hiding it.
-      function checkForOAuthError() {
-        const params = new URLSearchParams(
-          window.location.search || window.location.hash.replace('#', '?')
-        );
-        const err = params.get('error_description') || params.get('error');
-        if (err) {
-          showMsg('error', decodeURIComponent(err.replace(/\+/g, ' ')));
-          // clean the URL so refreshing doesn't re-show a stale error
-          window.history.replaceState({}, '', window.location.pathname);
-        }
-        if (params.get('blacklisted') === '1') {
-          showMsg(
-            'error',
-            'This account has been blacklisted and can no longer sign in or submit applications. If you believe this is a mistake, please contact HR directly.'
-          );
-          window.history.replaceState({}, '', window.location.pathname);
-        }
-      }
-
-      // If already signed in, skip straight to the app
-      (async function boot() {
-        const {
-          data: { session },
-        } = await supabaseClient.auth.getSession();
-        if (session) {
+      // If already signed in, skip straight to the app. There's no
+      // server-side session to check here (unlike Supabase's getSession()) —
+      // this just checks a token is present; index.html itself is the one
+      // that actually validates it against the backend (via
+      // requireCandidateAuth on every call) and bounces back here if it's
+      // expired/invalid.
+      (function boot() {
+        if (api.getToken()) {
           window.location.href = indexRedirectUrl('index.html');
           return;
         }
         render();
-        checkForOAuthError();
+        // If index.html redirected back here because the stored token was
+        // rejected (expired/invalid), or because the blacklist check
+        // failed, it appends these markers rather than the old Supabase
+        // ?error=/?error_description= OAuth-callback params, since there's
+        // no OAuth redirect round-trip anymore.
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('blacklisted') === '1') {
+          showMsg('error', 'This account has been blacklisted and can no longer sign in or submit applications. If you believe this is a mistake, please contact HR directly.');
+          window.history.replaceState({}, '', window.location.pathname);
+        } else if (params.get('session_expired') === '1') {
+          showMsg('error', 'Your session has expired. Please sign in again.');
+          window.history.replaceState({}, '', window.location.pathname);
+        }
       })();
     </script>
   </body>
