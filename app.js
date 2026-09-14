@@ -455,7 +455,7 @@ function tplPersonal(){
         </select>
       </div>
       <div class="field">
-        <label>NRIC No. (without dash) ${state.citizen==='Malaysian' ? '<span class="req-star">*</span>' : '<span class="opt-tag">(Malaysians only)</span>'}</label>
+        <label>NRIC No. (without dash) ${state.citizen==='Malaysian' ? '<span class="req-star">*</span>' : ''}</label>
         <input type="text" value="${esc(state.nric_new)}" placeholder="e.g. 900101011234" maxlength="14"
           ${state.citizen==='Non-Malaysian' ? 'disabled style="background:#F2F2F1;"' : ''}
           oninput="handleNricChange(this.value)">
@@ -484,7 +484,6 @@ function tplPersonal(){
              en-US), which isn't what candidates here expect. -->
         <input type="date" id="dobPickerInput" value="${esc(state.date_of_birth)}" onchange="handleDobChange(this.value)"
           style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
-        <div class="hint">${state.citizen==='Malaysian' ? "Auto-filled from your NRIC — adjust here if it doesn't look right." : 'Type it as DDMMYYYY (e.g. 13042005 → 13/04/2005), or use the 📅 picker.'}</div>
       </div>
       <div class="field"><label>Age</label><input type="number" id="ageInput" value="${esc(state.age)}" readonly style="background:#F2F2F2;"></div>
       <div class="field"><label>Marital Status <span class="req-star">*</span></label>
