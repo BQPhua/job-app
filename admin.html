@@ -3126,7 +3126,7 @@ function viewDetailHtml(a){
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <select id="assignCompanySelect" class="select-clean" style="flex:1;min-width:220px;">
             <option value="">— Not assigned —</option>
-            ${Object.entries(assignableCompanies.reduce((acc,c)=>{ (acc[c.category]=acc[c.category]||[]).push(c); return acc; },{})).map(([cat,list])=>`
+            ${Object.entries(assignableCompanies.reduce((acc,c)=>{ const k=c.category||'Uncategorized'; (acc[k]=acc[k]||[]).push(c); return acc; },{})).map(([cat,list])=>`
               <optgroup label="${esc(cat)}">
                 ${list.map(c=>`<option value="${c.id}" ${a.company_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
               </optgroup>
