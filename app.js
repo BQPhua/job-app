@@ -268,6 +268,9 @@ function tplMyApplicationDetail(){
     `;
   }
   const refs = [a.referee1, a.referee2].filter(r => r && r.name);
+  // Full field list — kept in sync with tplReview() (the pre-submission
+  // review step) so a candidate revisiting a submitted application from "My
+  // Applications" sees everything they filled in, not just a subset.
   return `
     <div class="step-eyebrow">${esc(a.reference_no)}</div>
     <h2>Application Details</h2>
@@ -276,10 +279,20 @@ function tplMyApplicationDetail(){
     <div class="review-block">
       <h4>Personal Particulars</h4>
       ${rrow('Name (per NRIC)', a.name_nric)}
-      ${rrow('NRIC', a.nric_new)}
-      ${rrow('Email', a.email)}
+      ${rrow('Alias', a.alias)}
+      ${rrow('Permanent Address', (a.permanent_address||'')+' '+(a.permanent_postcode||''))}
+      ${rrow('Correspondence Address', (a.correspondence_address||'')+' '+(a.correspondence_postcode||''))}
       ${rrow('Mobile', a.mobile_phone)}
-      ${rrow('Address', (a.permanent_address||'')+' '+(a.permanent_postcode||''))}
+      ${rrow('Email', a.email)}
+      ${rrow('NRIC', a.nric_new)}
+      ${rrow('Date of Birth / Age', (a.date_of_birth||'—')+' / '+(a.age||'—'))}
+      ${rrow('Marital Status', a.marital_status)}
+      ${rrow('Race / Bumiputra', (a.race||'—')+' / '+(a.bumiputra||'—'))}
+    </div>
+
+    <div class="review-block">
+      <h4>Language Ability</h4>
+      ${(a.language_ability||[]).map(r=>rrow(r.language, `Spoken: ${r.spoken||'—'}, Written: ${r.written||'—'}`)).join('') || rrow('Language Ability','None provided')}
     </div>
 
     <div class="review-block">
@@ -293,9 +306,16 @@ function tplMyApplicationDetail(){
     </div>
 
     <div class="review-block">
-      <h4>Employment Details</h4>
+      <h4>Employment Questions</h4>
+      ${rrow('Resignation Notice Required', a.resignation_notice_required)}
+      ${rrow('Date Available to Start', a.date_available_to_start)}
       ${rrow('Expected Basic Salary', a.expected_basic_salary)}
-      ${rrow('Available to Start', a.date_available_to_start)}
+      ${rrow('Relatives in Company', a.relatives_in_company==='Yes' ? `Yes — ${a.relatives_name} (${a.relatives_relationship})` : a.relatives_in_company)}
+      ${rrow('Referred by Anyone', a.referral_person==='Yes' ? `Yes — ${a.referral_name}, ${a.referral_department}` : a.referral_person)}
+      ${rrow('Own Transport (Car / Motorcycle)', `${a.own_transport_motorcar||'—'} / ${a.own_transport_motorcycle||'—'}`)}
+      ${rrow('Willing Outside Klang Valley', a.willing_based_outside_klang_valley)}
+      ${rrow('Physical Defects', a.physical_defects)}
+      ${rrow('Arrested / Convicted', a.arrested_convicted)}
     </div>
 
     ${refs.length ? `
@@ -308,6 +328,28 @@ function tplMyApplicationDetail(){
       <h4>Declarations</h4>
       ${rrow('(B) Lawsuits/Proceedings', a.declaration_lawsuit==='Yes' ? `Yes — ${a.declaration_lawsuit_specify}` : a.declaration_lawsuit)}
       ${rrow('(C) Other Matters', a.declaration_other_matters==='Yes' ? `Yes — ${a.declaration_other_matters_specify}` : a.declaration_other_matters)}
+    </div>
+
+    <div class="review-block">
+      <h4>Attachments</h4>
+      <div class="file-thumb-row">
+        <div class="k" style="width:44%;">Passport Size Photo</div>
+        <div class="v" style="width:56%;">
+          ${a.profile_picture_url
+            ? `<img src="${a.profile_picture_url}" class="profile-thumb-lg">`
+            : `<span style="color:var(--ink-soft);">Not uploaded</span>`}
+        </div>
+      </div>
+      ${(a.attachments||[]).length ? a.attachments.map(f=>{
+        const isImg = f.type && f.type.startsWith('image/');
+        return `<div class="file-thumb-row">
+          <div class="k" style="width:44%;"></div>
+          <div class="v" style="width:56%;display:flex;align-items:center;gap:10px;">
+            <span class="file-thumb">${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : '📄'}</span>
+            <a href="${f.url}" target="_blank">${esc(f.name)}</a>
+          </div>
+        </div>`;
+      }).join('') : rrow('Documents', 'None attached')}
     </div>
 
     <div class="btn-row">
@@ -379,15 +421,15 @@ function tplPersonal(){
       <div class="field"><label>Alias <span class="opt-tag">(optional)</span></label><input type="text" value="${esc(state.alias)}" oninput="updateField('alias', this.value)"></div>
     </div>
 
-    <div class="field"><label>Permanent Address <span class="req-star">*</span></label><textarea placeholder="e.g. 12 Jalan Damai, Taman Sentosa" oninput="updateField('permanent_address', this.value)">${esc(state.permanent_address)}</textarea></div>
+    <div class="field"><label>Permanent Address <span class="req-star">*</span></label><textarea placeholder="e.g. Address Line 1: 12 Jalan Damai&#10;Address Line 2: Taman Sentosa&#10;Address Line 3: Petaling Jaya" oninput="updateField('permanent_address', this.value)">${esc(state.permanent_address)}</textarea></div>
     <div class="grid">
       <div class="field"><label>Postcode <span class="req-star">*</span></label><input type="text" placeholder="e.g. 50450" value="${esc(state.permanent_postcode)}" oninput="updateField('permanent_postcode', this.value)"></div>
       <div></div>
     </div>
 
-    <div class="field"><label>Correspondence Address <span class="opt-tag">(if different)</span></label><textarea oninput="updateField('correspondence_address', this.value)">${esc(state.correspondence_address)}</textarea></div>
+    <div class="field"><label>Correspondence Address <span class="opt-tag">(if different from permanent address)</span></label><textarea id="correspondenceAddressInput" oninput="handleCorrespondenceAddressChange(this.value)">${esc(state.correspondence_address)}</textarea></div>
     <div class="grid">
-      <div class="field"><label>Postcode <span class="opt-tag">(optional)</span></label><input type="text" value="${esc(state.correspondence_postcode)}" oninput="updateField('correspondence_postcode', this.value)"></div>
+      <div class="field"><label>Postcode <span class="opt-tag">(optional)</span></label><input type="text" id="correspondencePostcodeInput" value="${esc(state.correspondence_postcode)}" oninput="updateField('correspondence_postcode', this.value)"></div>
       <div></div>
     </div>
 
@@ -427,8 +469,22 @@ function tplPersonal(){
     <div class="grid g3">
       <div class="field">
         <label>Date of Birth <span class="req-star">*</span></label>
-        <input type="date" id="dobInput" value="${esc(state.date_of_birth)}" onchange="handleDobChange(this.value)" oninput="handleDobChange(this.value)">
-        <div class="hint">${state.citizen==='Malaysian' ? "Auto-filled from your NRIC — adjust here if it doesn't look right." : 'Pick a date, or click into the field and type it directly (dd/mm/yyyy).'}</div>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="dobTextInput" inputmode="numeric" autocomplete="off" placeholder="DD/MM/YYYY" maxlength="10"
+            value="${esc(formatDobForDisplay(state.date_of_birth))}" oninput="handleDobTextInput(this)" style="flex:1;">
+          <button type="button" class="btn btn-outline btn-sm" title="Pick from calendar" style="padding:0 10px;"
+            onclick="const p=document.getElementById('dobPickerInput'); if(p.showPicker){p.showPicker();} else {p.focus();}">📅</button>
+        </div>
+        <!-- Kept as a real (but visually hidden) native date input purely so
+             the 📅 button can open the browser's own calendar picker via
+             showPicker() — the visible field above is the actual typing UI,
+             always displayed/entered as DD/MM/YYYY regardless of the
+             browser's locale, since a bare <input type="date"> renders in
+             whatever format the browser/OS locale picks (e.g. mm/dd/yyyy in
+             en-US), which isn't what candidates here expect. -->
+        <input type="date" id="dobPickerInput" value="${esc(state.date_of_birth)}" onchange="handleDobChange(this.value)"
+          style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
+        <div class="hint">${state.citizen==='Malaysian' ? "Auto-filled from your NRIC — adjust here if it doesn't look right." : 'Type it as DDMMYYYY (e.g. 13042005 → 13/04/2005), or use the 📅 picker.'}</div>
       </div>
       <div class="field"><label>Age</label><input type="number" id="ageInput" value="${esc(state.age)}" readonly style="background:#F2F2F2;"></div>
       <div class="field"><label>Marital Status <span class="req-star">*</span></label>
@@ -1397,9 +1453,11 @@ function handleNricChange(val){
     const m = today.getMonth() - dob.getMonth();
     if(m < 0 || (m===0 && today.getDate() < dob.getDate())) age--;
     state.age = age;
-    const dobEl = document.getElementById('dobInput');
+    const dobEl = document.getElementById('dobTextInput');
+    const dobPickerEl = document.getElementById('dobPickerInput');
     const ageEl = document.getElementById('ageInput');
-    if(dobEl) dobEl.value = derivedDob;
+    if(dobEl) dobEl.value = formatDobForDisplay(derivedDob);
+    if(dobPickerEl) dobPickerEl.value = derivedDob;
     if(ageEl) ageEl.value = age;
   }
 
@@ -1407,6 +1465,61 @@ function handleNricChange(val){
     state.socso_no = val;
     const socsoEl = document.getElementById('socsoInput');
     if(socsoEl) socsoEl.value = val; // update in place, no full re-render (keeps focus while typing)
+  }
+}
+
+// yyyy-mm-dd (the value type="date" inputs and the backend both use) <->
+// dd/mm/yyyy (what candidates actually see and type here).
+function formatDobForDisplay(iso){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||'');
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+
+// Lets a candidate type a date of birth as a continuous run of digits
+// (e.g. "13042005") without needing to type the slashes themselves — they
+// get auto-inserted after the day and month as typed — while typing
+// "13/04/2005" directly still works too, since non-digits are stripped
+// before reformatting. Only commits to state.date_of_birth (and re-renders,
+// via handleDobChange) once a full 8-digit date has been entered AND it's a
+// real calendar date, so a half-typed date never gets treated as valid.
+function handleDobTextInput(el){
+  let digits = el.value.replace(/[^0-9]/g,'').slice(0,8);
+  let formatted = digits;
+  if(digits.length > 4) formatted = digits.slice(0,2)+'/'+digits.slice(2,4)+'/'+digits.slice(4);
+  else if(digits.length > 2) formatted = digits.slice(0,2)+'/'+digits.slice(2);
+  el.value = formatted;
+
+  if(digits.length === 8){
+    const day = digits.slice(0,2), month = digits.slice(2,4), year = digits.slice(4,8);
+    const iso = `${year}-${month}-${day}`;
+    const d = new Date(iso);
+    const isRealDate = !isNaN(d.getTime()) && d.getUTCDate()===parseInt(day,10) && (d.getUTCMonth()+1)===parseInt(month,10);
+    if(isRealDate){
+      const picker = document.getElementById('dobPickerInput');
+      if(picker) picker.value = iso;
+      handleDobChange(iso);
+    }
+  }
+}
+
+// Auto-completes the Correspondence Address (postcode included) from the
+// Permanent Address the moment what's been typed so far looks like the
+// start of that same address — covers the common case of a candidate whose
+// correspondence address IS their permanent one, without them having to
+// retype the whole thing. Direct DOM update rather than a full render() so
+// typing doesn't lose focus except in the one moment it actually snaps.
+function handleCorrespondenceAddressChange(val){
+  state.correspondence_address = val;
+  const typed = val.trim().replace(/\s+/g,' ').toLowerCase();
+  const perm = (state.permanent_address||'').trim().replace(/\s+/g,' ').toLowerCase();
+  const alreadyMatches = state.correspondence_address === state.permanent_address;
+  if(!alreadyMatches && typed.length >= 5 && perm.length >= typed.length && perm.startsWith(typed)){
+    state.correspondence_address = state.permanent_address;
+    state.correspondence_postcode = state.permanent_postcode;
+    const addrEl = document.getElementById('correspondenceAddressInput');
+    const postcodeEl = document.getElementById('correspondencePostcodeInput');
+    if(addrEl) addrEl.value = state.correspondence_address;
+    if(postcodeEl) postcodeEl.value = state.correspondence_postcode;
   }
 }
 
@@ -2015,7 +2128,7 @@ function tplDone(){
       <p class="step-desc">Our HR team will be in touch if your profile matches the role. You may close this page now.</p>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="exportMyApplicationPdf(state)">📄 Download as PDF</button>
-        <button class="btn btn-ghost" onclick="location.reload()">Start Another Application</button>
+        <button class="btn btn-ghost" onclick="backToMyApplications()">Back to My Applications</button>
       </div>
     </div>
   `;
@@ -2102,7 +2215,7 @@ function pdfPrintStyles(){
   .doc-page + .doc-page{ page-break-before: always; }
   .letterhead{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #000;padding-bottom:12px;margin-bottom:20px;}
   .letterhead .brand-row{display:flex;align-items:center;gap:14px;}
-  .letterhead img.logo{height:44px;}
+  .letterhead img.logo{height:52px;}
   .letterhead h1{font-size:19px;margin:0 0 2px;letter-spacing:.02em;}
   .letterhead .tagline{font-size:10px;color:#666;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.07em;}
   .letterhead .ref-box{text-align:right;font-family:Arial,sans-serif;}

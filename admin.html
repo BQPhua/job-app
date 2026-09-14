@@ -46,11 +46,11 @@
      sandbox); the mobile drawer state does not persist, since it
      should always start closed on a fresh page load.
      ============================================================ */
-  .app-shell{display:flex;min-height:100vh;}
+  .app-shell{display:flex;min-height:100vh;min-height:100dvh;}
 
   .sidebar{
     width:230px;flex-shrink:0;background:var(--navy);color:#fff;
-    display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+    display:flex;flex-direction:column;position:sticky;top:0;height:100vh;height:100dvh;
     transition:width .18s ease;overflow:hidden;z-index:30;
   }
   .sidebar.collapsed{width:64px;}
@@ -409,6 +409,8 @@
   </div>
 </div>
 <script>window.API_BASE_URL = "https://wct-job-app-api.azurewebsites.net/api";</script>
+<script>window.MS_CLIENT_ID = "f776b1ef-50fd-4c76-88a1-c4e738392ac4";</script>
+<script>window.MS_AUTHORITY = "https://login.microsoftonline.com/e41691d3-0c45-41fd-92c7-6d4d99849050";</script>
 <script src="api.js"></script>
 <script src="oauth.js"></script>
 <script src="logo.js"></script>
@@ -482,14 +484,21 @@ function renderSidebarChrome(){
 let currentUserProfile = null; // {name, email} once signed in via Microsoft
 let userMenuOpen = false;
 
-// Populated directly from the Microsoft ID token's own claims at sign-in
-// time (see attemptAdminBootstrap()) rather than a separate session lookup —
-// there's no server-side "get my profile" endpoint, and the ID token already
-// carries name + email. Nothing to (re)populate on a page reload since MSAL's
-// popup flow doesn't persist a session the way Supabase's did; the admin
-// simply signs in again if profile display is needed after a reload (the
-// admin JWT itself still works for every other call in the meantime).
-function loadCurrentUserProfile(){
+// Populated directly from the Microsoft ID token's own claims right after a
+// fresh sign-in (see attemptAdminBootstrap()) — no extra API call needed in
+// that case, since the ID token already carries name + email. But on a
+// plain page reload there's no fresh ID token to read (MSAL's popup flow
+// doesn't persist a restorable session the way Supabase's did) even though
+// the admin JWT itself is still sitting in localStorage and still works —
+// so `currentUserProfile` would otherwise stay null and the topbar chip/
+// Log out button would silently disappear on every refresh. GET /admin/me
+// exists purely to cover that gap: fetch it once, only when a token is
+// present but nothing has been loaded into memory yet.
+async function loadCurrentUserProfile(){
+  if(!currentUserProfile && adminToken){
+    const { data } = await apiTry(() => api.get('/admin/me', {admin: true}));
+    if(data) currentUserProfile = { name: data.display_name || data.email || '', email: data.email || '' };
+  }
   renderTopbarUser();
 }
 function toggleUserMenu(){ userMenuOpen = !userMenuOpen; renderTopbarUser(); }
@@ -767,8 +776,10 @@ function loginView(){
 
 // ============================================================================
 // ENTRA ID (AZURE AD) LOGIN — replaces the shared passcode entirely.
-// MSAL.js (oauth.js, same Azure app registration as candidate Microsoft
-// sign-in) gets a signed ID token directly from Microsoft in a popup — no
+// MSAL.js (oauth.js, signed in against the separate "WCT Admin" Azure app
+// registration — window.MS_CLIENT_ID above, distinct from candidate
+// Microsoft sign-in's app) gets a signed ID token directly from Microsoft in
+// a popup — no
 // page redirect/reload round-trip anymore, so there's no "restore state
 // after coming back from the OAuth provider" step either. That ID token is
 // verified SERVER-SIDE (backend/src/lib/oauthVerify.js) by two endpoints:
@@ -1015,7 +1026,47 @@ function renderDashboardResults(){
   if(statsEl) statsEl.innerHTML = statRowHtml();
   const resultsEl = document.getElementById('dashResults');
   if(resultsEl) resultsEl.innerHTML = dashboardResultsHtml();
+  positionOpenStatusPanel();
 }
+
+// The status panel is markup'd inside a `position:relative` table cell so
+// by default it just drops below the status badge. That breaks down for
+// rows near the bottom of the viewport (or once the page has scrolled) —
+// the panel can render off-screen or get visually clipped. CSS Anchor
+// Positioning (`position-area` + `position-try-fallbacks: flip-block`)
+// would be the declarative fix for this, but per modern-web-guidance it
+// isn't supported by any major browser yet, so this follows the guide's
+// recommended fallback instead: switch the open panel to `position:fixed`
+// and compute its coordinates with getBoundingClientRect, flipping it
+// above the badge whenever there isn't enough room below.
+function positionOpenStatusPanel(){
+  if(!openStatusPanelId) return;
+  const panel = document.querySelector('.status-panel');
+  if(!panel) return;
+  const badge = panel.previousElementSibling;
+  if(!badge) return;
+  const badgeRect = badge.getBoundingClientRect();
+  const panelRect = panel.getBoundingClientRect();
+  const margin = 4;
+  const spaceBelow = window.innerHeight - badgeRect.bottom;
+  const openUpward = spaceBelow < (panelRect.height + margin) && badgeRect.top > (panelRect.height + margin);
+  panel.style.position = 'fixed';
+  panel.style.margin = '0';
+  panel.style.top = openUpward
+    ? `${Math.max(margin, badgeRect.top - panelRect.height - margin)}px`
+    : `${badgeRect.bottom + margin}px`;
+  let left = badgeRect.left;
+  const maxLeft = window.innerWidth - panelRect.width - margin;
+  if(left > maxLeft) left = Math.max(margin, maxLeft);
+  panel.style.left = `${left}px`;
+}
+// Re-run the positioning while the panel is open if the page scrolls or
+// the window resizes, so it stays anchored to the badge instead of
+// drifting once it's been switched to position:fixed. `capture:true` on
+// scroll also catches scrolling inside a nested scrollable container
+// (not just the window itself).
+window.addEventListener('scroll', function(){ if(openStatusPanelId) positionOpenStatusPanel(); }, true);
+window.addEventListener('resize', function(){ if(openStatusPanelId) positionOpenStatusPanel(); });
 
 function handleSearchInput(val){
   searchTerm = val;
@@ -1635,10 +1686,22 @@ async function saveSettings(){
 // ============================================================================
 let permissionMatrix = []; // [{category, unit_scope, granted}, ...]
 const PERMISSION_UNITS = ['E&C', 'Land', 'Mall'];
+let editingEntityCategory = null; // name currently in rename mode, or null
 
 async function loadPermissionsForPage(){
   try{
-    const { data, error } = await apiTry(() => api.get('/admin/permission-matrix', {admin: true}));
+    // Also (re)load the full entity-category list, not just the permission
+    // matrix — see permissionsPageView() below for why: the matrix table
+    // only ever holds rows for categories someone has explicitly granted/
+    // revoked for at least one business unit, so a brand-new category (just
+    // inserted into entity_categories, with zero admin_unit_permissions rows
+    // yet) would otherwise be invisible on this page even though it was
+    // added successfully.
+    const [pmResult] = await Promise.all([
+      apiTry(() => api.get('/admin/permission-matrix', {admin: true})),
+      loadEntityCategoryList(),
+    ]);
+    const { data, error } = pmResult;
     if(error) throw error;
     permissionMatrix = data || [];
   } catch(e){ alert('Error loading permissions: '+e.message); permissionMatrix = []; }
@@ -1648,7 +1711,10 @@ function permissionsPageView(){
   if(adminScope !== 'ALL'){
     return `<div class="empty-state">Business Unit Settings is only available to All Units admin access.</div>`;
   }
-  const categories = [...new Set(permissionMatrix.map(r=>r.category))];
+  // Union with entityCategoryList (not just permissionMatrix's own rows) so
+  // a freshly-added category with no granted/revoked rows yet still shows
+  // up in the table — see the comment in loadPermissionsForPage() above.
+  const categories = [...new Set([...entityCategoryList, ...permissionMatrix.map(r=>r.category)])];
   const isGranted = (category, unit) => permissionMatrix.some(r=>r.category===category && r.unit_scope===unit && r.granted);
 
   return `
@@ -1669,16 +1735,34 @@ function permissionsPageView(){
       <thead><tr>
         <th>Entity Category</th>
         ${PERMISSION_UNITS.map(u=>`<th style="text-align:center;">${u}</th>`).join('')}
+        <th style="width:1%;white-space:nowrap;">Actions</th>
       </tr></thead>
       <tbody>
         ${categories.map(cat=>`
           <tr class="data-row">
-            <td><strong>${esc(cat)}</strong></td>
-            ${PERMISSION_UNITS.map(u=>`
-              <td style="text-align:center;">
-                <input type="checkbox" class="row-check" data-cat="${esc(cat)}" data-unit="${esc(u)}" ${isGranted(cat,u)?'checked':''} onchange="togglePermissionCheckbox(this)">
+            ${editingEntityCategory===cat ? `
+              <td><input type="text" id="renameEntityInput" value="${esc(cat)}" style="width:100%;"></td>
+              ${PERMISSION_UNITS.map(()=>`<td style="text-align:center;color:var(--ink-soft);">—</td>`).join('')}
+              <td>
+                <div class="row-actions">
+                  <button class="btn btn-primary btn-sm" onclick="submitRenameEntityCategory('${esc(cat)}')">Save</button>
+                  <button class="btn btn-outline btn-sm" onclick="cancelEditEntityCategory()">Cancel</button>
+                </div>
               </td>
-            `).join('')}
+            ` : `
+              <td><strong>${esc(cat)}</strong></td>
+              ${PERMISSION_UNITS.map(u=>`
+                <td style="text-align:center;">
+                  <input type="checkbox" class="row-check" data-cat="${esc(cat)}" data-unit="${esc(u)}" ${isGranted(cat,u)?'checked':''} onchange="togglePermissionCheckbox(this)">
+                </td>
+              `).join('')}
+              <td>
+                <div class="row-actions">
+                  <button class="btn btn-outline btn-sm" onclick="startEditEntityCategory('${esc(cat)}')">Edit</button>
+                  <button class="btn btn-outline btn-sm" onclick="deleteEntityCategory('${esc(cat)}')">Delete</button>
+                </div>
+              </td>
+            `}
           </tr>
         `).join('')}
       </tbody>
@@ -1687,6 +1771,47 @@ function permissionsPageView(){
     <div id="permissionsErr" style="margin-top:14px;"></div>
     <button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="savePermissionChanges()">Save Changes</button>
   `;
+}
+
+function startEditEntityCategory(cat){
+  editingEntityCategory = cat;
+  render();
+}
+function cancelEditEntityCategory(){
+  editingEntityCategory = null;
+  render();
+}
+
+// Renaming intentionally doubles as "merge": if the new name typed already
+// exists as another entity category (e.g. fixing "aviation" vs "Aviation" by
+// renaming one into the other), the backend merges companies and permission
+// grants into the surviving name rather than erroring — see PATCH
+// /admin/entity-categories/:name.
+async function submitRenameEntityCategory(oldName){
+  const input = document.getElementById('renameEntityInput');
+  const newName = input.value.trim();
+  if(!newName){ document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">Entity name is required.</div>`; return; }
+  showLoading('Saving...');
+  try{
+    const { error } = await apiTry(() => api.patch(`/admin/entity-categories/${encodeURIComponent(oldName)}`, { name: newName }, {admin: true}));
+    if(error) throw error;
+    editingEntityCategory = null;
+    await loadPermissionsForPage();
+    hideLoading();
+    render();
+  } catch(e){ hideLoading(); document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+}
+
+async function deleteEntityCategory(cat){
+  if(!confirm(`Delete entity category "${cat}"? This only works if no companies currently use it — reassign them first if it fails.`)) return;
+  showLoading('Deleting...');
+  try{
+    const { error } = await apiTry(() => api.del(`/admin/entity-categories/${encodeURIComponent(cat)}`, {admin: true}));
+    if(error) throw error;
+    await loadPermissionsForPage();
+    hideLoading();
+    render();
+  } catch(e){ hideLoading(); document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
 
 async function submitAddEntityCategory(){
@@ -2444,7 +2569,7 @@ function exportAnalyticsPdf(){
   *{box-sizing:border-box;}
   body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a1a;margin:0;}
   .letterhead{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #101B2D;padding-bottom:14px;margin-bottom:20px;}
-  .letterhead img.logo{height:44px;}
+  .letterhead img.logo{height:52px;}
   .letterhead h1{font-family:Georgia,serif;font-size:19px;margin:0;color:#101B2D;}
   .letterhead .meta{text-align:right;font-size:10px;color:#666;}
   .metric-row{display:flex;gap:10px;margin-bottom:6px;flex-wrap:wrap;}
@@ -3504,7 +3629,7 @@ function pdfSharedStyles(){
   .doc-page + .doc-page{ page-break-before: always; }
   .letterhead{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #000;padding-bottom:12px;margin-bottom:20px;}
   .letterhead .brand-row{display:flex;align-items:center;gap:14px;}
-  .letterhead img.logo{height:44px;}
+  .letterhead img.logo{height:52px;}
   .letterhead h1{font-size:19px;margin:0 0 2px;letter-spacing:.02em;}
   .letterhead .tagline{font-size:10px;color:#666;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.07em;}
   .letterhead .ref-box{text-align:right;font-family:Arial,sans-serif;}

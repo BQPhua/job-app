@@ -18,8 +18,19 @@
 // this file (see login.html / admin.html <head>).
 // ============================================================================
 
-const MS_CLIENT_ID = '4e5c255b-7d3d-4fca-b61d-bd506e50e09d';
-const MS_AUTHORITY = 'https://login.microsoftonline.com/common';
+// Candidate pages (login.html) use this client ID by default. admin.html is
+// signed in against a SEPARATE Azure app registration ("WCT Admin") and sets
+// window.MS_CLIENT_ID to override this before oauth.js loads — see its
+// <head>. The backend verifies each against the matching app (MS_CLIENT_ID
+// vs ADMIN_MS_CLIENT_ID — see backend/src/lib/oauthVerify.js).
+const MS_CLIENT_ID = window.MS_CLIENT_ID || '4e5c255b-7d3d-4fca-b61d-bd506e50e09d';
+// Candidate pages (login.html) use the multi-tenant + personal-accounts
+// endpoint, since any Microsoft account may apply. admin.html sets
+// window.MS_AUTHORITY to its own organization's tenant-specific endpoint
+// instead — the "WCT Admin" app registration is deliberately single-tenant
+// (restricting admin sign-in to WCT's own Entra tenant), and single-tenant
+// apps cannot use the /common endpoint at all (AADSTS50194).
+const MS_AUTHORITY = window.MS_AUTHORITY || 'https://login.microsoftonline.com/common';
 const GOOGLE_CLIENT_ID = '805014615991-elic4o6auhe7m8fr6qmu24lhkd9eqarj.apps.googleusercontent.com';
 
 let msalInstancePromise = null;
