@@ -717,7 +717,7 @@ async function setView(view){
   if(view==='permissions'){ await loadPermissionsForPage(); }
   if(view==='companies'){ companyMgmtAddOpen = false; companyMgmtEditId = null; companyMgmtSearch = ''; await Promise.all([loadCompanyMgmtList(), loadEntityCategoryList()]); }
   if(view==='analytics'){ await loadAnalyticsData(); }
-  if(view==='aiInsights'){ aiChatOpen = true; aiReviewCandidate = null; aiReviewNotFound = false; aiRecommendation = ''; aiDocResult = ''; aiDocConsent = false; await loadAnalyticsData(); }
+  if(view==='aiInsights'){ aiChatOpen = true; aiReviewCandidate = null; aiReviewRoleDescription = ''; aiRecommendation = ''; aiQaMessages = []; aiDocResult = ''; aiDocConsent = false; await loadAnalyticsData(); }
   if(view==='adminAccess'){ adminMgmtInviteOpen = false; adminMgmtGrantFormFor = null; await loadAdminMgmtList(); }
   render();
 }
@@ -1281,7 +1281,7 @@ function downloadApplicationsCsv(data, filename){
 
     const headers = [
       // -- Job Application: identity & status --
-      'Reference No.','Status','Business Unit','Position Applying','Submitted At','Created At','Updated At',
+      'Reference No.','Status','Business Unit','Submitted At','Created At','Updated At',
       // -- Personal Particulars --
       'Name (per NRIC)','Alias','Permanent Address','Permanent Postcode','Correspondence Address','Correspondence Postcode',
       'Tel Residence','Tel Office','Mobile Phone','Email','Place of Birth',
@@ -1321,7 +1321,7 @@ function downloadApplicationsCsv(data, filename){
     ];
 
     const rows = (data||[]).map(a=>[
-      a.reference_no, a.status, a.business_unit, a.position_applying, dt(a.submitted_at), dt(a.created_at), dt(a.updated_at),
+      a.reference_no, a.status, a.business_unit, dt(a.submitted_at), dt(a.created_at), dt(a.updated_at),
       a.name_nric, a.alias, a.permanent_address, a.permanent_postcode, a.correspondence_address, a.correspondence_postcode,
       a.tel_residence, a.tel_office, a.mobile_phone, a.email, a.place_of_birth,
       a.nric_new, a.passport_number, a.citizen, a.marital_status, a.date_of_birth, a.age, a.bumiputra, a.race,
@@ -1922,7 +1922,6 @@ function buildAnonymizedDataset(){
     reference_no: r.reference_no,
     status: r.status,
     business_unit: r.business_unit,
-    position_applying: r.position_applying || null,
     submitted_at: r.submitted_at,
     referred: r.referral_person === 'Yes'
   }));
@@ -2038,34 +2037,92 @@ function aiChatPanelHtml(){
 }
 
 // ---------------------------------------------------------------------------
-// AI CANDIDATE REVIEW — look up one application by reference number, send
-// its non-PII fields (education, experience, salary expectations, etc. —
-// same "identify only by reference_no" rule as the chat above) to Gemini,
-// get back a Shortlist/KIV/Reject recommendation. This is a suggestion for
-// a human to weigh, never an automatic decision — the prompt says so
-// explicitly, and nothing in this UI applies the recommendation
-// automatically to the real application record.
+// AI CANDIDATE REVIEW — pick one application from a searchable dropdown (no
+// more typing a reference number blind), optionally describe the role/
+// requirements you're hiring against (this app has no "position applying"
+// field — see the removal note at the top of aiInsights.js — so there's
+// nothing to auto-fill a job title from; a free-text box lets the admin
+// supply that context per lookup instead), then either get a Shortlist/KIV/
+// Reject recommendation or ask the AI free-form questions about this one
+// candidate (e.g. "Is this person the best fit for this role?"). Every mode
+// here sends only non-PII fields (education, experience, salary
+// expectations, etc. — same "identify only by reference_no" rule as the
+// chat above) to Gemini. All of it is a suggestion for a human to weigh,
+// never an automatic decision — nothing in this UI applies a
+// recommendation automatically to the real application record.
 // ---------------------------------------------------------------------------
-let aiReviewCandidate = null; // the matched raw row from analyticsRows, once found
-let aiReviewNotFound = false;
+let aiReviewCandidate = null; // the matched raw row from analyticsRows, once selected
+let aiReviewRoleDescription = ''; // free-text role/requirements, optional, shared by recommend/Q&A/document modes
 let aiRecommendation = '';
 let aiRecommendLoading = false;
+let aiQaMessages = []; // [{role:'user'|'assistant', content:text}] — scoped to the selected candidate only
+let aiQaLoading = false;
 
-function findCandidateByRef(){
-  const input = document.getElementById('aiReviewRefInput');
-  const ref = input.value.trim().toLowerCase();
+// Only applications that actually exist as real submissions make sense to
+// review — a draft has no attachments/answers worth judging yet, and hasn't
+// been submitted by the candidate.
+function aiReviewCandidateOptions(){
+  return analyticsRows
+    .filter(r => r.status !== 'draft')
+    .slice()
+    .sort((a,b) => new Date(b.submitted_at||0) - new Date(a.submitted_at||0));
+}
+
+function aiReviewDropdownRowHtml(r){
+  return `
+    <button type="button" class="status-panel-btn" style="display:flex;justify-content:space-between;gap:10px;" onclick="selectAiReviewCandidate('${r.id}')">
+      <span>${esc(r.reference_no)} — ${esc(r.name_nric || 'Unnamed')}</span>
+      <span style="color:var(--ink-soft);font-weight:400;">${esc(r.business_unit)} · ${STATUS_LABELS[r.status]||r.status}</span>
+    </button>
+  `;
+}
+
+// Updates only the dropdown panel itself on every keystroke — never the
+// input it hangs off of — so typing never loses focus (same reasoning as
+// the dashboard/company search inputs elsewhere on this page).
+function onAiReviewSearchInput(value){
+  const panel = document.getElementById('aiReviewDropdownPanel');
+  if(!panel) return;
+  const q = (value||'').trim().toLowerCase();
+  const matches = aiReviewCandidateOptions().filter(r=>{
+    if(!q) return true;
+    const hay = `${r.reference_no||''} ${r.name_nric||''} ${r.business_unit||''}`.toLowerCase();
+    return hay.includes(q);
+  }).slice(0, 50);
+  panel.innerHTML = matches.length
+    ? matches.map(aiReviewDropdownRowHtml).join('')
+    : `<div style="padding:10px 12px;color:var(--ink-soft);font-size:13px;">No matching applications.</div>`;
+  panel.style.display = 'block';
+}
+
+// Registered once at script load, same click-outside-closes pattern as the
+// existing status-panel dropdown above.
+document.addEventListener('click', function(e){
+  if(!e.target.closest('.ai-review-combobox')){
+    const panel = document.getElementById('aiReviewDropdownPanel');
+    if(panel) panel.style.display = 'none';
+  }
+});
+
+function selectAiReviewCandidate(id){
+  aiReviewCandidate = analyticsRows.find(r => r.id === id) || null;
   aiRecommendation = '';
-  if(!ref){ aiReviewCandidate = null; aiReviewNotFound = false; renderAiReviewSection(); return; }
-  aiReviewCandidate = analyticsRows.find(r => (r.reference_no||'').toLowerCase() === ref) || null;
-  aiReviewNotFound = !aiReviewCandidate;
+  aiQaMessages = [];
+  const panel = document.getElementById('aiReviewDropdownPanel');
+  if(panel) panel.style.display = 'none';
+  const input = document.getElementById('aiReviewSearchInput');
+  if(input) input.value = aiReviewCandidate ? `${aiReviewCandidate.reference_no} — ${aiReviewCandidate.name_nric || 'Unnamed'}` : '';
   renderAiReviewSection();
 }
 
+function onAiReviewRoleDescriptionInput(value){
+  aiReviewRoleDescription = value;
+}
+
 function buildCandidateReviewPayload(row){
-  return {
+  const payload = {
     reference_no: row.reference_no,
     business_unit: row.business_unit,
-    position_applying: row.position_applying || null,
     status: row.status,
     education: row.education || [],
     working_experience: row.working_experience || [],
@@ -2078,6 +2135,12 @@ function buildCandidateReviewPayload(row){
     willing_based_outside_klang_valley: row.willing_based_outside_klang_valley || null,
     referral_person: row.referral_person === 'Yes'
   };
+  // Only included when the admin actually typed something — the backend
+  // prompts treat an absent/empty role_description as "no specific role
+  // given, judge general employability instead" (see aiInsights.js).
+  const role = aiReviewRoleDescription.trim();
+  if(role) payload.role_description = role;
+  return payload;
 }
 
 async function generateAiRecommendation(){
@@ -2115,16 +2178,92 @@ function formatRecommendationHtml(text){
   `;
 }
 
+// ---- Ask AI about this candidate — free-form Q&A scoped to the one
+// selected candidate, e.g. "Is this person the best fit for this role?"
+// (only meaningful once a role/requirements description has been entered
+// above — the AI is told to say so plainly if none was given). ----
+const AI_QA_QUICK_QUESTIONS = [
+  'Is this candidate a good fit for this role?',
+  'What are the strongest points in this application?',
+  'Any red flags or inconsistencies worth checking?',
+  'Suggest 3 interview questions for this candidate.'
+];
+
+function askAiQaQuickQuestion(q){
+  const input = document.getElementById('aiQaInput');
+  if(input) input.value = q;
+  sendAiQaMessage();
+}
+
+// Only ever touches #aiQaMessages, never the input or the quick-question
+// buttons around it — same reasoning as renderAiChatMessages() above, so the
+// input keeps focus and its in-progress text isn't clobbered mid-conversation.
+function renderAiQaMessages(){
+  const el = document.getElementById('aiQaMessages');
+  if(!el) return;
+  el.innerHTML = aiQaMessagesHtml();
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendAiQaMessage(){
+  if(!aiReviewCandidate) return;
+  const input = document.getElementById('aiQaInput');
+  const question = input.value.trim();
+  if(!question || aiQaLoading) return;
+  input.value = '';
+  aiQaMessages.push({ role: 'user', content: question });
+  aiQaLoading = true;
+  renderAiQaMessages();
+  try{
+    const answer = await callAiAnalyticsFunction({
+      mode: 'candidate_qa',
+      data: buildCandidateReviewPayload(aiReviewCandidate),
+      question,
+      history: aiQaMessages.slice(0, -1).slice(-10)
+    });
+    aiQaMessages.push({ role: 'assistant', content: answer });
+  } catch(e){
+    aiQaMessages.push({ role: 'assistant', content: 'Error: ' + e.message });
+  }
+  aiQaLoading = false;
+  renderAiQaMessages();
+}
+
+function aiQaMessagesHtml(){
+  const bubbles = aiQaMessages.map(m => `
+    <div style="display:flex;justify-content:${m.role==='user'?'flex-end':'flex-start'};margin-bottom:8px;">
+      <div style="max-width:85%;padding:8px 12px;border-radius:10px;font-size:13px;white-space:pre-wrap;background:${m.role==='user'?'var(--navy)':'#fff'};color:${m.role==='user'?'#fff':'var(--ink)'};">${esc(m.content)}</div>
+    </div>
+  `).join('');
+  const loadingBubble = aiQaLoading ? `<div style="display:flex;justify-content:flex-start;"><div style="padding:8px 12px;border-radius:10px;font-size:13px;background:#fff;color:var(--ink-soft);">Thinking...</div></div>` : '';
+  return bubbles + loadingBubble || `<p style="color:var(--ink-soft);font-size:12.5px;text-align:center;margin:8px 0;">Ask anything about this candidate — e.g. whether they fit the role you described above.</p>`;
+}
+
+function aiQaPanelHtml(){
+  if(!aiReviewCandidate) return '';
+  return `
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line);">
+      <h4 style="margin:0 0 8px;font-size:13.5px;">💬 Ask AI About This Candidate</h4>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        ${AI_QA_QUICK_QUESTIONS.map(q => `<button type="button" class="btn btn-outline btn-sm" style="font-size:11.5px;padding:5px 10px;" onclick="askAiQaQuickQuestion('${esc(q).replace(/'/g,"\\'")}')">${esc(q)}</button>`).join('')}
+      </div>
+      <div id="aiQaMessages" style="max-height:260px;overflow-y:auto;padding:10px;background:var(--cream);border-radius:8px;margin-bottom:10px;">${aiQaMessagesHtml()}</div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="aiQaInput" placeholder="Ask a question about this candidate..." style="flex:1;font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;" onkeydown="if(event.key==='Enter') sendAiQaMessage()">
+        <button class="btn btn-primary btn-sm" onclick="sendAiQaMessage()">Ask</button>
+      </div>
+    </div>
+  `;
+}
+
 function aiReviewSectionInnerHtml(){
   if(!aiReviewCandidate){
-    return aiReviewNotFound
-      ? `<p style="color:var(--danger);font-size:13px;">No application found with that reference number in the currently loaded data.</p>`
-      : `<p style="color:var(--ink-soft);font-size:13px;">Enter a reference number above and press Enter, or click Look Up.</p>`;
+    return `<p style="color:var(--ink-soft);font-size:13px;">Search for an application above by reference number or candidate name, then pick it from the list.</p>`;
   }
   const c = aiReviewCandidate;
   return `
     <div style="background:var(--cream);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;">
-      <strong>${esc(c.reference_no)}</strong> · ${esc(c.business_unit)} · ${esc(c.position_applying || 'Position not set')} · current status: <span class="badge ${c.status}">${STATUS_LABELS[c.status]||c.status}</span>
+      <strong>${esc(c.reference_no)}</strong> · ${esc(c.name_nric || 'Unnamed')} · ${esc(c.business_unit)} · current status: <span class="badge ${c.status}">${STATUS_LABELS[c.status]||c.status}</span>
     </div>
     ${!aiRecommendation && !aiRecommendLoading ? `
       <button class="btn btn-primary btn-sm" onclick="generateAiRecommendation()">Get AI Recommendation</button>
@@ -2134,6 +2273,7 @@ function aiReviewSectionInnerHtml(){
       ${formatRecommendationHtml(aiRecommendation)}
       <button class="btn btn-outline btn-sm" style="margin-top:10px;" onclick="generateAiRecommendation()">Regenerate</button>
     `}
+    ${aiQaPanelHtml()}
   `;
 }
 
@@ -2141,11 +2281,22 @@ function aiReviewSectionHtml(){
   return `
     <div class="chart-card full-width" style="margin-bottom:16px;">
       <h3>🎯 AI Candidate Review</h3>
-      <p style="color:var(--ink-soft);font-size:13px;margin:0 0 12px;">Look up one application by reference number and get an AI-suggested status recommendation, based on education/experience/expectations only — no names or contact details are sent.</p>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <input type="text" id="aiReviewRefInput" placeholder="e.g. WCT-2026-000123" style="flex:1;font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;" onkeydown="if(event.key==='Enter') findCandidateByRef()">
-        <button class="btn btn-outline btn-sm" onclick="findCandidateByRef()">Look Up</button>
+      <p style="color:var(--ink-soft);font-size:13px;margin:0 0 12px;">Select an application below and get AI-assisted screening based on education/experience/expectations only — no names or contact details are sent to the AI.</p>
+
+      <div class="ai-review-combobox" style="position:relative;margin-bottom:12px;">
+        <input type="text" id="aiReviewSearchInput" placeholder="Search by reference no. or candidate name..." autocomplete="off"
+          style="width:100%;font-family:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;"
+          oninput="onAiReviewSearchInput(this.value)" onfocus="onAiReviewSearchInput(this.value)">
+        <div id="aiReviewDropdownPanel" class="status-panel" style="display:none;width:100%;max-height:280px;overflow-y:auto;"></div>
       </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:4px;">Role / Requirements <span style="font-weight:400;">(optional — describe the role you're hiring for so the AI judges fit against it specifically, instead of general employability)</span></label>
+        <textarea id="aiReviewRoleDescription" rows="2" placeholder="e.g. Site Engineer — 3+ years construction supervision experience, own transport, willing to be based outside Klang Valley"
+          style="width:100%;font-family:inherit;font-size:13px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;resize:vertical;"
+          oninput="onAiReviewRoleDescriptionInput(this.value)">${esc(aiReviewRoleDescription)}</textarea>
+      </div>
+
       <div id="aiReviewSection">${aiReviewSectionInnerHtml()}</div>
     </div>
   `;
@@ -2191,11 +2342,12 @@ async function analyzeAttachment(url, name, mimeType){
     if(!fileRes.ok) throw new Error('Could not download the file to analyze');
     const blob = await fileRes.blob();
     const fileBase64 = await blobToBase64(blob);
+    const role = aiReviewRoleDescription.trim();
     aiDocResult = await callAiAnalyticsFunction({
       mode: 'document',
       fileBase64,
       mimeType: mimeType || blob.type || 'application/octet-stream',
-      data: { position_applying: aiReviewCandidate ? aiReviewCandidate.position_applying : null }
+      data: role ? { role_description: role } : {}
     });
   } catch(e){
     aiDocResult = 'Error: ' + e.message;
@@ -2217,7 +2369,7 @@ function aiDocSectionInnerHtml(){
       <label for="aiDocConsentCheckbox" style="font-size:12.5px;">I understand that analyzing a document sends its actual file content — which very likely includes the candidate's real name and other personal details — to Google's Gemini API. This is different from every other AI feature on this page, which never sends personal data.</label>
     </div>
     ${!aiReviewCandidate ? `
-      <p style="color:var(--ink-soft);font-size:13px;">Look up a candidate above first, then their attachments will appear here.</p>
+      <p style="color:var(--ink-soft);font-size:13px;">Select a candidate in AI Candidate Review above first, then their attachments will appear here.</p>
     ` : attachments.length === 0 ? `
       <p style="color:var(--ink-soft);font-size:13px;">This candidate has no uploaded attachments.</p>
     ` : `
@@ -2239,7 +2391,7 @@ function aiDocSectionHtml(){
   return `
     <div class="chart-card full-width" style="margin-bottom:16px;">
       <h3>📄 AI Document Analysis</h3>
-      <p style="color:var(--ink-soft);font-size:13px;margin:0 0 12px;">Look up a candidate above, then analyze one of their uploaded documents (resume, supporting attachment, etc.) with AI.</p>
+      <p style="color:var(--ink-soft);font-size:13px;margin:0 0 12px;">Select a candidate above, then analyze one of their uploaded documents (resume, supporting attachment, etc.) with AI.</p>
       <div id="aiDocSection">${aiDocSectionInnerHtml()}</div>
     </div>
   `;
@@ -2357,10 +2509,6 @@ function analyticsPageView(){
         <h3>Company/Entity Assignment</h3>
         <div class="chart-canvas-wrap"><canvas id="chartAssignment"></canvas></div>
       </div>
-      <div class="chart-card">
-        <h3>Top Positions Applied For</h3>
-        <div class="chart-canvas-wrap"><canvas id="chartTopPositions"></canvas></div>
-      </div>
       <div class="chart-card full-width">
         <h3>Applications Submitted Over Time</h3>
         <div class="chart-canvas-wrap"><canvas id="chartOverTime"></canvas></div>
@@ -2452,29 +2600,6 @@ function renderAnalyticsCharts(){
     });
   }
 
-  // --- Top positions applied for (top 8, blanks excluded — position_applying
-  // is frequently left blank at submission time and assigned later, see the
-  // project's own notes on that field) ---
-  const elPositions = document.getElementById('chartTopPositions');
-  if(elPositions){
-    const positionCounts = {};
-    rows.forEach(r => {
-      const p = (r.position_applying||'').trim();
-      if(!p) return;
-      positionCounts[p] = (positionCounts[p]||0) + 1;
-    });
-    const topPositions = Object.entries(positionCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    if(topPositions.length === 0){
-      elPositions.parentElement.innerHTML = `<p style="color:var(--ink-soft);font-size:13px;">No positions recorded yet on these applications.</p>`;
-    } else {
-      analyticsCharts.topPositions = new Chart(elPositions, {
-        type: 'bar',
-        data: { labels: topPositions.map(p=>p[0]), datasets: [{ label:'Applications', data: topPositions.map(p=>p[1]), backgroundColor:'#8A6D1F', borderRadius:6, maxBarThickness:34 }] },
-        options: { indexAxis:'y', maintainAspectRatio: false, plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
-      });
-    }
-  }
-
   // --- Company/entity assignment progress ---
   const elAssign = document.getElementById('chartAssignment');
   if(elAssign){
@@ -2542,11 +2667,6 @@ function exportAnalyticsCsv(){
     addRow([]);
   }
 
-  addRow(['Top Positions Applied For','Count']);
-  const positionCounts = {};
-  rows.forEach(r => { const p=(r.position_applying||'').trim(); if(!p) return; positionCounts[p]=(positionCounts[p]||0)+1; });
-  Object.entries(positionCounts).sort((a,b)=>b[1]-a[1]).slice(0,8).forEach(([p,c])=>addRow([p,c]));
-
   const csv = lines.join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
@@ -2563,7 +2683,6 @@ function exportAnalyticsPdf(){
   const statusImg = chartImg('byStatus');
   const referralImg = chartImg('referral');
   const assignmentImg = chartImg('assignment');
-  const positionsImg = chartImg('topPositions');
   const overTimeImg = chartImg('overTime');
   const byUnitImg = chartImg('byUnit');
 
@@ -2622,7 +2741,6 @@ function exportAnalyticsPdf(){
   </div>
   <div class="chart-row">
     ${assignmentImg ? `<div class="chart-box"><div class="cap">Company/Entity Assignment</div><img src="${assignmentImg}"></div>` : ''}
-    ${positionsImg ? `<div class="chart-box"><div class="cap">Top Positions Applied For</div><img src="${positionsImg}"></div>` : ''}
   </div>
   ${overTimeImg ? `<h2 class="section">Applications Over Time</h2><div class="chart-row"><div class="chart-box" style="min-width:100%;"><img src="${overTimeImg}"></div></div>` : ''}
   ${byUnitImg ? `<h2 class="section">By Business Unit</h2><div class="chart-row"><div class="chart-box" style="min-width:100%;"><img src="${byUnitImg}"></div></div>` : ''}
@@ -3119,7 +3237,7 @@ function renderModal(){
         ${a.profile_picture_url?`<img class="pfp" style="width:64px;height:64px;" src="${a.profile_picture_url}">`:''}
         <div>
           <h2 style="margin-bottom:2px;">${esc(a.name_nric)}</h2>
-          <div style="color:var(--ink-soft);font-size:13px;">${esc(a.reference_no)} · ${esc(a.business_unit)} · <strong>${esc(a.position_applying)}</strong></div>
+          <div style="color:var(--ink-soft);font-size:13px;">${esc(a.reference_no)} · ${esc(a.business_unit)}</div>
         </div>
       </div>
       <span class="badge ${a.status}" style="margin-bottom:16px;display:inline-block;">${STATUS_LABELS[a.status]||a.status}</span>
@@ -3706,7 +3824,7 @@ function buildJobApplicationPageHtml(a){
       <div style="display:flex;align-items:flex-end;">
         <div class="ref-box">
           <div class="big">${esc(a.reference_no||'')}</div>
-          <div style="font-size:10px;color:#666;">Position: ${fmt(a.position_applying)} · ${fmt(a.business_unit)}</div>
+          <div style="font-size:10px;color:#666;">${fmt(a.business_unit)}</div>
           <div class="status">${STATUS_LABELS[a.status]||a.status}</div>
         </div>
         ${a.profile_picture_url ? `<img class="photo" src="${a.profile_picture_url}">` : ''}
