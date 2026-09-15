@@ -65,6 +65,39 @@ function updateField(key, value){ state[key] = value; }
 function updateNested(obj, key, value){ obj[key] = value; }
 function updateArrayField(arrName, idx, key, value){ state[arrName][idx][key] = value; }
 
+// ---------------------------------------------------------------------------
+// Required-field validation UI: highlight + jump-to-field on Next/Submit
+// ---------------------------------------------------------------------------
+// Strips everything but digits — used on numeric-only fields (NRIC, salary,
+// postcode, phone/contact numbers, bank account numbers, etc.) so those
+// fields simply can't contain letters or symbols, rather than only
+// complaining about it after the fact.
+function numericOnly(v){ return (v == null ? '' : String(v)).replace(/[^0-9]/g, ''); }
+
+// A field/fieldset that failed validation gets `.invalid` added (see
+// markFieldInvalid below); this single delegated listener removes it the
+// moment the person changes anything inside that field, on any step, without
+// needing per-field wiring.
+document.addEventListener('input', (e) => {
+  const f = e.target.closest && e.target.closest('.field.invalid, fieldset.invalid, .upload-box.invalid');
+  if(f) f.classList.remove('invalid');
+  if(e.target.classList && e.target.classList.contains('invalid')) e.target.classList.remove('invalid');
+});
+document.addEventListener('change', (e) => {
+  const f = e.target.closest && e.target.closest('.field.invalid, fieldset.invalid, .upload-box.invalid');
+  if(f) f.classList.remove('invalid');
+  if(e.target.classList && e.target.classList.contains('invalid')) e.target.classList.remove('invalid');
+});
+
+function markFieldInvalid(fieldId){
+  const el = document.getElementById(fieldId);
+  if(el) el.classList.add('invalid');
+  return el;
+}
+function clearAllInvalidFields(){
+  document.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
+}
+
 function goStep(s){ state.step = s; window.scrollTo(0,0); render(); }
 
 // ---------------------------------------------------------------------------
@@ -417,36 +450,36 @@ function tplPersonal(){
     <p class="step-desc">Applying with <strong>${esc(state.business_unit)}</strong></p>
 
     <div class="grid">
-      <div class="field"><label>Name (per NRIC / Passport) <span class="req-star">*</span></label><input type="text" placeholder="e.g. Ahmad Bin Ali" value="${esc(state.name_nric)}" oninput="updateField('name_nric', this.value)"></div>
+      <div class="field" id="field-name_nric"><label>Name (per NRIC / Passport) <span class="req-star">*</span></label><input type="text" placeholder="e.g. Ahmad Bin Ali" value="${esc(state.name_nric)}" oninput="updateField('name_nric', this.value)"></div>
       <div class="field"><label>Alias <span class="opt-tag">(optional)</span></label><input type="text" value="${esc(state.alias)}" oninput="updateField('alias', this.value)"></div>
     </div>
 
-    <div class="field"><label>Permanent Address <span class="req-star">*</span></label><textarea placeholder="e.g. Address Line 1: 12 Jalan Damai&#10;Address Line 2: Taman Sentosa&#10;Address Line 3: Petaling Jaya" oninput="updateField('permanent_address', this.value)">${esc(state.permanent_address)}</textarea></div>
+    <div class="field" id="field-permanent_address"><label>Permanent Address <span class="req-star">*</span></label><textarea placeholder="e.g. Address Line 1: 12 Jalan Damai&#10;Address Line 2: Taman Sentosa&#10;Address Line 3: Petaling Jaya" oninput="updateField('permanent_address', this.value)">${esc(state.permanent_address)}</textarea></div>
     <div class="grid">
-      <div class="field"><label>Postcode <span class="req-star">*</span></label><input type="text" placeholder="e.g. 50450" value="${esc(state.permanent_postcode)}" oninput="updateField('permanent_postcode', this.value)"></div>
+      <div class="field" id="field-permanent_postcode"><label>Postcode <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 50450" maxlength="5" value="${esc(state.permanent_postcode)}" oninput="this.value=numericOnly(this.value);updateField('permanent_postcode', this.value)"></div>
       <div></div>
     </div>
 
     <div class="field"><label>Correspondence Address <span class="opt-tag">(if different from permanent address)</span></label><textarea id="correspondenceAddressInput" oninput="handleCorrespondenceAddressChange(this.value)">${esc(state.correspondence_address)}</textarea></div>
     <div class="grid">
-      <div class="field"><label>Postcode <span class="opt-tag">(optional)</span></label><input type="text" id="correspondencePostcodeInput" value="${esc(state.correspondence_postcode)}" oninput="updateField('correspondence_postcode', this.value)"></div>
+      <div class="field"><label>Postcode <span class="opt-tag">(optional)</span></label><input type="text" inputmode="numeric" id="correspondencePostcodeInput" maxlength="5" value="${esc(state.correspondence_postcode)}" oninput="this.value=numericOnly(this.value);updateField('correspondence_postcode', this.value)"></div>
       <div></div>
     </div>
 
     <div class="grid g3">
-      <div class="field"><label>Tel — Residence <span class="opt-tag">(optional)</span></label><input type="tel" placeholder="e.g. 03-1234 5678" value="${esc(state.tel_residence)}" oninput="updateField('tel_residence', this.value)"></div>
-      <div class="field"><label>Tel — Office <span class="opt-tag">(optional)</span></label><input type="tel" placeholder="e.g. 03-8765 4321" value="${esc(state.tel_office)}" oninput="updateField('tel_office', this.value)"></div>
-      <div class="field"><label>Mobile Phone <span class="req-star">*</span></label><input type="tel" placeholder="e.g. 012-345 6789" value="${esc(state.mobile_phone)}" oninput="updateField('mobile_phone', this.value)"></div>
+      <div class="field"><label>Tel — Residence <span class="opt-tag">(optional)</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0312345678" value="${esc(state.tel_residence)}" oninput="this.value=numericOnly(this.value);updateField('tel_residence', this.value)"></div>
+      <div class="field"><label>Tel — Office <span class="opt-tag">(optional)</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0387654321" value="${esc(state.tel_office)}" oninput="this.value=numericOnly(this.value);updateField('tel_office', this.value)"></div>
+      <div class="field" id="field-mobile_phone"><label>Mobile Phone <span class="req-star">*</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" value="${esc(state.mobile_phone)}" oninput="this.value=numericOnly(this.value);updateField('mobile_phone', this.value)"></div>
     </div>
 
     <div class="grid">
-      <div class="field"><label>E-mail Address <span class="req-star">*</span></label><input type="email" placeholder="e.g. ahmad.ali@example.com" value="${esc(state.email)}" oninput="updateField('email', this.value)"></div>
-      <div class="field"><label>Place of Birth <span class="req-star">*</span></label><input type="text" placeholder="e.g. Kuala Lumpur" value="${esc(state.place_of_birth)}" oninput="updateField('place_of_birth', this.value)"></div>
+      <div class="field" id="field-email"><label>E-mail Address <span class="req-star">*</span></label><input type="email" placeholder="e.g. ahmad.ali@example.com" value="${esc(state.email)}" oninput="updateField('email', this.value)"></div>
+      <div class="field" id="field-place_of_birth"><label>Place of Birth <span class="req-star">*</span></label><input type="text" placeholder="e.g. Kuala Lumpur" value="${esc(state.place_of_birth)}" oninput="updateField('place_of_birth', this.value)"></div>
     </div>
 
     <div class="section-title">Identification</div>
     <div class="grid g3">
-      <div class="field">
+      <div class="field" id="field-citizen">
         <label>Citizen <span class="req-star">*</span></label>
         <select onchange="handleCitizenChange(this.value)">
           <option value="">Select</option>
@@ -454,20 +487,20 @@ function tplPersonal(){
           <option ${state.citizen==='Non-Malaysian'?'selected':''}>Non-Malaysian</option>
         </select>
       </div>
-      <div class="field">
+      <div class="field" id="field-nric_new">
         <label>NRIC No. (without dash) ${state.citizen==='Malaysian' ? '<span class="req-star">*</span>' : ''}</label>
-        <input type="text" value="${esc(state.nric_new)}" placeholder="e.g. 900101011234" maxlength="14"
+        <input type="text" inputmode="numeric" value="${esc(state.nric_new)}" placeholder="e.g. 900101011234" maxlength="12"
           ${state.citizen==='Non-Malaysian' ? 'disabled style="background:#F2F2F1;"' : ''}
-          oninput="handleNricChange(this.value)">
+          oninput="handleNricChange(this)">
         <div id="nricValidationMsg" class="hint"></div>
       </div>
-      <div class="field">
+      <div class="field" id="field-passport_number">
         <label>Passport Number ${state.citizen==='Non-Malaysian' ? '<span class="req-star">*</span>' : '<span class="opt-tag">(optional)</span>'}</label>
         <input type="text" value="${esc(state.passport_number)}" placeholder="e.g. A12345678" oninput="updateField('passport_number', this.value)">
       </div>
     </div>
     <div class="grid g3">
-      <div class="field">
+      <div class="field" id="field-date_of_birth">
         <label>Date of Birth <span class="req-star">*</span></label>
         <div style="display:flex;gap:6px;">
           <input type="text" id="dobTextInput" inputmode="numeric" autocomplete="off" placeholder="DD/MM/YYYY" maxlength="10"
@@ -486,7 +519,7 @@ function tplPersonal(){
           style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;">
       </div>
       <div class="field"><label>Age</label><input type="number" id="ageInput" value="${esc(state.age)}" readonly style="background:#F2F2F2;"></div>
-      <div class="field"><label>Marital Status <span class="req-star">*</span></label>
+      <div class="field" id="field-marital_status"><label>Marital Status <span class="req-star">*</span></label>
         <select oninput="updateField('marital_status', this.value)">
           <option value="">Select</option>
           ${['Single','Married','Divorced','Widowed'].map(o=>`<option ${state.marital_status===o?'selected':''}>${o}</option>`).join('')}
@@ -494,12 +527,12 @@ function tplPersonal(){
       </div>
     </div>
     <div class="grid g3">
-      <div class="field"><label>Bumiputra <span class="req-star">*</span></label>
+      <div class="field" id="field-bumiputra"><label>Bumiputra <span class="req-star">*</span></label>
         <select oninput="updateField('bumiputra', this.value)">
           <option value="">Select</option><option ${state.bumiputra==='Yes'?'selected':''}>Yes</option><option ${state.bumiputra==='No'?'selected':''}>No</option>
         </select>
       </div>
-      <div class="field"><label>Race <span class="req-star">*</span></label><input type="text" placeholder="e.g. Malay" value="${esc(state.race)}" oninput="updateField('race', this.value)"></div>
+      <div class="field" id="field-race"><label>Race <span class="req-star">*</span></label><input type="text" placeholder="e.g. Malay" value="${esc(state.race)}" oninput="updateField('race', this.value)"></div>
       <div></div>
     </div>
 
@@ -509,24 +542,24 @@ function tplPersonal(){
 
 function validatePersonalStep(){
   const errs = [];
-  if(!state.name_nric.trim()) errs.push('Please enter your name (per NRIC/Passport).');
-  if(!state.permanent_address.trim()) errs.push('Please enter your permanent address.');
-  if(!state.permanent_postcode.trim()) errs.push('Please enter your permanent address postcode.');
-  if(!state.mobile_phone.trim()) errs.push('Please enter your mobile phone number.');
-  if(!state.email.trim()) errs.push('Please enter your email address.');
-  if(!state.place_of_birth.trim()) errs.push('Please enter your place of birth.');
-  if(!state.citizen) errs.push('Please select your citizenship.');
+  if(!state.name_nric.trim()) errs.push({field:'field-name_nric', message:'Please enter your name (per NRIC/Passport).'});
+  if(!state.permanent_address.trim()) errs.push({field:'field-permanent_address', message:'Please enter your permanent address.'});
+  if(!state.permanent_postcode.trim()) errs.push({field:'field-permanent_postcode', message:'Please enter your permanent address postcode.'});
+  if(!state.mobile_phone.trim()) errs.push({field:'field-mobile_phone', message:'Please enter your mobile phone number.'});
+  if(!state.email.trim()) errs.push({field:'field-email', message:'Please enter your email address.'});
+  if(!state.place_of_birth.trim()) errs.push({field:'field-place_of_birth', message:'Please enter your place of birth.'});
+  if(!state.citizen) errs.push({field:'field-citizen', message:'Please select your citizenship.'});
   if(state.citizen === 'Malaysian'){
-    const digits = (state.nric_new||'').replace(/[^0-9]/g,'');
-    if(!state.nric_new.trim()) errs.push('Please enter your NRIC number.');
-    else if(digits.length !== 12) errs.push('NRIC number must be exactly 12 digits.');
+    const digits = numericOnly(state.nric_new);
+    if(!state.nric_new.trim()) errs.push({field:'field-nric_new', message:'Please enter your NRIC number.'});
+    else if(digits.length !== 12) errs.push({field:'field-nric_new', message:'NRIC number must be exactly 12 digits.'});
   } else if(state.citizen === 'Non-Malaysian'){
-    if(!state.passport_number.trim()) errs.push('Please enter your passport number.');
+    if(!state.passport_number.trim()) errs.push({field:'field-passport_number', message:'Please enter your passport number.'});
   }
-  if(!state.date_of_birth) errs.push('Please provide your date of birth.');
-  if(!state.marital_status) errs.push('Please select your marital status.');
-  if(!state.bumiputra) errs.push('Please answer the Bumiputra question.');
-  if(!state.race.trim()) errs.push('Please enter your race.');
+  if(!state.date_of_birth) errs.push({field:'field-date_of_birth', message:'Please provide your date of birth.'});
+  if(!state.marital_status) errs.push({field:'field-marital_status', message:'Please select your marital status.'});
+  if(!state.bumiputra) errs.push({field:'field-bumiputra', message:'Please answer the Bumiputra question.'});
+  if(!state.race.trim()) errs.push({field:'field-race', message:'Please enter your race.'});
   return errs;
 }
 
@@ -749,7 +782,7 @@ function tplObStatutory(){
       <div class="field"><label>Tax Branch</label><input type="text" id="ob_tax_branch" value="${esc(o.tax_branch)}"></div>
     </div>
     <div class="grid">
-      <div class="field"><label>Bank Account No.</label><input type="text" id="ob_bank_account_no" value="${esc(o.bank_account_no)}" oninput="mirrorSalaryAccountNo(this.value)"></div>
+      <div class="field"><label>Bank Account No.</label><input type="text" inputmode="numeric" id="ob_bank_account_no" value="${esc(o.bank_account_no)}" oninput="this.value=numericOnly(this.value);mirrorSalaryAccountNo(this.value)"></div>
       <div class="field"><label>CIDB Green Card No.</label><input type="text" id="ob_cidb_green_card_no" placeholder="e.g. N/A" value="${esc(o.cidb_green_card_no)}"></div>
     </div>
 
@@ -769,7 +802,7 @@ function tplObSpouseChildren(){
     <div class="section-title" style="margin-top:0;">Spouse Information <span class="opt-tag">(if applicable)</span></div>
     <div class="grid">
       <div class="field"><label>Name (per NRIC)</label><input type="text" id="ob_spouse_name" value="${esc(o.spouse_name)}"></div>
-      <div class="field"><label>NRIC No. (without dash)</label><input type="text" id="ob_spouse_nric" value="${esc(o.spouse_nric)}" oninput="handleSpouseNricInput(this.value)"></div>
+      <div class="field"><label>NRIC No. (without dash)</label><input type="text" inputmode="numeric" maxlength="12" id="ob_spouse_nric" value="${esc(o.spouse_nric)}" oninput="this.value=numericOnly(this.value);handleSpouseNricInput(this.value)"></div>
     </div>
     <div class="grid">
       <div class="field"><label>Date of Birth</label><input type="date" id="ob_spouse_dob" value="${esc(o.spouse_date_of_birth)}"></div>
@@ -794,7 +827,7 @@ function tplObSpouseChildren(){
                 <option ${c.gender==='Female'?'selected':''}>Female</option>
               </select>
             </td>
-            <td><input type="text" value="${esc(c.nric)}" oninput="handleChildBelow18NricInput(${i}, this.value)"></td>
+            <td><input type="text" inputmode="numeric" maxlength="12" value="${esc(c.nric)}" oninput="this.value=numericOnly(this.value);handleChildBelow18NricInput(${i}, this.value)"></td>
             <td><input type="date" id="childBelow18Dob${i}" value="${esc(c.date_of_birth)}" oninput="updateChildBelow18(${i},'date_of_birth',this.value)"></td>
             <td><select onchange="updateChildBelow18(${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></td>
             <td style="text-align:center;"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="updateChildBelow18(${i},'tax_relief',this.checked)"></td>
@@ -819,7 +852,7 @@ function tplObSpouseChildren(){
                 <option ${c.gender==='Female'?'selected':''}>Female</option>
               </select>
             </td>
-            <td><input type="text" value="${esc(c.nric)}" oninput="handleChild18to23NricInput(${i}, this.value)"></td>
+            <td><input type="text" inputmode="numeric" maxlength="12" value="${esc(c.nric)}" oninput="this.value=numericOnly(this.value);handleChild18to23NricInput(${i}, this.value)"></td>
             <td><input type="date" id="child18to23Dob${i}" value="${esc(c.date_of_birth)}" oninput="updateChild18to23(${i},'date_of_birth',this.value)"></td>
             <td><select onchange="updateChild18to23(${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></td>
             <td style="text-align:center;"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="updateChild18to23(${i},'tax_relief',this.checked)"></td>
@@ -921,7 +954,7 @@ function tplObSalary(){
     <div class="grid">
       <div class="field">
         <label>Account No.</label>
-        <input type="text" id="ob_salary_account_no" value="${esc(o.salary_account_no)}" oninput="handleSalaryAccountManualEdit(this.value)">
+        <input type="text" inputmode="numeric" id="ob_salary_account_no" value="${esc(o.salary_account_no)}" oninput="this.value=numericOnly(this.value);handleSalaryAccountManualEdit(this.value)">
         <div class="hint">Pre-filled from the Bank Account No. you entered in Statutory Details — edit here if it's different.</div>
       </div>
       <div class="field"><label>IC/Passport No. Submitted During Application</label><input type="text" id="ob_salary_ic" value="${esc(o.salary_ic_submitted || state.nric_new || state.passport_number)}"></div>
@@ -1424,11 +1457,17 @@ function deriveDobFromNric(nric){
   return `${year}-${mmStr}-${ddStr}`;
 }
 
-function handleNricChange(val){
+function handleNricChange(elOrVal){
+  // Accepts either the <input> element itself (preferred — lets us strip any
+  // non-digit character the person typed, in place) or a bare string value
+  // (kept for any other caller), so NRIC simply cannot contain non-digits.
+  const isEl = elOrVal && typeof elOrVal === 'object';
+  const digits = numericOnly(isEl ? elOrVal.value : elOrVal);
+  if(isEl) elOrVal.value = digits;
+  const val = digits;
   state.nric_new = val;
 
   // 12-digit validation (Malaysian NRIC is always exactly 12 digits, no letters)
-  const digits = val.replace(/[^0-9]/g, '');
   const msgEl = document.getElementById('nricValidationMsg');
   if(msgEl){
     if(val.trim() === ''){
@@ -1586,10 +1625,10 @@ function tplEducation(){
           ${['School','College/University','Professional Body'].map(o=>`<option ${r.type===o?'selected':''}>${o}</option>`).join('')}
         </select>
       </td>
-      <td><input type="text" placeholder="Institution name" value="${esc(r.name)}" oninput="updateArrayField('education',${i},'name',this.value)"></td>
+      <td><input type="text" id="field-edu-name-${i}" placeholder="Institution name" value="${esc(r.name)}" oninput="updateArrayField('education',${i},'name',this.value)"></td>
       <td style="width:90px;"><select onchange="updateArrayField('education',${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></td>
       <td style="width:90px;"><select onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></td>
-      <td style="min-width:170px;"><select onchange="updateArrayField('education',${i},'qualification',this.value)">${educationOptionsHtml(r.qualification)}</select></td>
+      <td style="min-width:170px;"><select id="field-edu-qualification-${i}" onchange="updateArrayField('education',${i},'qualification',this.value)">${educationOptionsHtml(r.qualification)}</select></td>
       <td style="min-width:150px;"><input type="text" value="${esc(r.course_name)}" oninput="updateArrayField('education',${i},'course_name',this.value)"></td>
       <td><button class="remove-x" onclick="removeRow('education',${i})">✕</button></td>
     </tr>`).join('');
@@ -1609,8 +1648,8 @@ function tplEducation(){
 function validateEducationStep(){
   const errs = [];
   state.education.forEach((r,i)=>{
-    if(!r.name.trim()) errs.push(`Education entry ${i+1}: please enter the institution name.`);
-    if(!r.qualification) errs.push(`Education entry ${i+1}: please select a qualification.`);
+    if(!r.name.trim()) errs.push({field:`field-edu-name-${i}`, message:`Education entry ${i+1}: please enter the institution name.`});
+    if(!r.qualification) errs.push({field:`field-edu-qualification-${i}`, message:`Education entry ${i+1}: please select a qualification.`});
   });
   return errs;
 }
@@ -1623,19 +1662,19 @@ function tplExperience(){
   const rows = state.working_experience.map((r,i)=>`
     <div class="card" style="padding:18px;margin-bottom:14px;border-color:#E4E4E3;">
       <div class="grid">
-        <div class="field"><label>Employer Name &amp; Address <span class="req-star">*</span></label><textarea placeholder="e.g. n/a" oninput="updateArrayField('working_experience',${i},'employer',this.value)">${esc(r.employer)}</textarea></div>
-        <div class="field"><label>Last Position Held <span class="req-star">*</span></label><input type="text" placeholder="e.g. n/a" value="${esc(r.position)}" oninput="updateArrayField('working_experience',${i},'position',this.value)"></div>
+        <div class="field" id="field-exp-employer-${i}"><label>Employer Name &amp; Address <span class="req-star">*</span></label><textarea placeholder="e.g. n/a" oninput="updateArrayField('working_experience',${i},'employer',this.value)">${esc(r.employer)}</textarea></div>
+        <div class="field" id="field-exp-position-${i}"><label>Last Position Held <span class="req-star">*</span></label><input type="text" placeholder="e.g. n/a" value="${esc(r.position)}" oninput="updateArrayField('working_experience',${i},'position',this.value)"></div>
       </div>
       <div class="grid">
-        <div class="field"><label>From <span class="req-star">*</span></label><input type="month" value="${esc(r.from)}" oninput="updateArrayField('working_experience',${i},'from',this.value)"></div>
-        <div class="field">
+        <div class="field" id="field-exp-from-${i}"><label>From <span class="req-star">*</span></label><input type="month" value="${esc(r.from)}" oninput="updateArrayField('working_experience',${i},'from',this.value)"></div>
+        <div class="field" id="field-exp-to-${i}">
           <label>To ${r.is_current ? '' : '<span class="req-star">*</span>'}</label>
           <input type="month" value="${esc(r.to)}" ${r.is_current?'disabled':''} style="${r.is_current?'background:#F0F0EE;color:var(--ink-soft);':''}" oninput="updateArrayField('working_experience',${i},'to',this.value)">
         </div>
       </div>
       <label class="radio-opt" style="margin:-8px 0 14px;"><input type="checkbox" ${r.is_current?'checked':''} onchange="toggleCurrentJob(${i}, this.checked)"> I am currently working here</label>
       <div class="grid">
-        <div class="field"><label>Last Drawn Remuneration (Monthly) — RM <span class="req-star">*</span></label><input type="text" placeholder="e.g. 3000 or n/a" value="${esc(r.remuneration)}" oninput="updateArrayField('working_experience',${i},'remuneration',this.value)"></div>
+        <div class="field" id="field-exp-remuneration-${i}"><label>Last Drawn Remuneration (Monthly) — RM <span class="req-star">*</span></label><input type="text" placeholder="e.g. 3000 or n/a" value="${esc(r.remuneration)}" oninput="updateArrayField('working_experience',${i},'remuneration',this.value)"></div>
         <div></div>
       </div>
       <div class="field"><label>Job Responsibilities <span class="req-star">*</span></label><textarea placeholder="e.g. n/a" oninput="updateArrayField('working_experience',${i},'responsibilities',this.value)">${esc(r.responsibilities)}</textarea></div>
@@ -1668,11 +1707,11 @@ function validateExperienceStep(){
   const errs = [];
   state.working_experience.forEach((r,i)=>{
     if(isExpRowEmpty(r)) return;
-    if(!r.employer.trim()) errs.push(`Work experience ${i+1}: please enter the employer name and address.`);
-    if(!r.position.trim()) errs.push(`Work experience ${i+1}: please enter the last position held.`);
-    if(!r.from) errs.push(`Work experience ${i+1}: please provide the "From" month/year.`);
-    if(!r.is_current && !r.to) errs.push(`Work experience ${i+1}: please provide the "To" month/year, or tick "I am currently working here".`);
-    if(!r.remuneration.trim()) errs.push(`Work experience ${i+1}: please enter the last drawn remuneration.`);
+    if(!r.employer.trim()) errs.push({field:`field-exp-employer-${i}`, message:`Work experience ${i+1}: please enter the employer name and address.`});
+    if(!r.position.trim()) errs.push({field:`field-exp-position-${i}`, message:`Work experience ${i+1}: please enter the last position held.`});
+    if(!r.from) errs.push({field:`field-exp-from-${i}`, message:`Work experience ${i+1}: please provide the "From" month/year.`});
+    if(!r.is_current && !r.to) errs.push({field:`field-exp-to-${i}`, message:`Work experience ${i+1}: please provide the "To" month/year, or tick "I am currently working here".`});
+    if(!r.remuneration.trim()) errs.push({field:`field-exp-remuneration-${i}`, message:`Work experience ${i+1}: please enter the last drawn remuneration.`});
   });
   return errs;
 }
@@ -1690,21 +1729,23 @@ function handleResignationChange(val){
 
 function validateQuestionsStep(){
   const errs = [];
-  if(!state.resignation_notice_required) errs.push('Please answer whether resignation notice is required.');
-  if(state.resignation_notice_required==='Yes' && !state.notice_period.trim()) errs.push('Notice period is required when resignation notice is required.');
-  if(!state.date_available_to_start) errs.push('Please provide your available start date.');
-  if(!state.expected_basic_salary.trim()) errs.push('Please provide your expected basic salary.');
-  if(!state.relatives_in_company) errs.push('Please answer the relatives/friends question.');
-  if(state.relatives_in_company==='Yes' && !state.relatives_name.trim()) errs.push('Please provide the relative/friend\'s name.');
-  if(state.relatives_in_company==='Yes' && !state.relatives_relationship.trim()) errs.push('Please provide your relationship to them.');
-  if(!state.referral_person) errs.push('Please answer whether you were referred by anyone.');
-  if(state.referral_person==='Yes' && !state.referral_name.trim()) errs.push('Please provide the referral\'s name.');
-  if(state.referral_person==='Yes' && !state.referral_department.trim()) errs.push('Please provide the referral\'s department.');
-  if(!state.own_transport_motorcar) errs.push('Please answer the motorcar transport question.');
-  if(!state.own_transport_motorcycle) errs.push('Please answer the motorcycle transport question.');
-  if(!state.willing_based_outside_klang_valley) errs.push('Please answer the outside-Klang-Valley question.');
-  if(!state.physical_defects) errs.push('Please answer the physical defects question.');
-  if(!state.arrested_convicted) errs.push('Please answer the arrests/convictions question.');
+  if(!state.resignation_notice_required) errs.push({field:'field-resignation_notice_required', message:'Please answer whether resignation notice is required.'});
+  if(state.resignation_notice_required==='Yes' && !state.notice_period.trim()) errs.push({field:'field-notice_period', message:'Notice period is required when resignation notice is required.'});
+  if(!state.date_available_to_start) errs.push({field:'field-date_available_to_start', message:'Please provide your available start date.'});
+  if(!state.expected_basic_salary.trim()) errs.push({field:'field-expected_basic_salary', message:'Please provide your expected basic salary.'});
+  if(!state.relatives_in_company) errs.push({field:'field-relatives_in_company', message:'Please answer the relatives/friends question.'});
+  if(state.relatives_in_company==='Yes' && !state.relatives_name.trim()) errs.push({field:'field-relatives_name', message:'Please provide the relative/friend\'s name.'});
+  if(state.relatives_in_company==='Yes' && !state.relatives_relationship.trim()) errs.push({field:'field-relatives_relationship', message:'Please provide your relationship to them.'});
+  if(!state.referral_person) errs.push({field:'field-referral_person', message:'Please answer whether you were referred by anyone.'});
+  if(state.referral_person==='Yes' && !state.referral_name.trim()) errs.push({field:'field-referral_name', message:'Please provide the referral\'s name.'});
+  if(state.referral_person==='Yes' && !state.referral_department.trim()) errs.push({field:'field-referral_department', message:'Please provide the referral\'s department.'});
+  if(!state.own_transport_motorcar) errs.push({field:'field-own_transport_motorcar', message:'Please answer the motorcar transport question.'});
+  if(!state.own_transport_motorcycle) errs.push({field:'field-own_transport_motorcycle', message:'Please answer the motorcycle transport question.'});
+  if(!state.willing_based_outside_klang_valley) errs.push({field:'field-willing_based_outside_klang_valley', message:'Please answer the outside-Klang-Valley question.'});
+  if(!state.physical_defects) errs.push({field:'field-physical_defects', message:'Please answer the physical defects question.'});
+  if(state.physical_defects==='Yes' && !state.physical_defects_specify.trim()) errs.push({field:'field-physical_defects_specify', message:'Please specify your physical defects/disabilities/illnesses.'});
+  if(!state.arrested_convicted) errs.push({field:'field-arrested_convicted', message:'Please answer the arrests/convictions question.'});
+  if(state.arrested_convicted==='Yes' && !state.arrested_convicted_specify.trim()) errs.push({field:'field-arrested_convicted_specify', message:'Please specify the arrest/conviction details.'});
   return errs;
 }
 
@@ -1722,47 +1763,47 @@ function tplQuestions(){
     <h2>Employment Questions</h2>
 
     <div class="grid">
-      <div class="field"><label>Is resignation notice required? <span class="req-star">*</span></label>
+      <div class="field" id="field-resignation_notice_required"><label>Is resignation notice required? <span class="req-star">*</span></label>
         <div class="radio-row">
           ${['Yes','No'].map(o=>`<label class="radio-opt"><input type="radio" name="resignation_notice_required" ${state.resignation_notice_required===o?'checked':''} onchange="handleResignationChange('${o}')"> ${o}</label>`).join('')}
         </div>
       </div>
       ${state.resignation_notice_required==='Yes' ? `
-        <div class="field"><label>Notice Period <span class="req-star">*</span></label><input type="text" placeholder="e.g. 1 month" value="${esc(state.notice_period)}" oninput="updateField('notice_period', this.value)"></div>
+        <div class="field" id="field-notice_period"><label>Notice Period <span class="req-star">*</span></label><input type="text" placeholder="e.g. 1 month" value="${esc(state.notice_period)}" oninput="updateField('notice_period', this.value)"></div>
       ` : `<div></div>`}
     </div>
     <div class="grid">
-      <div class="field"><label>Date Available to Start Work <span class="req-star">*</span></label><input type="date" value="${esc(state.date_available_to_start)}" oninput="updateField('date_available_to_start', this.value)"></div>
-      <div class="field"><label>Expected Basic Salary (per month) — RM <span class="req-star">*</span></label><input type="text" placeholder="e.g. 4500" value="${esc(state.expected_basic_salary)}" oninput="updateField('expected_basic_salary', this.value)"></div>
+      <div class="field" id="field-date_available_to_start"><label>Date Available to Start Work <span class="req-star">*</span></label><input type="date" value="${esc(state.date_available_to_start)}" oninput="updateField('date_available_to_start', this.value)"></div>
+      <div class="field" id="field-expected_basic_salary"><label>Expected Basic Salary (per month) — RM <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 4500" value="${esc(state.expected_basic_salary)}" oninput="this.value=numericOnly(this.value);updateField('expected_basic_salary', this.value)"></div>
     </div>
 
     <div class="section-title">Additional Questions</div>
-    <div class="field"><label>Any relatives or friends working in this Company or its subsidiaries? <span class="req-star">*</span></label>${yesNo('relatives_in_company', state.relatives_in_company, true)}</div>
+    <div class="field" id="field-relatives_in_company"><label>Any relatives or friends working in this Company or its subsidiaries? <span class="req-star">*</span></label>${yesNo('relatives_in_company', state.relatives_in_company, true)}</div>
     ${state.relatives_in_company==='Yes' ? `
       <div class="grid">
-        <div class="field"><label>Name <span class="req-star">*</span></label><input type="text" value="${esc(state.relatives_name)}" oninput="updateField('relatives_name', this.value)"></div>
-        <div class="field"><label>Relationship <span class="req-star">*</span></label><input type="text" value="${esc(state.relatives_relationship)}" oninput="updateField('relatives_relationship', this.value)"></div>
+        <div class="field" id="field-relatives_name"><label>Name <span class="req-star">*</span></label><input type="text" value="${esc(state.relatives_name)}" oninput="updateField('relatives_name', this.value)"></div>
+        <div class="field" id="field-relatives_relationship"><label>Relationship <span class="req-star">*</span></label><input type="text" value="${esc(state.relatives_relationship)}" oninput="updateField('relatives_relationship', this.value)"></div>
       </div>` : ''}
 
-    <div class="field"><label>Were you referred by anyone to work at this Company? <span class="req-star">*</span></label>${yesNo('referral_person', state.referral_person, true)}</div>
+    <div class="field" id="field-referral_person"><label>Were you referred by anyone to work at this Company? <span class="req-star">*</span></label>${yesNo('referral_person', state.referral_person, true)}</div>
     ${state.referral_person==='Yes' ? `
       <div class="grid">
-        <div class="field"><label>Referral Name <span class="req-star">*</span></label><input type="text" value="${esc(state.referral_name)}" oninput="updateField('referral_name', this.value)"></div>
-        <div class="field"><label>Referral Department <span class="req-star">*</span></label><input type="text" value="${esc(state.referral_department)}" oninput="updateField('referral_department', this.value)"></div>
+        <div class="field" id="field-referral_name"><label>Referral Name <span class="req-star">*</span></label><input type="text" value="${esc(state.referral_name)}" oninput="updateField('referral_name', this.value)"></div>
+        <div class="field" id="field-referral_department"><label>Referral Department <span class="req-star">*</span></label><input type="text" value="${esc(state.referral_department)}" oninput="updateField('referral_department', this.value)"></div>
       </div>` : ''}
 
     <div class="grid">
-      <div class="field"><label>Own transport — Motorcar? <span class="req-star">*</span></label>${yesNo('own_transport_motorcar', state.own_transport_motorcar, true)}</div>
-      <div class="field"><label>Own transport — Motorcycle? <span class="req-star">*</span></label>${yesNo('own_transport_motorcycle', state.own_transport_motorcycle, true)}</div>
+      <div class="field" id="field-own_transport_motorcar"><label>Own transport — Motorcar? <span class="req-star">*</span></label>${yesNo('own_transport_motorcar', state.own_transport_motorcar, true)}</div>
+      <div class="field" id="field-own_transport_motorcycle"><label>Own transport — Motorcycle? <span class="req-star">*</span></label>${yesNo('own_transport_motorcycle', state.own_transport_motorcycle, true)}</div>
     </div>
 
-    <div class="field"><label>Willing to be based at branches / site offices outside Klang Valley and/or overseas? <span class="req-star">*</span></label>${yesNo('willing_based_outside_klang_valley', state.willing_based_outside_klang_valley, true)}</div>
+    <div class="field" id="field-willing_based_outside_klang_valley"><label>Willing to be based at branches / site offices outside Klang Valley and/or overseas? <span class="req-star">*</span></label>${yesNo('willing_based_outside_klang_valley', state.willing_based_outside_klang_valley, true)}</div>
 
-    <div class="field"><label>Do you have any physical defects, disabilities, or long-term illnesses? <span class="req-star">*</span></label>${yesNo('physical_defects', state.physical_defects, true)}</div>
-    ${state.physical_defects==='Yes' ? `<div class="field"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('physical_defects_specify', this.value)">${esc(state.physical_defects_specify)}</textarea></div>` : ''}
+    <div class="field" id="field-physical_defects"><label>Do you have any physical defects, disabilities, or long-term illnesses? <span class="req-star">*</span></label>${yesNo('physical_defects', state.physical_defects, true)}</div>
+    ${state.physical_defects==='Yes' ? `<div class="field" id="field-physical_defects_specify"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('physical_defects_specify', this.value)">${esc(state.physical_defects_specify)}</textarea></div>` : ''}
 
-    <div class="field"><label>Have you been arrested or convicted of any offence? <span class="req-star">*</span></label>${yesNo('arrested_convicted', state.arrested_convicted, true)}</div>
-    ${state.arrested_convicted==='Yes' ? `<div class="field"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('arrested_convicted_specify', this.value)">${esc(state.arrested_convicted_specify)}</textarea></div>` : ''}
+    <div class="field" id="field-arrested_convicted"><label>Have you been arrested or convicted of any offence? <span class="req-star">*</span></label>${yesNo('arrested_convicted', state.arrested_convicted, true)}</div>
+    ${state.arrested_convicted==='Yes' ? `<div class="field" id="field-arrested_convicted_specify"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('arrested_convicted_specify', this.value)">${esc(state.arrested_convicted_specify)}</textarea></div>` : ''}
 
     ${navButtonsValidated('experience','referees', validateQuestionsStep)}
   `;
@@ -1778,42 +1819,42 @@ function tplReferees(){
     <p class="step-desc">Please give two referees whose reference can be obtained on your application.</p>
 
     <div class="grid">
-      <fieldset>
+      <fieldset id="field-referee1">
         <legend>Referee 1 <span class="req-star">*</span></legend>
         <div class="field"><label>Name <span class="req-star">*</span></label><input type="text" placeholder="e.g. John Tan" value="${esc(state.referee1.name)}" oninput="updateNested(state.referee1,'name',this.value)"></div>
         <div class="field"><label>Designation <span class="req-star">*</span></label><input type="text" placeholder="e.g. Project Manager" value="${esc(state.referee1.designation)}" oninput="updateNested(state.referee1,'designation',this.value)"></div>
         <div class="field"><label>Relationship <span class="req-star">*</span></label><input type="text" placeholder="e.g. Ex-supervisor" value="${esc(state.referee1.relationship)}" oninput="updateNested(state.referee1,'relationship',this.value)"></div>
-        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" placeholder="e.g. 012-345 6789" value="${esc(state.referee1.contact)}" oninput="updateNested(state.referee1,'contact',this.value)"></div>
+        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 0123456789" value="${esc(state.referee1.contact)}" oninput="this.value=numericOnly(this.value);updateNested(state.referee1,'contact',this.value)"></div>
       </fieldset>
-      <fieldset>
+      <fieldset id="field-referee2">
         <legend>Referee 2 <span class="req-star">*</span></legend>
         <div class="field"><label>Name <span class="req-star">*</span></label><input type="text" placeholder="e.g. Jane Lim" value="${esc(state.referee2.name)}" oninput="updateNested(state.referee2,'name',this.value)"></div>
         <div class="field"><label>Designation <span class="req-star">*</span></label><input type="text" placeholder="e.g. HR Manager" value="${esc(state.referee2.designation)}" oninput="updateNested(state.referee2,'designation',this.value)"></div>
         <div class="field"><label>Relationship <span class="req-star">*</span></label><input type="text" placeholder="e.g. Colleague" value="${esc(state.referee2.relationship)}" oninput="updateNested(state.referee2,'relationship',this.value)"></div>
-        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" placeholder="e.g. 012-987 6543" value="${esc(state.referee2.contact)}" oninput="updateNested(state.referee2,'contact',this.value)"></div>
+        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 0129876543" value="${esc(state.referee2.contact)}" oninput="this.value=numericOnly(this.value);updateNested(state.referee2,'contact',this.value)"></div>
       </fieldset>
     </div>
 
     <div class="section-title">Declarations</div>
     <p style="font-size:13px;line-height:1.6;">(A) I declare that the statement made by me to the foregoing question are true, complete and correct to the best of my knowledge and belief. Permission is given to the Company to make such investigations as and when necessary on the information given above. I understand that my misrepresentation or material omission made herein or on any other documents requested by the Company, will render dismissal or termination of my employment with the Company.</p>
 
-    <div class="field">
+    <div class="field" id="field-declaration_lawsuit">
       <label>(B) I declare that save and except for the following I am not involved in, a party to nor the subject of any law suits, arbitral proceedings, disciplinary proceedings, criminal inquiry, investigation and/or conviction and/or any other legal or quasi-legal proceedings. <span class="req-star">*</span></label>
       <div class="radio-row">
         <label class="radio-opt"><input type="radio" name="declaration_lawsuit" value="Yes" ${state.declaration_lawsuit==='Yes'?'checked':''} onchange="updateField('declaration_lawsuit', this.value); render();"> Yes</label>
         <label class="radio-opt"><input type="radio" name="declaration_lawsuit" value="No" ${state.declaration_lawsuit==='No'?'checked':''} onchange="updateField('declaration_lawsuit', this.value); render();"> No</label>
       </div>
     </div>
-    ${state.declaration_lawsuit==='Yes' ? `<div class="field"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('declaration_lawsuit_specify', this.value)">${esc(state.declaration_lawsuit_specify)}</textarea><div class="hint">Add an attachment on the next step if you need more space.</div></div>` : ''}
+    ${state.declaration_lawsuit==='Yes' ? `<div class="field" id="field-declaration_lawsuit_specify"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('declaration_lawsuit_specify', this.value)">${esc(state.declaration_lawsuit_specify)}</textarea><div class="hint">Add an attachment on the next step if you need more space.</div></div>` : ''}
 
-    <div class="field">
+    <div class="field" id="field-declaration_other_matters">
       <label>(C) I declare that save and except for the following I am not aware of any matter or information that may affect my personal and/or professional public standing or repute or that might adversely affect your consideration of my application for employment. <span class="req-star">*</span></label>
       <div class="radio-row">
         <label class="radio-opt"><input type="radio" name="declaration_other_matters" value="Yes" ${state.declaration_other_matters==='Yes'?'checked':''} onchange="updateField('declaration_other_matters', this.value); render();"> Yes</label>
         <label class="radio-opt"><input type="radio" name="declaration_other_matters" value="No" ${state.declaration_other_matters==='No'?'checked':''} onchange="updateField('declaration_other_matters', this.value); render();"> No</label>
       </div>
     </div>
-    ${state.declaration_other_matters==='Yes' ? `<div class="field"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('declaration_other_matters_specify', this.value)">${esc(state.declaration_other_matters_specify)}</textarea><div class="hint">Add an attachment on the next step if you need more space.</div></div>` : ''}
+    ${state.declaration_other_matters==='Yes' ? `<div class="field" id="field-declaration_other_matters_specify"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('declaration_other_matters_specify', this.value)">${esc(state.declaration_other_matters_specify)}</textarea><div class="hint">Add an attachment on the next step if you need more space.</div></div>` : ''}
 
     ${navButtonsValidated('questions','attachments', validateRefereesStep)}
   `;
@@ -1822,15 +1863,15 @@ function validateRefereesStep(){
   const errs = [];
   ['referee1','referee2'].forEach((key, idx)=>{
     const r = state[key];
-    if(!r.name.trim()) errs.push(`Referee ${idx+1}: please enter a name.`);
-    if(!r.designation.trim()) errs.push(`Referee ${idx+1}: please enter a designation.`);
-    if(!r.relationship.trim()) errs.push(`Referee ${idx+1}: please enter your relationship to them.`);
-    if(!r.contact.trim()) errs.push(`Referee ${idx+1}: please enter a contact number.`);
+    if(!r.name.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a name.`});
+    if(!r.designation.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a designation.`});
+    if(!r.relationship.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter your relationship to them.`});
+    if(!r.contact.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a contact number.`});
   });
-  if(!state.declaration_lawsuit) errs.push('Please answer declaration (B) — lawsuits, proceedings, and investigations.');
-  if(state.declaration_lawsuit==='Yes' && !state.declaration_lawsuit_specify.trim()) errs.push('Please specify the details for declaration (B).');
-  if(!state.declaration_other_matters) errs.push('Please answer declaration (C) — matters affecting your standing.');
-  if(state.declaration_other_matters==='Yes' && !state.declaration_other_matters_specify.trim()) errs.push('Please specify the details for declaration (C).');
+  if(!state.declaration_lawsuit) errs.push({field:'field-declaration_lawsuit', message:'Please answer declaration (B) — lawsuits, proceedings, and investigations.'});
+  if(state.declaration_lawsuit==='Yes' && !state.declaration_lawsuit_specify.trim()) errs.push({field:'field-declaration_lawsuit_specify', message:'Please specify the details for declaration (B).'});
+  if(!state.declaration_other_matters) errs.push({field:'field-declaration_other_matters', message:'Please answer declaration (C) — matters affecting your standing.'});
+  if(state.declaration_other_matters==='Yes' && !state.declaration_other_matters_specify.trim()) errs.push({field:'field-declaration_other_matters_specify', message:'Please specify the details for declaration (C).'});
   return errs;
 }
 
@@ -1853,19 +1894,21 @@ function tplAttachments(){
 
     <div class="section-title" style="margin-top:0;">Passport Size Photo <span class="req-star">*</span></div>
     ${state.profile_picture_url ? `<img src="${state.profile_picture_url}" class="profile-preview">` : ''}
-    <div class="upload-box" onclick="document.getElementById('profileInput').click()">
+    <div class="upload-box" id="field-profile_picture_url" onclick="document.getElementById('profileInput').click()">
       <div style="font-size:14px;">📷 Click to ${state.profile_picture_url?'change':'upload'} your passport size photo</div>
-      <div class="hint">JPG or PNG, clear passport-style photo recommended</div>
+      <div class="hint">JPG or PNG, clear passport-style photo recommended — max ${MAX_UPLOAD_MB}MB</div>
     </div>
-    <input type="file" id="profileInput" accept="image/*" style="display:none" onchange="handleProfileUpload(this.files[0])">
+    <div id="profileUploadErr"></div>
+    <input type="file" id="profileInput" accept="image/*" style="display:none" onchange="handleProfileUpload(this.files[0]); this.value='';">
 
     <div class="section-title">Supporting Documents</div>
     <p class="hint">Resume/CV, certificates, testimonials, IC copy (front and back), payslip, etc. Add attachments if you need more space than the form provides.</p>
     <div class="upload-box" onclick="document.getElementById('attachInput').click()">
       <div style="font-size:14px;">📎 Click to add a document</div>
-      <div class="hint">PDF, JPG, PNG, or Word files</div>
+      <div class="hint">PDF, JPG, PNG, or Word files — max ${MAX_UPLOAD_MB}MB each</div>
     </div>
-    <input type="file" id="attachInput" style="display:none" onchange="handleAttachmentUpload(this.files[0])">
+    <div id="attachUploadErr"></div>
+    <input type="file" id="attachInput" style="display:none" onchange="handleAttachmentUpload(this.files[0]); this.value='';">
     <div class="attach-list">${attList}</div>
 
     ${navButtonsValidated('referees','review', validateAttachmentsStep)}
@@ -1873,7 +1916,7 @@ function tplAttachments(){
 }
 function validateAttachmentsStep(){
   const errs = [];
-  if(!state.profile_picture_url) errs.push('Please upload a passport size photo before continuing — it is required.');
+  if(!state.profile_picture_url) errs.push({field:'field-profile_picture_url', message:'Please upload a passport size photo before continuing — it is required.'});
   return errs;
 }
 
@@ -1882,25 +1925,54 @@ function validateAttachmentsStep(){
 // copy no longer needs to produce the real storage key, just something
 // reasonable to show while uploading.
 
+// Upload size cap — kept in lockstep with the backend's own MAX_FILE_BYTES
+// limit in backend/src/routes/uploads.js (also 8MB), so a file that would be
+// rejected server-side is caught here first, before any upload even starts.
+const MAX_UPLOAD_MB = 8;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
+// Non-blocking (no native alert()) message rendered right under the upload
+// box it concerns, so it can't cover other fields or shift the page around —
+// just a small inline banner that clears itself the next time the person
+// picks a file.
+function showUploadError(containerId, message){
+  const el = document.getElementById(containerId);
+  if(el) el.innerHTML = `<div class="inline-error">${esc(message)}</div>`;
+}
+function clearUploadError(containerId){
+  const el = document.getElementById(containerId);
+  if(el) el.innerHTML = '';
+}
+function checkUploadSize(file, containerId){
+  if(file.size <= MAX_UPLOAD_BYTES) return true;
+  const mb = (file.size / (1024*1024)).toFixed(1);
+  showUploadError(containerId, `"${file.name}" is ${mb}MB, which is over the ${MAX_UPLOAD_MB}MB limit. Please compress it into a ZIP file and upload that instead.`);
+  return false;
+}
+
 async function handleProfileUpload(file){
   if(!file) return;
+  clearUploadError('profileUploadErr');
+  if(!checkUploadSize(file, 'profileUploadErr')) return;
   showLoading('Uploading passport size photo...');
   try{
     const { data, error } = await apiTry(() => api.upload('/uploads/profile-picture', file));
     if(error) throw error;
     state.profile_picture_url = data.url;
-  } catch(e){ alert('Upload failed: '+e.message); }
+  } catch(e){ hideLoading(); showUploadError('profileUploadErr', 'Upload failed: '+e.message); return; }
   hideLoading(); render();
 }
 
 async function handleAttachmentUpload(file){
   if(!file) return;
+  clearUploadError('attachUploadErr');
+  if(!checkUploadSize(file, 'attachUploadErr')) return;
   showLoading('Uploading document...');
   try{
     const { data, error } = await apiTry(() => api.upload('/uploads/attachment', file));
     if(error) throw error;
     state.attachments.push(data);
-  } catch(e){ alert('Upload failed: '+e.message); }
+  } catch(e){ hideLoading(); showUploadError('attachUploadErr', 'Upload failed: '+e.message); return; }
   hideLoading(); render();
 }
 function removeAttachment(i){ state.attachments.splice(i,1); render(); }
@@ -2162,10 +2234,25 @@ function navButtonsValidated(backStep, nextStep, validatorFn){
   `;
 }
 async function goStepWithValidation(next, validatorFn){
+  clearAllInvalidFields();
   const errs = validatorFn();
   if(errs.length){
-    document.getElementById('stepErr').innerHTML = `<div class="error-banner">${errs.join('<br>')}</div>`;
-    window.scrollTo(0,0);
+    const messages = errs.map(e => typeof e === 'string' ? e : e.message);
+    document.getElementById('stepErr').innerHTML = `<div class="error-banner">${messages.join('<br>')}</div>`;
+    let firstEl = null;
+    errs.forEach(e => {
+      const fieldId = typeof e === 'string' ? null : e.field;
+      if(!fieldId) return;
+      const el = markFieldInvalid(fieldId);
+      if(el && !firstEl) firstEl = el;
+    });
+    if(firstEl){
+      firstEl.scrollIntoView({ behavior:'smooth', block:'center' });
+      const focusable = firstEl.matches('input,select,textarea') ? firstEl : firstEl.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled])');
+      if(focusable) focusable.focus({ preventScroll:true });
+    } else {
+      window.scrollTo(0,0);
+    }
     return;
   }
   const ok = await saveDraft();

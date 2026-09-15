@@ -316,6 +316,12 @@
   input[type="password"]::-webkit-contacts-auto-fill-button{ display:none !important; visibility:hidden; pointer-events:none; position:absolute; right:0; }
   .error-banner{background:var(--danger-tint);border:1px solid #EBC3BD;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
   .success-banner{background:var(--ok-tint);border:1px solid #BEDACB;color:var(--ok);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
+  /* Small, non-blocking inline message (no native alert()) for a required
+     field left blank — sits right next to the field it concerns instead of
+     covering the page. Pairs with .invalid, which puts a red outline on the
+     specific input/select that failed. */
+  .inline-error{background:var(--danger-tint);border:1px solid #EBC3BD;color:var(--danger);padding:6px 10px;border-radius:7px;font-size:12px;margin-top:6px;}
+  input.invalid,select.invalid,textarea.invalid{border-color:var(--danger) !important;background:#FFF6F5;}
 
   /* ==========================================================================
      MOBILE — additive only; every rule above this block is untouched, so
@@ -3009,6 +3015,7 @@ function companyMgmtRowHtml(c, isAll){
             <button class="btn btn-primary btn-sm" onclick="submitEditCompany('${c.id}')">Save</button>
             <button class="btn btn-outline btn-sm" onclick="cancelEditCompany()">Cancel</button>
           </div>
+          <div id="editCompanyErr_${c.id}"></div>
         </td>
       </tr>
     `;
@@ -3043,9 +3050,20 @@ function cancelEditCompany(){
 }
 
 async function submitEditCompany(id){
-  const name = document.getElementById('editCompanyName_'+id).value.trim();
-  const category = document.getElementById('editCompanyCategory_'+id).value.trim();
-  if(!name || !category){ alert('Name and category are both required.'); return; }
+  const nameEl = document.getElementById('editCompanyName_'+id);
+  const categoryEl = document.getElementById('editCompanyCategory_'+id);
+  const errEl = document.getElementById('editCompanyErr_'+id);
+  const name = nameEl.value.trim();
+  const category = categoryEl.value.trim();
+  nameEl.classList.remove('invalid'); categoryEl.classList.remove('invalid');
+  if(!name || !category){
+    if(!name) nameEl.classList.add('invalid');
+    if(!category) categoryEl.classList.add('invalid');
+    if(errEl) errEl.innerHTML = `<div class="inline-error">Name and category are both required.</div>`;
+    (!name ? nameEl : categoryEl).focus();
+    return;
+  }
+  if(errEl) errEl.innerHTML = '';
   showLoading('Saving...');
   try{
     const { error } = await apiTry(() => api.patch(`/admin/companies/${id}`, { name, category }, {admin: true}));
