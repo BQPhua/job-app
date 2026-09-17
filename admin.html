@@ -53,7 +53,34 @@
     display:flex;flex-direction:column;position:sticky;top:0;height:100vh;height:100dvh;
     transition:width .18s ease;overflow:hidden;z-index:30;
   }
-  .sidebar.collapsed{width:64px;}
+  /* Collapsed = a fixed-position icon rail, taken out of the flex flow
+     entirely (desktop only — the max-width:820px block below overrides this
+     back to a slide-in drawer for touch screens). Living outside the flow
+     means growing it back open on hover (below) never reflows/pushes
+     .main-area, which instead reserves the 64px itself via margin-left. */
+  @media(min-width:821px){
+    .sidebar.collapsed{width:64px;position:fixed;left:0;top:0;height:100vh;height:100dvh;}
+    .sidebar.collapsed + .main-area{margin-left:64px;}
+  }
+
+  /* Supabase-style hover expand: while collapsed to an icon rail, hovering
+     the sidebar floats it open (widens in place, already position:fixed
+     above) instead of permanently pushing the page layout — exactly like
+     the toggle button already does, but momentary and mouse-driven so an
+     admin doesn't have to click just to peek at labels. Moving the mouse
+     away snaps it back to the 64px rail. The manual toggle button is
+     unaffected — this is purely additive on top of the existing
+     collapsed/expanded state, and irrelevant on touch/mobile (no persistent
+     hover there — the max-width:820px drawer rules take over instead). */
+  .sidebar.collapsed:hover{width:230px;box-shadow:var(--shadow-lg);z-index:40;}
+  .sidebar.collapsed:hover .brand-text{display:block;}
+  .sidebar.collapsed:hover .sidebar-brand{justify-content:flex-start;padding:18px 16px;}
+  .sidebar.collapsed:hover .sidebar-nav a{justify-content:flex-start;padding:10px 12px;}
+  .sidebar.collapsed:hover .sidebar-nav a .nav-label,
+  .sidebar.collapsed:hover .sidebar-nav a .nav-badge{display:inline;}
+  .sidebar.collapsed:hover .sidebar-scope{display:block;}
+  .sidebar.collapsed:hover .sidebar-footer .btn{justify-content:center;}
+  .sidebar.collapsed:hover .sidebar-footer .btn span.btn-label{display:inline;}
   .sidebar-brand{display:flex;align-items:center;gap:10px;padding:18px 16px;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0;}
   .sidebar-brand img{height:28px;max-width:38px;object-fit:contain;background:#fff;border-radius:5px;padding:3px 7px;flex-shrink:0;}
   .sidebar-brand .brand-text{overflow:hidden;white-space:nowrap;}
@@ -446,6 +473,7 @@ const PAGE_SIZE = 20;
 let searchDebounceTimer = null;
 let selectedIds = new Set(); // batch management — ids checked on the current page
 let openStatusPanelId = null; // which row's status button panel is currently open (only one at a time)
+let openTransferPanelId = null; // which row's business-unit transfer panel is currently open (only one at a time; ALL-scope admins only)
 
 // Sidebar — desktop collapse state persists across page loads (real
 // localStorage, fine here since this is a deployed site, not an in-chat
@@ -975,7 +1003,17 @@ function dashboardResultsHtml(){
           </div>
         </div>
       </td>
-      <td>${esc(a.business_unit)}</td>
+      <td style="position:relative;">
+        ${adminScope==='ALL' ? `
+          <span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);cursor:pointer;" title="Click to transfer to another business unit" onclick="toggleTransferPanel('${a.id}')">${esc(a.business_unit)} ▾</span>
+          ${openTransferPanelId === a.id ? `
+            <div class="status-panel">
+              ${['E&C','Land','Mall'].map(u=>`<button class="status-panel-btn ${a.business_unit===u?'current':''}" onclick="quickTransferBusinessUnit('${a.id}', '${u}')">${u}${a.business_unit===u?' ✓':''}</button>`).join('')}
+            </div>
+          ` : ''}
+        ` : esc(a.business_unit)}
+      </td>
+      <td>${esc(a.position_applying)||'<span style="color:var(--ink-soft);">—</span>'}</td>
       <td>${a.company_id ? esc(companyNameById[a.company_id] || '—') : '<span style="color:var(--ink-soft);">—</span>'}</td>
       <td style="position:relative;">
         <span class="badge ${a.status}" style="cursor:pointer;" onclick="toggleStatusPanel('${a.id}')">${STATUS_LABELS[a.status]||a.status} ▾</span>
@@ -1009,7 +1047,7 @@ function dashboardResultsHtml(){
       <table>
         <thead><tr>
           <th style="width:36px;"><input type="checkbox" class="row-check" ${allOnPageSelected?'checked':''} onchange="toggleSelectAll(this.checked)" title="Select all on this page"></th>
-          <th>Reference</th><th>Candidate</th><th>Unit</th><th>Company</th><th>Status</th><th>Submitted</th><th>Actions</th>
+          <th>Reference</th><th>Candidate</th><th>Unit</th><th>Position</th><th>Company</th><th>Status</th><th>Submitted</th><th>Actions</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -1220,6 +1258,21 @@ async function loadStats(){
 
 function toggleStatusPanel(id){
   openStatusPanelId = (openStatusPanelId === id) ? null : id;
+  openTransferPanelId = null;
+  renderDashboardResults();
+}
+
+// Quick business-unit transfer — previously this required opening a
+// candidate's full detail modal and switching into Edit mode just to change
+// one dropdown. Now an ALL-scope admin can transfer directly from the
+// dashboard row, the same way status is already quick-changed above: click
+// the Unit badge, pick the new business unit from the panel. Only ever
+// rendered for adminScope==='ALL' (see rowActionsHtml/dashboardResultsHtml),
+// matching the existing server-side rule (admin.js PATCH /applications/:id)
+// that only an All-Units admin may reassign business_unit.
+function toggleTransferPanel(id){
+  openTransferPanelId = (openTransferPanelId === id) ? null : id;
+  openStatusPanelId = null;
   renderDashboardResults();
 }
 
@@ -1232,7 +1285,25 @@ document.addEventListener('click', function(e){
     openStatusPanelId = null;
     renderDashboardResults();
   }
+  if(openTransferPanelId && !e.target.closest('.status-panel') && !e.target.closest('.badge')){
+    openTransferPanelId = null;
+    renderDashboardResults();
+  }
 });
+
+async function quickTransferBusinessUnit(id, businessUnit){
+  const app = applications.find(a=>a.id===id);
+  if(app && app.business_unit === businessUnit){ openTransferPanelId = null; renderDashboardResults(); return; }
+  if(!confirm(`Transfer this application to ${businessUnit}? It will move to that business unit's admin team.`)){
+    openTransferPanelId = null; renderDashboardResults(); return;
+  }
+  openTransferPanelId = null;
+  try{
+    const { error } = await apiTry(() => api.patch(`/admin/applications/${id}`, {business_unit: businessUnit}, {admin: true}));
+    if(error) throw error;
+    await Promise.all([loadApplications(), loadStats()]);
+  } catch(e){ alert('Error transferring: '+e.message); loadApplications(); }
+}
 
 async function quickUpdateStatus(id, status){
   const label = STATUS_LABELS[status] || status;
@@ -1281,7 +1352,7 @@ function downloadApplicationsCsv(data, filename){
 
     const headers = [
       // -- Job Application: identity & status --
-      'Reference No.','Status','Business Unit','Submitted At','Created At','Updated At',
+      'Reference No.','Status','Business Unit','Position Applying For','Submitted At','Created At','Updated At',
       // -- Personal Particulars --
       'Name (per NRIC)','Alias','Permanent Address','Permanent Postcode','Correspondence Address','Correspondence Postcode',
       'Tel Residence','Tel Office','Mobile Phone','Email','Place of Birth',
@@ -1321,7 +1392,7 @@ function downloadApplicationsCsv(data, filename){
     ];
 
     const rows = (data||[]).map(a=>[
-      a.reference_no, a.status, a.business_unit, dt(a.submitted_at), dt(a.created_at), dt(a.updated_at),
+      a.reference_no, a.status, a.business_unit, a.position_applying, dt(a.submitted_at), dt(a.created_at), dt(a.updated_at),
       a.name_nric, a.alias, a.permanent_address, a.permanent_postcode, a.correspondence_address, a.correspondence_postcode,
       a.tel_residence, a.tel_office, a.mobile_phone, a.email, a.place_of_birth,
       a.nric_new, a.passport_number, a.citizen, a.marital_status, a.date_of_birth, a.age, a.bumiputra, a.race,
@@ -1402,6 +1473,17 @@ function closeDetail(){
   render();
 }
 function drow(k,v){ return `<div class="drow"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
+// Candidate-entered salary figures are stored as plain numbers/strings with
+// no currency formatting — shown elsewhere in the app as a bare number
+// (e.g. "4500"), which reads ambiguously next to other RM-denominated
+// fields. This renders it the same way the rest of the dashboard formats
+// money: "RM 4,500".
+function fmtMoney(v){
+  if(v===null||v===undefined||v==='') return '—';
+  const n = Number(v);
+  if(Number.isNaN(n)) return esc(String(v));
+  return 'RM ' + n.toLocaleString('en-MY', {maximumFractionDigits:2});
+}
 
 // ============================================================================
 // EXIT INTERVIEW / OFFBOARDING — digitized version of the paper "Employee
@@ -1922,6 +2004,7 @@ function buildAnonymizedDataset(){
     reference_no: r.reference_no,
     status: r.status,
     business_unit: r.business_unit,
+    position_applying: r.position_applying || null,
     submitted_at: r.submitted_at,
     referred: r.referral_person === 'Yes'
   }));
@@ -2038,13 +2121,15 @@ function aiChatPanelHtml(){
 
 // ---------------------------------------------------------------------------
 // AI CANDIDATE REVIEW — pick one application from a searchable dropdown (no
-// more typing a reference number blind), optionally describe the role/
-// requirements you're hiring against (this app has no "position applying"
-// field — see the removal note at the top of aiInsights.js — so there's
-// nothing to auto-fill a job title from; a free-text box lets the admin
-// supply that context per lookup instead), then either get a Shortlist/KIV/
-// Reject recommendation or ask the AI free-form questions about this one
-// candidate (e.g. "Is this person the best fit for this role?"). Every mode
+// more typing a reference number blind). The candidate's own "Position
+// Applying" field (reinstated 2026-09-17, db/migrations/004) is sent to the
+// AI automatically as part of the payload below; the free-text Role /
+// Requirements box is still there alongside it, for describing the actual
+// hiring requirements to judge fit against (position_applying is just what
+// the candidate said they're applying for, not a requirements spec), then
+// either get a Shortlist/KIV/Reject recommendation or ask the AI free-form
+// questions about this one candidate (e.g. "Is this person the best fit for
+// this role?"). Every mode
 // here sends only non-PII fields (education, experience, salary
 // expectations, etc. — same "identify only by reference_no" rule as the
 // chat above) to Gemini. All of it is a suggestion for a human to weigh,
@@ -2123,6 +2208,7 @@ function buildCandidateReviewPayload(row){
   const payload = {
     reference_no: row.reference_no,
     business_unit: row.business_unit,
+    position_applying: row.position_applying || null,
     status: row.status,
     education: row.education || [],
     working_experience: row.working_experience || [],
@@ -2343,11 +2429,14 @@ async function analyzeAttachment(url, name, mimeType){
     const blob = await fileRes.blob();
     const fileBase64 = await blobToBase64(blob);
     const role = aiReviewRoleDescription.trim();
+    const docData = {};
+    if(aiReviewCandidate && aiReviewCandidate.position_applying) docData.position_applying = aiReviewCandidate.position_applying;
+    if(role) docData.role_description = role;
     aiDocResult = await callAiAnalyticsFunction({
       mode: 'document',
       fileBase64,
       mimeType: mimeType || blob.type || 'application/octet-stream',
-      data: role ? { role_description: role } : {}
+      data: docData
     });
   } catch(e){
     aiDocResult = 'Error: ' + e.message;
@@ -3237,7 +3326,8 @@ function renderModal(){
         ${a.profile_picture_url?`<img class="pfp" style="width:64px;height:64px;" src="${a.profile_picture_url}">`:''}
         <div>
           <h2 style="margin-bottom:2px;">${esc(a.name_nric)}</h2>
-          <div style="color:var(--ink-soft);font-size:13px;">${esc(a.reference_no)} · ${esc(a.business_unit)}</div>
+          <div style="color:var(--ink-soft);font-size:13px;">${esc(a.reference_no)} · ${esc(a.business_unit)}${a.position_applying ? ' · '+esc(a.position_applying) : ''}</div>
+          <div style="color:var(--ink-soft);font-size:11.5px;margin-top:2px;">Submitted ${a.submitted_at ? fmtDateTime(a.submitted_at) : 'not yet submitted'}</div>
         </div>
       </div>
       <span class="badge ${a.status}" style="margin-bottom:16px;display:inline-block;">${STATUS_LABELS[a.status]||a.status}</span>
@@ -3276,6 +3366,7 @@ function viewDetailHtml(a){
 
       <div class="detail-section">
         <h4>Contact &amp; Personal Particulars</h4>
+        ${drow('Position Applying For', a.position_applying)}
         ${drow('Mobile', a.mobile_phone)}
         ${drow('Email', a.email)}
         ${drow('NRIC', a.nric_new)}
@@ -3304,8 +3395,8 @@ function viewDetailHtml(a){
         <h4>Employment Details</h4>
         ${drow('Resignation Notice Required', a.resignation_notice_required)}
         ${drow('Notice Period', a.notice_period)}
-        ${drow('Expected Salary', a.expected_basic_salary)}
-        ${drow('Available From', a.date_available_to_start)}
+        ${drow('Expected Salary', fmtMoney(a.expected_basic_salary))}
+        ${drow('Available From', fmtDate(a.date_available_to_start))}
         ${drow('Own Transport (Car/Bike)', `${a.own_transport_motorcar||'—'} / ${a.own_transport_motorcycle||'—'}`)}
         ${drow('Willing Outside Klang Valley', a.willing_based_outside_klang_valley)}
       </div>
@@ -3390,6 +3481,7 @@ function editFormHtml(a){
     <div class="detail-section">
       <h4>Edit Core Details</h4>
       <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-4px;">Covers the fields most likely to need a correction. Full-record editing isn't available here — for anything else, coordinate directly with the candidate.</p>
+      <div class="field"><label>Position Applying For</label><input type="text" id="editPosition" value="${esc(a.position_applying)}"></div>
       <div class="field"><label>Name (per NRIC)</label><input type="text" id="editName" value="${esc(a.name_nric)}"></div>
       <div class="field"><label>Email</label><input type="text" id="editEmail" value="${esc(a.email)}"></div>
       <div class="field"><label>Mobile Phone</label><input type="text" id="editMobile" value="${esc(a.mobile_phone)}"></div>
@@ -3412,6 +3504,7 @@ function cancelEdit(){ editingApp = false; render(); }
 async function saveEdit(){
   const buEl = document.getElementById('editBusinessUnit');
   const patch = {
+    position_applying: document.getElementById('editPosition').value.trim(),
     name_nric: document.getElementById('editName').value.trim(),
     email: document.getElementById('editEmail').value.trim(),
     mobile_phone: document.getElementById('editMobile').value.trim()
@@ -3825,6 +3918,7 @@ function buildJobApplicationPageHtml(a){
         <div class="ref-box">
           <div class="big">${esc(a.reference_no||'')}</div>
           <div style="font-size:10px;color:#666;">${fmt(a.business_unit)}</div>
+          <div style="font-size:9px;color:#888;">Submitted ${a.submitted_at ? fmtDateTime(a.submitted_at) : '—'}</div>
           <div class="status">${STATUS_LABELS[a.status]||a.status}</div>
         </div>
         ${a.profile_picture_url ? `<img class="photo" src="${a.profile_picture_url}">` : ''}
@@ -3833,6 +3927,7 @@ function buildJobApplicationPageHtml(a){
 
     <h2 class="section">Personal Particulars</h2>
     <div class="kv">
+      <div class="item"><span class="lbl">Position Applying For</span>${fmt(a.position_applying)}</div>
       <div class="item"><span class="lbl">Name (per NRIC)</span>${fmt(a.name_nric)}</div>
       <div class="item"><span class="lbl">NRIC</span>${fmt(a.nric_new)}</div>
       <div class="item"><span class="lbl">Date of Birth / Age</span>${fmtDate(a.date_of_birth)} / ${fmt(a.age)}</div>
@@ -3856,7 +3951,7 @@ function buildJobApplicationPageHtml(a){
     <div class="kv">
       <div class="item"><span class="lbl">Resignation Notice Required</span>${fmt(a.resignation_notice_required)}</div>
       <div class="item"><span class="lbl">Notice Period</span>${fmt(a.notice_period)}</div>
-      <div class="item"><span class="lbl">Expected Basic Salary</span>${fmt(a.expected_basic_salary)}</div>
+      <div class="item"><span class="lbl">Expected Basic Salary</span>${fmtMoney(a.expected_basic_salary)}</div>
       <div class="item"><span class="lbl">Available to Start</span>${fmtDate(a.date_available_to_start)}</div>
       <div class="item"><span class="lbl">Own Transport (Car/Bike)</span>${fmt(a.own_transport_motorcar)} / ${fmt(a.own_transport_motorcycle)}</div>
       <div class="item"><span class="lbl">Willing Outside Klang Valley</span>${fmt(a.willing_based_outside_klang_valley)}</div>
