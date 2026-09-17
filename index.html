@@ -59,7 +59,16 @@
   .radio-opt{display:flex;align-items:center;gap:6px;font-size:14px;}
   .section-title{font-size:16px;font-weight:700;color:var(--navy);margin:26px 0 10px;padding-top:16px;border-top:1px solid var(--line);}
   .section-title:first-child{border-top:none;padding-top:0;margin-top:0;}
-  table.dyn{width:100%;border-collapse:collapse;margin-bottom:10px;}
+  /* Education/other dynamic-row tables have enough columns (Type, Institution,
+     From, To, Qualification, Course Name, remove-✕) that their combined
+     natural width can exceed the card even on a normal desktop viewport —
+     not just the <640px case this used to be handled for below — pushing
+     the last column(s) (Course Name, the ✕ button) out past the card's
+     right edge instead of wrapping or squeezing. Scoping the scroll to the
+     table itself (rather than resizing columns down further, which was
+     already fairly tight) keeps every column comfortably usable and just
+     lets the admin scroll the row horizontally when needed. */
+  table.dyn{width:100%;border-collapse:collapse;margin-bottom:10px;display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;}
   table.dyn th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
   table.dyn td{padding:6px 8px;vertical-align:top;}
   table.dyn input,table.dyn select{font-size:13px;padding:7px 8px;}
@@ -120,7 +129,7 @@
   .status-badge.interview_scheduled{background:#EEE8FB;color:#6A3FC0;}
   .status-badge.offer_sent{background:#FCEFE0;color:#B9660E;}
   .status-badge.rejected{background:#FBEAE8;color:#C0392B;}
-  .status-badge.hired{background:#0A0A0A;color:#fff;}
+  .status-badge.hired{background:#E7F5EC;color:#1E7A46;}
   .status-badge.offboarding{background:#E4E4E3;color:#54524F;}
   .status-badge.withdrawn{background:#EDEDEC;color:#6B6D70;}
   .status-badge.blacklisted{background:#1a1a1a;color:#fff;}
@@ -184,11 +193,13 @@
     .draft-banner-actions{width:100%;}
     .draft-banner-actions .btn{flex:1;}
 
-    /* Data tables (dynamic rows, application history) are the one thing
-       that genuinely can't reflow to a single column without a much bigger
-       template rewrite — so let them scroll horizontally instead of
-       squashing or breaking the layout. */
-    .history-table, table.dyn{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
+    /* Data tables (application history) are the one thing that genuinely
+       can't reflow to a single column without a much bigger template
+       rewrite — so let them scroll horizontally instead of squashing or
+       breaking the layout. (table.dyn now gets the same overflow-x:auto
+       treatment unconditionally — see its base rule above — since it could
+       overflow the card even above this breakpoint.) */
+    .history-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;}
     .history-actions{width:140px;white-space:normal;}
 
     .review-row{flex-direction:column;padding:8px 0;}
