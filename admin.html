@@ -1093,18 +1093,24 @@ function renderDashboardResults(){
   positionOpenStatusPanel();
 }
 
-// The status panel is markup'd inside a `position:relative` table cell so
-// by default it just drops below the status badge. That breaks down for
-// rows near the bottom of the viewport (or once the page has scrolled) —
-// the panel can render off-screen or get visually clipped. CSS Anchor
-// Positioning (`position-area` + `position-try-fallbacks: flip-block`)
-// would be the declarative fix for this, but per modern-web-guidance it
-// isn't supported by any major browser yet, so this follows the guide's
-// recommended fallback instead: switch the open panel to `position:fixed`
-// and compute its coordinates with getBoundingClientRect, flipping it
-// above the badge whenever there isn't enough room below.
+// Both the status panel AND the business-unit transfer panel (same
+// `.status-panel` markup, only one ever open at a time — see
+// toggleStatusPanel()/toggleTransferPanel()) are markup'd inside a
+// `position:relative` table cell so by default they just drop below their
+// badge. That breaks down for rows near the bottom of the viewport (or once
+// the page has scrolled) — the panel can render off-screen, get visually
+// clipped, or (as reported 2026-09-17 for the transfer panel specifically,
+// which this function used to skip entirely by only ever checking
+// `openStatusPanelId`) end up floating in the wrong spot entirely. CSS
+// Anchor Positioning (`position-area` + `position-try-fallbacks:
+// flip-block`) would be the declarative fix for this, but per
+// modern-web-guidance it isn't supported by any major browser yet, so this
+// follows the guide's recommended fallback instead: switch whichever panel
+// is open to `position:fixed` and compute its coordinates with
+// getBoundingClientRect, flipping it above the badge whenever there isn't
+// enough room below.
 function positionOpenStatusPanel(){
-  if(!openStatusPanelId) return;
+  if(!openStatusPanelId && !openTransferPanelId) return;
   const panel = document.querySelector('.status-panel');
   if(!panel) return;
   const badge = panel.previousElementSibling;
@@ -1129,8 +1135,8 @@ function positionOpenStatusPanel(){
 // drifting once it's been switched to position:fixed. `capture:true` on
 // scroll also catches scrolling inside a nested scrollable container
 // (not just the window itself).
-window.addEventListener('scroll', function(){ if(openStatusPanelId) positionOpenStatusPanel(); }, true);
-window.addEventListener('resize', function(){ if(openStatusPanelId) positionOpenStatusPanel(); });
+window.addEventListener('scroll', function(){ if(openStatusPanelId || openTransferPanelId) positionOpenStatusPanel(); }, true);
+window.addEventListener('resize', function(){ if(openStatusPanelId || openTransferPanelId) positionOpenStatusPanel(); });
 
 function handleSearchInput(val){
   searchTerm = val;
