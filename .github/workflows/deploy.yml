@@ -26,10 +26,23 @@ jobs:
       - name: Upload to $web container
         uses: azure/cli@v2
         with:
+          # --content-cache-control tells every visitor's browser (and any
+          # CDN/proxy in front of the storage account) to always revalidate
+          # with the server before reusing a cached copy of a file, instead
+          # of silently serving a stale app.js/admin.html for however long
+          # the browser's default heuristic caching would otherwise keep it.
+          # This is what previously required a hard refresh (Ctrl+Shift+R)
+          # to see a new deploy — a plain reload was still allowed to reuse
+          # the stale cached file without even asking the server. This site
+          # has no build step / hashed filenames, so "always revalidate"
+          # (rather than a long max-age on versioned assets) is the right
+          # fix here: revalidation is a fast, cheap round trip (304 Not
+          # Modified when nothing changed), not a full re-download.
           inlineScript: |
             az storage blob upload-batch \
               --account-name wctjobappstorage \
               --destination '$web' \
               --source . \
               --auth-mode login \
-              --overwrite
+              --overwrite \
+              --content-cache-control "no-cache, max-age=0, must-revalidate"
