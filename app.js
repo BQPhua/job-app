@@ -756,10 +756,15 @@ function tplOnboarding(){
     <h2>Post-Hire Details</h2>
     ${obProgressBar()}
     ${stepMap[onboardingStep]()}
-    <div style="text-align:center;margin-top:18px;">
-      <button class="btn btn-ghost" onclick="saveAndExitOnboarding()">Save &amp; Exit</button>
-    </div>
   `;
+}
+
+// Shared "Save & Exit" button, placed directly to the left of each
+// onboarding step's own "Next →"/submit button (inside that button's own
+// ".right" wrapper) rather than centered below the whole page — so it reads
+// as a secondary action alongside Next, not a separate detached control.
+function saveExitBtnHtml(){
+  return `<button class="btn btn-ghost" onclick="saveAndExitOnboarding()">Save &amp; Exit</button>`;
 }
 
 async function saveAndExitOnboarding(){
@@ -801,7 +806,7 @@ function tplObStatutory(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="backFromOnboarding()">← Back to My Applications</button>
-      <div class="right"><button class="btn btn-primary" ${salaryAckChecked ? '' : 'disabled'} onclick="onboardingGoStep('spouse_children')">Next →</button></div>
+      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" ${salaryAckChecked ? '' : 'disabled'} onclick="onboardingGoStep('spouse_children')">Next →</button></div>
     </div>
     ${!salaryAckChecked ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
   `;
@@ -879,7 +884,7 @@ function tplObSpouseChildren(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="onboardingGoStep('statutory')">← Back</button>
-      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('emergency_beneficiary')">Next →</button></div>
+      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" onclick="onboardingGoStep('emergency_beneficiary')">Next →</button></div>
     </div>
   `;
 }
@@ -921,7 +926,7 @@ function tplObEmergencyBeneficiary(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="onboardingGoStep('spouse_children')">← Back</button>
-      <div class="right"><button class="btn btn-primary" ${o.personal_details_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('preview')">Next →</button></div>
+      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" ${o.personal_details_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('preview')">Next →</button></div>
     </div>
     ${!o.personal_details_confirmed ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
   `;
