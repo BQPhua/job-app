@@ -11,6 +11,7 @@ let state = {
   reference_no: null,
   status: 'draft',
   business_unit: '',
+  position_applying: '',
   name_nric: '', alias: '',
   permanent_address: '', permanent_postcode: '',
   correspondence_address: '', correspondence_postcode: '',
@@ -224,12 +225,13 @@ function tplStart(){
     ${others.length ? `
       <div class="section-title" style="margin-top:${drafts.length?'22px':'0'};">Your Previous Applications</div>
       <table class="history-table">
-        <thead><tr><th>Reference</th><th>Unit</th><th>Status</th><th>Submitted</th><th style="width:160px;">Actions</th></tr></thead>
+        <thead><tr><th>Reference</th><th>Unit</th><th>Position</th><th>Status</th><th>Submitted</th><th style="width:160px;">Actions</th></tr></thead>
         <tbody>
           ${others.map(a=>`
             <tr>
               <td><strong><a href="#" onclick="viewMyApplication('${a.id}'); return false;" style="color:var(--navy-2);text-decoration:underline;">${esc(a.reference_no)}</a></strong></td>
               <td>${esc(a.business_unit)}</td>
+              <td>${esc(a.position_applying)||'—'}</td>
               <td>${statusBadgeHtml(a.status)}</td>
               <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
               <td>
@@ -311,6 +313,7 @@ function tplMyApplicationDetail(){
 
     <div class="review-block">
       <h4>Personal Particulars</h4>
+      ${rrow('Position Applying For', a.position_applying)}
       ${rrow('Name (per NRIC)', a.name_nric)}
       ${rrow('Alias', a.alias)}
       ${rrow('Permanent Address', (a.permanent_address||'')+' '+(a.permanent_postcode||''))}
@@ -342,7 +345,7 @@ function tplMyApplicationDetail(){
       <h4>Employment Questions</h4>
       ${rrow('Resignation Notice Required', a.resignation_notice_required)}
       ${rrow('Date Available to Start', a.date_available_to_start)}
-      ${rrow('Expected Basic Salary', a.expected_basic_salary)}
+      ${rrow('Expected Basic Salary', fmtMoney(a.expected_basic_salary))}
       ${rrow('Relatives in Company', a.relatives_in_company==='Yes' ? `Yes — ${a.relatives_name} (${a.relatives_relationship})` : a.relatives_in_company)}
       ${rrow('Referred by Anyone', a.referral_person==='Yes' ? `Yes — ${a.referral_name}, ${a.referral_department}` : a.referral_person)}
       ${rrow('Own Transport (Car / Motorcycle)', `${a.own_transport_motorcar||'—'} / ${a.own_transport_motorcycle||'—'}`)}
@@ -449,6 +452,8 @@ function tplPersonal(){
     <h2>Personal Particulars</h2>
     <p class="step-desc">Applying with <strong>${esc(state.business_unit)}</strong></p>
 
+    <div class="field" id="field-position_applying"><label>Position Applying For <span class="req-star">*</span></label><input type="text" placeholder="e.g. Site Engineer" value="${esc(state.position_applying)}" oninput="updateField('position_applying', this.value)"></div>
+
     <div class="grid">
       <div class="field" id="field-name_nric"><label>Name (per NRIC / Passport) <span class="req-star">*</span></label><input type="text" placeholder="e.g. Ahmad Bin Ali" value="${esc(state.name_nric)}" oninput="updateField('name_nric', this.value)"></div>
       <div class="field"><label>Alias <span class="opt-tag">(optional)</span></label><input type="text" value="${esc(state.alias)}" oninput="updateField('alias', this.value)"></div>
@@ -542,6 +547,7 @@ function tplPersonal(){
 
 function validatePersonalStep(){
   const errs = [];
+  if(!state.position_applying.trim()) errs.push({field:'field-position_applying', message:'Please enter the position you are applying for.'});
   if(!state.name_nric.trim()) errs.push({field:'field-name_nric', message:'Please enter your name (per NRIC/Passport).'});
   if(!state.permanent_address.trim()) errs.push({field:'field-permanent_address', message:'Please enter your permanent address.'});
   if(!state.permanent_postcode.trim()) errs.push({field:'field-permanent_postcode', message:'Please enter your permanent address postcode.'});
@@ -570,11 +576,13 @@ let socsoManuallyEdited = false;
 
 // ============================================================================
 // POST-HIRE ONBOARDING — multi-step wizard (one section at a time, matching
-// the main application's UX) and a Salary Crediting form matching the
-// actual company document exactly.
+// the main application's UX). The Salary Crediting Requisition Form (formerly
+// its own step) was folded into Statutory Details (2026-09-15): the Bank
+// field and the bilingual salary-crediting confirmation now live there, and
+// the standalone 'salary' step no longer exists.
 // ============================================================================
 
-const ONBOARDING_STEPS = ['statutory','spouse_children','emergency_beneficiary','salary','review'];
+const ONBOARDING_STEPS = ['statutory','spouse_children','emergency_beneficiary','review'];
 
 let onboardingAppId = null;
 let onboardingState = null;
@@ -588,10 +596,6 @@ async function openOnboarding(applicationId){
     onboardingAppId = applicationId;
     onboardingState = data;
     onboardingStep = onboardingState.status === 'completed' ? 'review' : 'statutory';
-    // If a salary account no. was already saved and differs from the bank
-    // account no., the candidate deliberately diverged them — don't clobber
-    // that on reopening.
-    salaryAccountManuallyEdited = !!(onboardingState.salary_account_no && onboardingState.salary_account_no !== onboardingState.bank_account_no);
     hideLoading();
     goStep('onboarding');
   } catch(e){
@@ -620,10 +624,11 @@ async function saveOnboarding(showAlert){
       beneficiary_relationship: document.getElementById('ob_beneficiary_relationship')?.value.trim() || '',
       beneficiary_contact: document.getElementById('ob_beneficiary_contact')?.value.trim() || '',
       tp3_data: onboardingState.tp3_data,
-      salary_company: document.querySelector('input[name="ob_salary_company"]:checked')?.value || onboardingState.salary_company || '',
+      salary_company: onboardingState.salary_company || '',
       salary_bank: document.getElementById('ob_salary_bank')?.value.trim() || '',
-      salary_account_no: document.getElementById('ob_salary_account_no')?.value.trim() || '',
-      salary_ic_submitted: document.getElementById('ob_salary_ic')?.value.trim() || ''
+      // Salary Account No. is no longer its own editable field — it always
+      // mirrors Bank Account No. directly at save time.
+      salary_account_no: document.getElementById('ob_bank_account_no')?.value.trim() || ''
     };
     // Only the currently-displayed onboarding step's fields actually exist
     // in the DOM at any moment — every other step's fields fall back to ''
@@ -725,7 +730,7 @@ async function confirmOnboardingSection(section){
 
 function backFromOnboarding(){
   onboardingAppId = null; onboardingState = null; onboardingStep = 'statutory';
-  salaryAckChecked = false; salaryAccountManuallyEdited = false;
+  salaryAckChecked = false;
   goStep('start');
 }
 
@@ -744,8 +749,7 @@ function tplOnboarding(){
   const stepMap = {
     statutory: tplObStatutory,
     spouse_children: tplObSpouseChildren,
-    emergency_beneficiary: tplObEmergencyBeneficiary,
-    salary: tplObSalary
+    emergency_beneficiary: tplObEmergencyBeneficiary
   };
   return `
     <div class="step-eyebrow">Onboarding</div>
@@ -753,7 +757,7 @@ function tplOnboarding(){
     ${obProgressBar()}
     ${stepMap[onboardingStep]()}
     <div style="text-align:center;margin-top:18px;">
-      <button class="link-btn" onclick="saveAndExitOnboarding()">Save &amp; Exit — continue later</button>
+      <button class="btn btn-ghost" onclick="saveAndExitOnboarding()">Save &amp; Exit</button>
     </div>
   `;
 }
@@ -774,22 +778,32 @@ function tplObStatutory(){
     <div class="step-desc">Congratulations on being hired! Let's get your onboarding details sorted, one section at a time.</div>
     <div class="section-title" style="margin-top:0;">Statutory Details</div>
     <div class="grid">
-      <div class="field"><label>EPF No.</label><input type="text" id="ob_epf_no" value="${esc(o.epf_no)}"></div>
-      <div class="field"><label>SOCSO No.</label><input type="text" id="ob_socso_no" value="${esc(o.socso_no)}"></div>
+      <div class="field"><label>EPF No.</label><input type="text" inputmode="numeric" id="ob_epf_no" value="${esc(o.epf_no)}" oninput="this.value=numericOnly(this.value)"></div>
+      <div class="field"><label>SOCSO No.</label><input type="text" inputmode="numeric" id="ob_socso_no" value="${esc(o.socso_no)}" oninput="this.value=numericOnly(this.value)"></div>
     </div>
     <div class="grid">
       <div class="field"><label>Income Tax No.</label><input type="text" id="ob_income_tax_no" value="${esc(o.income_tax_no)}"></div>
       <div class="field"><label>Tax Branch</label><input type="text" id="ob_tax_branch" value="${esc(o.tax_branch)}"></div>
     </div>
     <div class="grid">
-      <div class="field"><label>Bank Account No.</label><input type="text" inputmode="numeric" id="ob_bank_account_no" value="${esc(o.bank_account_no)}" oninput="this.value=numericOnly(this.value);mirrorSalaryAccountNo(this.value)"></div>
+      <div class="field"><label>Bank Account No.</label><input type="text" inputmode="numeric" id="ob_bank_account_no" value="${esc(o.bank_account_no)}" oninput="this.value=numericOnly(this.value)"></div>
       <div class="field"><label>CIDB Green Card No.</label><input type="text" id="ob_cidb_green_card_no" placeholder="e.g. N/A" value="${esc(o.cidb_green_card_no)}"></div>
+    </div>
+    <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
+
+    <p style="font-size:12.5px;color:var(--ink-soft);margin-top:14px;">I confirm that the information herein is correct and in order. Should there be any discrepancy in the information, which will lead to possible delay or inability to credit my salaries, it is my sole responsibility.<br><br>
+    <em>Saya mengesahkan maklumat tersebut diatas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</em></p>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="confirm_salary_crediting" ${salaryAckChecked?'checked':''} onchange="salaryAckChecked=this.checked;render();">
+      <label for="confirm_salary_crediting">I confirm the above information is correct.</label>
     </div>
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="backFromOnboarding()">← Back to My Applications</button>
-      <div class="right"><button class="btn btn-primary" onclick="onboardingGoStep('spouse_children')">Next →</button></div>
+      <div class="right"><button class="btn btn-primary" ${salaryAckChecked ? '' : 'disabled'} onclick="onboardingGoStep('spouse_children')">Next →</button></div>
     </div>
+    ${!salaryAckChecked ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
   `;
 }
 
@@ -884,7 +898,7 @@ function tplObEmergencyBeneficiary(){
           <tr>
             <td><input type="text" value="${esc(c.name)}" oninput="updateEmergencyContact(${i},'name',this.value)"></td>
             <td><input type="text" value="${esc(c.relationship)}" oninput="updateEmergencyContact(${i},'relationship',this.value)"></td>
-            <td><input type="tel" placeholder="e.g. 012-345 6789" value="${esc(c.contact)}" oninput="updateEmergencyContact(${i},'contact',this.value)"></td>
+            <td><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" value="${esc(c.contact)}" oninput="this.value=numericOnly(this.value);updateEmergencyContact(${i},'contact',this.value)"></td>
             <td><button class="remove-x" onclick="removeEmergencyContact(${i})">✕</button></td>
           </tr>
         `).join('')}
@@ -896,7 +910,7 @@ function tplObEmergencyBeneficiary(){
     <div class="grid g3">
       <div class="field"><label>Name</label><input type="text" id="ob_beneficiary_name" value="${esc(o.beneficiary_name)}"></div>
       <div class="field"><label>Relationship</label><input type="text" id="ob_beneficiary_relationship" value="${esc(o.beneficiary_relationship)}"></div>
-      <div class="field"><label>Contact No.</label><input type="tel" placeholder="e.g. 012-345 6789" id="ob_beneficiary_contact" value="${esc(o.beneficiary_contact)}"></div>
+      <div class="field"><label>Contact No.</label><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" id="ob_beneficiary_contact" value="${esc(o.beneficiary_contact)}" oninput="this.value=numericOnly(this.value)"></div>
     </div>
 
     <div class="checkbox-row">
@@ -907,74 +921,16 @@ function tplObEmergencyBeneficiary(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="onboardingGoStep('spouse_children')">← Back</button>
-      <div class="right"><button class="btn btn-primary" ${o.personal_details_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('salary')">Next →</button></div>
+      <div class="right"><button class="btn btn-primary" ${o.personal_details_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('preview')">Next →</button></div>
     </div>
     ${!o.personal_details_confirmed ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
   `;
 }
 
-// ---------------------------------------------------------------------------
-// STEP 4: Salary Crediting Requisition Form — matches the actual document
-// ---------------------------------------------------------------------------
-let salaryAckChecked = false; // local-only acknowledgment; the real, final
-// confirmation happens on the Review Before Submitting page via
-// submitOnboarding() — this checkbox just gates getting to that page, it
-// does not itself lock anything in.
-let salaryAccountManuallyEdited = false; // once the candidate edits the
-// Salary Account No. field directly, stop overwriting it from Bank Account
-// No. — same guard pattern as the SOCSO/NRIC auto-mirror above.
-
-function mirrorSalaryAccountNo(val){
-  if(!salaryAccountManuallyEdited && onboardingState){
-    onboardingState.salary_account_no = val;
-  }
-}
-function handleSalaryAccountManualEdit(val){
-  salaryAccountManuallyEdited = true;
-  if(onboardingState) onboardingState.salary_account_no = val;
-}
-
-function tplObSalary(){
-  const o = onboardingState;
-  const companies = ['WCT Berhad', 'WCT Construction Sdn Bhd', 'WCT Machinery Sdn Bhd', 'Intraxis Engineering Sdn Bhd'];
-  return `
-    <div class="section-title" style="margin-top:0;">Salary Crediting Requisition Form</div>
-    <p class="step-desc">To: Human Resources Department</p>
-
-    <div class="field">
-      <label>Which company are you employed under? <span class="req-star">*</span></label>
-      <div class="radio-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
-        ${companies.map(c=>`<label class="radio-opt"><input type="radio" name="ob_salary_company" value="${c}" ${o.salary_company===c?'checked':''}> ${c}</label>`).join('')}
-      </div>
-    </div>
-
-    <p style="font-size:13.5px;">Please be informed that I hereby agree that my salary is to be paid through my bank account as follows:</p>
-
-    <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
-    <div class="grid">
-      <div class="field">
-        <label>Account No.</label>
-        <input type="text" inputmode="numeric" id="ob_salary_account_no" value="${esc(o.salary_account_no)}" oninput="this.value=numericOnly(this.value);handleSalaryAccountManualEdit(this.value)">
-        <div class="hint">Pre-filled from the Bank Account No. you entered in Statutory Details — edit here if it's different.</div>
-      </div>
-      <div class="field"><label>IC/Passport No. Submitted During Application</label><input type="text" id="ob_salary_ic" value="${esc(o.salary_ic_submitted || state.nric_new || state.passport_number)}"></div>
-    </div>
-
-    <p style="font-size:12.5px;color:var(--ink-soft);">I confirm that the information herein is correct and in order. Should there be any discrepancy in the information, which will lead to possible delay or inability to credit my salaries, it is my sole responsibility.<br><br>
-    <em>Saya mengesahkan maklumat tersebut diatas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</em></p>
-
-    <div class="checkbox-row">
-      <input type="checkbox" id="confirm_salary_crediting" ${salaryAckChecked?'checked':''} onchange="salaryAckChecked=this.checked;render();">
-      <label for="confirm_salary_crediting">I confirm the above information is correct.</label>
-    </div>
-
-    <div class="btn-row">
-      <button class="btn btn-ghost" onclick="onboardingGoStep('emergency_beneficiary')">← Back</button>
-      <div class="right"><button class="btn btn-primary" ${salaryAckChecked ? '' : 'disabled'} onclick="onboardingGoStep('preview')">Review Before Submitting →</button></div>
-    </div>
-    ${!salaryAckChecked ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
-  `;
-}
+let salaryAckChecked = false; // local-only acknowledgment (now shown on the
+// Statutory Details step); the real, final confirmation happens on the
+// Review Before Submitting page via submitOnboarding() — this checkbox just
+// gates advancing past Statutory Details, it does not itself lock anything in.
 
 // ---------------------------------------------------------------------------
 // REVIEW / PREVIEW — comprehensive, paginated read-only summary of every
@@ -998,6 +954,7 @@ function obSummaryPage1Html(o){
       ${obReviewRow('SOCSO No.', o.socso_no)}
       ${obReviewRow('Bank Account No.', o.bank_account_no)}
       ${obReviewRow('CIDB Green Card No.', o.cidb_green_card_no)}
+      ${obReviewRow('Bank', o.salary_bank)}
     </div>
 
     <div class="review-block">
@@ -1033,16 +990,7 @@ function obSummaryPage1Html(o){
 }
 
 function obSummaryHtml(o){
-  return `
-    ${obSummaryPage1Html(o)}
-    <div class="review-block">
-      <h4>Salary Crediting</h4>
-      ${obReviewRow('Company', o.salary_company)}
-      ${obReviewRow('Bank', o.salary_bank)}
-      ${obReviewRow('Account No.', o.salary_account_no)}
-      ${obReviewRow('IC/Passport No. Submitted', o.salary_ic_submitted)}
-    </div>
-  `;
+  return obSummaryPage1Html(o);
 }
 
 function tplObPreview(){
@@ -1055,7 +1003,7 @@ function tplObPreview(){
     ${obSummaryHtml(o)}
 
     <div class="btn-row">
-      <button class="btn btn-ghost" onclick="onboardingGoStep('salary')">← Back to Edit</button>
+      <button class="btn btn-ghost" onclick="onboardingGoStep('emergency_beneficiary')">← Back to Edit</button>
       <div class="right"><button class="btn btn-primary" onclick="submitOnboarding()">Submit &amp; Complete Onboarding →</button></div>
     </div>
   `;
@@ -1626,8 +1574,8 @@ function tplEducation(){
         </select>
       </td>
       <td><input type="text" id="field-edu-name-${i}" placeholder="Institution name" value="${esc(r.name)}" oninput="updateArrayField('education',${i},'name',this.value)"></td>
-      <td style="width:90px;"><select onchange="updateArrayField('education',${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></td>
-      <td style="width:90px;"><select onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></td>
+      <td style="width:110px;min-width:110px;"><select style="min-width:96px;" onchange="updateArrayField('education',${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></td>
+      <td style="width:110px;min-width:110px;"><select style="min-width:96px;" onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></td>
       <td style="min-width:170px;"><select id="field-edu-qualification-${i}" onchange="updateArrayField('education',${i},'qualification',this.value)">${educationOptionsHtml(r.qualification)}</select></td>
       <td style="min-width:150px;"><input type="text" value="${esc(r.course_name)}" oninput="updateArrayField('education',${i},'course_name',this.value)"></td>
       <td><button class="remove-x" onclick="removeRow('education',${i})">✕</button></td>
@@ -1996,6 +1944,7 @@ function tplReview(){
 
     <div class="review-block">
       ${reviewHeader('Personal Particulars', 'personal')}
+      ${rrow('Position Applying For', state.position_applying)}
       ${rrow('Name', state.name_nric)}
       ${rrow('Alias', state.alias)}
       ${rrow('Permanent Address', state.permanent_address+' '+state.permanent_postcode)}
@@ -2027,7 +1976,7 @@ function tplReview(){
       ${reviewHeader('Employment Questions', 'questions')}
       ${rrow('Resignation Notice Required', state.resignation_notice_required)}
       ${rrow('Date Available to Start', state.date_available_to_start)}
-      ${rrow('Expected Basic Salary', state.expected_basic_salary)}
+      ${rrow('Expected Basic Salary', fmtMoney(state.expected_basic_salary))}
       ${rrow('Relatives in Company', state.relatives_in_company==='Yes' ? `Yes — ${state.relatives_name} (${state.relatives_relationship})` : state.relatives_in_company)}
       ${rrow('Referred by Anyone', state.referral_person==='Yes' ? `Yes — ${state.referral_name}, ${state.referral_department}` : state.referral_person)}
       ${rrow('Own Transport (Car / Motorcycle)', `${state.own_transport_motorcar} / ${state.own_transport_motorcycle}`)}
@@ -2286,6 +2235,17 @@ function esc(v){
 function fmt(v){ return (v===null||v===undefined||v==='') ? '—' : esc(String(v)); }
 function fmtDate(v){ if(!v) return '—'; try{ return new Date(v).toLocaleDateString('en-GB'); }catch(e){ return esc(v); } }
 function fmtDateTime(v){ if(!v) return '—'; try{ return new Date(v).toLocaleString('en-GB'); }catch(e){ return esc(v); } }
+// Expected Basic Salary is stored as a bare numeric string (candidate types
+// digits only, per the field's numericOnly() validation) — shown elsewhere
+// as-is (e.g. "4500"), which reads ambiguously since it's just a number with
+// nothing marking it as a Ringgit amount. This formats it the same way the
+// input's own label already does ("RM 4,500").
+function fmtMoney(v){
+  if(v===null||v===undefined||v==='') return '—';
+  const n = Number(v);
+  if(Number.isNaN(n)) return esc(String(v));
+  return 'RM ' + n.toLocaleString('en-MY', {maximumFractionDigits:2});
+}
 
 // ---------------------------------------------------------------------------
 // PDF EXPORT (candidate's own records) — same print-window approach already
@@ -2369,6 +2329,7 @@ function exportMyApplicationPdf(a){
 
     <h2 class="section">Personal Particulars</h2>
     <div class="kv">
+      <div class="item"><span class="lbl">Position Applying For</span>${fmt(a.position_applying)}</div>
       <div class="item"><span class="lbl">Name (per NRIC)</span>${fmt(a.name_nric)}</div>
       <div class="item"><span class="lbl">NRIC</span>${fmt(a.nric_new)}</div>
       <div class="item"><span class="lbl">Date of Birth / Age</span>${fmtDate(a.date_of_birth)} / ${fmt(a.age)}</div>
@@ -2389,7 +2350,7 @@ function exportMyApplicationPdf(a){
 
     <h2 class="section">Employment Details</h2>
     <div class="kv">
-      <div class="item"><span class="lbl">Expected Basic Salary</span>${fmt(a.expected_basic_salary)}</div>
+      <div class="item"><span class="lbl">Expected Basic Salary</span>${fmtMoney(a.expected_basic_salary)}</div>
       <div class="item"><span class="lbl">Available to Start</span>${fmtDate(a.date_available_to_start)}</div>
     </div>
 
@@ -2440,6 +2401,7 @@ function exportMyOnboardingPdf(){
       <tr><td class="lbl">Tax Branch</td><td>${fmt(o.tax_branch)}</td></tr>
       <tr><td class="lbl">Bank Account No.</td><td>${fmt(o.bank_account_no)}</td></tr>
       <tr><td class="lbl">CIDB Green Card No.</td><td>${fmt(o.cidb_green_card_no)}</td></tr>
+      <tr><td class="lbl">Bank</td><td>${fmt(o.salary_bank)}</td></tr>
     </table>
     <table class="form-box">
       <tr><td colspan="2" class="section-hdr">Spouse Information</td></tr>
@@ -2460,17 +2422,6 @@ function exportMyOnboardingPdf(){
       <tr><td class="lbl">Relationship</td><td>${fmt(o.beneficiary_relationship)}</td></tr>
       <tr><td class="lbl">Contact No.</td><td>${fmt(o.beneficiary_contact)}</td></tr>
     </table>
-  </div>`;
-
-  const page2 = `
-  <div class="doc-page">
-    <h2 class="bahagian">Salary Crediting Requisition Form</h2>
-    <table class="form-box">
-      <tr><td class="lbl">Company</td><td>${fmt(o.salary_company)}</td></tr>
-      <tr><td class="lbl">Bank</td><td>${fmt(o.salary_bank)}</td></tr>
-      <tr><td class="lbl">Account No.</td><td>${fmt(o.salary_account_no)}</td></tr>
-      <tr><td class="lbl">IC/Passport No. Submitted</td><td>${fmt(o.salary_ic_submitted)}</td></tr>
-    </table>
     <div class="footer">
       <span>Reference ${esc(a.reference_no||'')} — Generated ${fmtDateTime(new Date().toISOString())}</span>
       <span>WCT Group Employment Onboarding Portal</span>
@@ -2479,7 +2430,7 @@ function exportMyOnboardingPdf(){
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Onboarding — ${esc(a.reference_no||'')} — WCT Group</title><style>${pdfPrintStyles()}</style></head><body>
   <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
-  ${page1}${page2}
+  ${page1}
   </body></html>`;
   openPrintWindow(html);
 }
