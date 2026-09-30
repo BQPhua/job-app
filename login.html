@@ -8,6 +8,7 @@
       href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <script src="ui-a11y.js"></script>
     <script src="msal-browser.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
@@ -339,6 +340,7 @@
         .tabs button { padding: 8px 4px; font-size: 13px; }
       }
     </style>
+    <link rel="stylesheet" href="ui-refresh.css">
   </head>
   <body>
     <div class="login-bg-layer" id="loginBgLayer"></div>
@@ -414,17 +416,24 @@
 
       // If this login page was reached via a link carrying extra context —
       // a "Complete Your Onboarding" email link (?onboarding=<id>), a
-      // signed Exit Interview notification link (?exit=<id>), or a
+      // offboarding invitation link (?offboard=<token>), or a
       // business-unit-specific application link (?bu=Mall etc.) — bounced
       // here because the candidate wasn't signed in yet, carry that same
       // parameter forward to index.html once they do sign in. Explicitly
       // whitelisted (rather than forwarding the whole query string) so an
       // unrelated param like a failed OAuth's ?error=... never leaks through.
+      // Offboarding invite token is also kept in sessionStorage, so it
+      // survives any sign-in round trip that drops the query string.
+      try {
+        const obToken = new URLSearchParams(window.location.search).get('offboard');
+        if (obToken) sessionStorage.setItem('wct_offboard_token', obToken);
+      } catch (e) { /* storage unavailable */ }
+
       function indexRedirectUrl(basePath) {
         const params = new URLSearchParams(window.location.search);
         const forward = new URLSearchParams();
         if(params.get('onboarding')) forward.set('onboarding', params.get('onboarding'));
-        if(params.get('exit')) forward.set('exit', params.get('exit'));
+        if(params.get('offboard')) forward.set('offboard', params.get('offboard'));
         if(params.get('bu')) forward.set('bu', params.get('bu'));
         const qs = forward.toString();
         return basePath + (qs ? '?' + qs : '');

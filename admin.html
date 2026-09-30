@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="msal-browser.min.js"></script>
+<link rel="stylesheet" href="offboarding-admin.css">
 <style>
   :root{
     --navy:#101B2D;
@@ -141,8 +142,6 @@
   .btn-shortlist:hover{background:#A87F22;}
   .btn-blacklist{background:#1a1a1a;color:#fff;}
   .btn-blacklist:hover{background:#000;}
-  .btn-offboarding{background:#6B6D70;color:#fff;}
-  .btn-offboarding:hover{background:#54524F;}
   .btn-accent{background:var(--accent);color:#fff;}
   .btn-accent:hover{background:var(--accent-dark);}
   .btn-outline{background:#fff;color:var(--navy);border-color:var(--line);}
@@ -189,7 +188,6 @@
   .badge.interview_scheduled{background:#EEE8FB;color:#6A3FC0;} /* historical only, no longer selectable */
   .badge.offer_sent{background:#FCEFE0;color:#B9660E;} /* historical only, no longer selectable */
   .badge.kiv{background:var(--warn-tint);color:var(--warn);}
-  .badge.offboarding{background:#E4E4E3;color:#54524F;}
   .badge.rejected{background:var(--danger-tint);color:var(--danger);}
   .badge.hired{background:var(--ok-tint);color:var(--ok);}
   .badge.withdrawn{background:#EDEDEC;color:var(--ink-soft);}
@@ -248,14 +246,6 @@
   .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
   .field label{font-size:12.5px;font-weight:600;color:var(--navy);}
   .field input, .field select{font-family:inherit;font-size:13.5px;padding:9px 11px;border:1px solid var(--line);border-radius:7px;}
-
-  /* Offboarding — HR sign-off box on the Exit Interview section. Plain,
-     self-contained styling (not reusing a candidate-side class) since
-     admin.html and index.html deliberately keep separate smaller CSS sets —
-     see the class-mismatch trap noted elsewhere in this file's history. */
-  .sign-checkbox-row{display:flex;align-items:flex-start;gap:10px;background:#FAFAF9;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:10px 0;}
-  .sign-checkbox-row input{margin-top:3px;}
-  .exit-reason-chip{display:inline-block;background:var(--accent-tint);color:var(--accent-dark);border-radius:14px;padding:3px 10px;font-size:11.5px;margin:2px 4px 2px 0;}
 
   /* Analytics page */
   .metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;}
@@ -316,7 +306,7 @@
   input[type="password"]::-webkit-contacts-auto-fill-button{ display:none !important; visibility:hidden; pointer-events:none; position:absolute; right:0; }
   .error-banner{background:var(--danger-tint);border:1px solid #EBC3BD;color:var(--danger);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
   .success-banner{background:var(--ok-tint);border:1px solid #BEDACB;color:var(--ok);padding:10px 14px;border-radius:8px;font-size:13px;margin-top:14px;}
-  /* Small, non-blocking inline message (no native alert()) for a required
+  /* Small, non-blocking inline message (no native uiToast()) for a required
      field left blank — sits right next to the field it concerns instead of
      covering the page. Pairs with .invalid, which puts a red outline on the
      specific input/select that failed. */
@@ -373,7 +363,49 @@
     .login-card{padding:28px 22px;}
     .login-page{padding:14px;}
   }
+
+  /* ==========================================================================
+     UI refresh (Stage 2, 2026-09-30)
+     ========================================================================== */
+  button.stat{font:inherit;text-align:left;cursor:pointer;display:block;color:inherit;}
+  button.stat .n, button.stat .l{display:block;}
+  .search-box{position:relative;flex:1;min-width:220px;}
+  .search-box svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--ink-soft);pointer-events:none;}
+  .toolbar .search-box input{width:100%;padding-left:36px;font-family:inherit;font-size:13.5px;padding-top:9px;padding-bottom:9px;padding-right:12px;border:1px solid var(--line);border-radius:8px;}
+  .toolbar .search-box input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-tint);}
+  .btn-link{background:none;box-shadow:none;color:var(--info);text-decoration:underline;text-underline-offset:2px;padding-left:6px;padding-right:6px;}
+  .btn-link:hover{box-shadow:none;transform:none;background:var(--info-tint);}
+  .grant-x{background:none;border:0;color:inherit;cursor:pointer;margin-left:4px;padding:2px;border-radius:50%;display:inline-flex;}
+  .grant-x:hover{background:rgba(0,0,0,.08);}
+  .modal-close{display:inline-flex;align-items:center;justify-content:center;border-radius:8px;}
+  .modal-close:hover{background:var(--cream);}
+  .row-actions{flex-wrap:nowrap;}
+  .apps-table td.cell-ref{white-space:nowrap;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--ink-soft);}
+  .empty-state h3{font-family:'Inter',system-ui,sans-serif;}
+  /* Keep the column headings visible while scrolling long lists. */
+  @media(min-width:821px){
+    .apps-table thead th{position:sticky;top:63px;z-index:6;}
+    .apps-table thead th:first-child{border-top-left-radius:var(--radius);}
+  }
+  /* Mobile: each application becomes a card instead of a sideways-scrolling table. */
+  @media(max-width:820px){
+    table.apps-table{display:block;white-space:normal;border:0;background:none;box-shadow:none;overflow:visible;}
+    .apps-table thead{display:none;}
+    .apps-table tbody{display:grid;gap:10px;}
+    .apps-table tr.data-row{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;box-shadow:var(--shadow-sm);position:relative;}
+    .apps-table td{border:0;padding:0;font-size:13.5px;}
+    .apps-table td.cell-check{grid-row:1;grid-column:1;align-self:start;padding-top:12px;}
+    .apps-table td.cell-candidate{grid-row:1;grid-column:2;}
+    .apps-table td[data-label]{grid-column:1 / -1;display:flex;gap:10px;align-items:center;min-height:28px;}
+    .apps-table td[data-label]::before{content:attr(data-label);flex:0 0 92px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);}
+    .apps-table td.cell-actions{grid-column:1 / -1;border-top:1px solid var(--line);padding-top:10px;margin-top:6px;}
+    .apps-table .row-actions{flex-wrap:wrap;}
+    .apps-table tr.row-selected{background:var(--accent-tint);}
+    .apps-table tr.row-selected td{background:transparent;}
+    .toolbar .search-box{width:100%;}
+  }
 </style>
+<link rel="stylesheet" href="ui-refresh.css">
 </head>
 <body>
 
@@ -417,10 +449,12 @@
 <script>window.API_BASE_URL = "https://wct-job-app-api.azurewebsites.net/api";</script>
 <script>window.MS_CLIENT_ID = "f776b1ef-50fd-4c76-88a1-c4e738392ac4";</script>
 <script>window.MS_AUTHORITY = "https://login.microsoftonline.com/e41691d3-0c45-41fd-92c7-6d4d99849050";</script>
+<script src="ui-a11y.js"></script>
 <script src="api.js"></script>
 <script src="oauth.js"></script>
 <script src="logo.js"></script>
 <script src="login-bg.js"></script>
+<script src="offboarding-admin.js"></script>
 <script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);</script>
 <script>
 // ============================================================================
@@ -544,6 +578,7 @@ const NAV_ICONS = {
   permissions: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>',
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>',
   adminAccess: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  offboarding: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>',
   aiInsights: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3Z"/><path d="M5 17l.75 2.25L8 20l-2.25.75L5 23l-.75-2.25L2 20l2.25-.75L5 17Z"/><path d="M19 15l.5 1.5L21 17l-1.5.5L19 19l-.5-1.5L17 17l1.5-.5L19 15Z"/></svg>'
 };
 const PAGE_TITLES = {
@@ -553,7 +588,8 @@ const PAGE_TITLES = {
   permissions: ['Business Unit Settings', 'Cross-business-unit assignment access'],
   settings: ['Manager Settings', 'Notification email routing'],
   adminAccess: ['Admin Access', 'Manage who can sign in and what they can see'],
-  aiInsights: ['AI Insights', 'AI-generated trends and Q&A over your applicant data']
+  aiInsights: ['AI Insights', 'AI-generated trends and Q&A over your applicant data'],
+  offboarding: ['Offboarding', 'Exit interviews, department clearance and final pay']
 };
 
 // ---------------------------------------------------------------------------
@@ -565,12 +601,9 @@ const PAGE_TITLES = {
 const ICON_VIEW = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICON_PDF = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 15h6M9 11h2"/></svg>';
 const ICON_ONBOARD = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/></svg>';
-// Same "onboarding/offboarding details" slot in the row actions and the
-// detail modal switches to this icon once an application's status is
-// 'offboarding' — a door-with-exit-arrow, deliberately distinct from
-// ICON_ONBOARD's clipboard-checkmark so it reads as a different action, not
-// just a different color of the same button.
+// Door-with-exit-arrow — used for the Offboarding module (sidebar + actions).
 const ICON_OFFBOARD = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>';
+const ICON_CLOSE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
 const ICON_DELETE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>';
 const ICON_MAIL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 6 10 7 10-7"/></svg>';
 const ICON_EDIT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
@@ -606,15 +639,10 @@ function aiCardHeaderHtml(icon, color, title, subtitle){
   `;
 }
 
-// The onboarding/offboarding action is ONE slot that switches identity with
-// the application's status, rather than two separate buttons: 'hired' shows
-// the onboarding icon and opens the Onboarding Details modal; 'offboarding'
-// swaps to the exit icon and opens the Exit Interview modal instead. Any
-// other status just disables it — there's nothing to view yet either way.
+// Onboarding Details — enabled once an application is Hired. (Offboarding is
+// no longer an application status: it's the separate Offboarding module,
+// see offboarding-admin.js.)
 function onboardOffboardBtnHtml(a, extraClass){
-  if(a.status === 'offboarding'){
-    return `<button class="btn btn-icon ${extraClass||'btn-outline'}" title="Exit Interview / Offboarding Details" onclick="openExitInterviewView('${a.id}')">${ICON_OFFBOARD}</button>`;
-  }
   const isHired = a.status === 'hired';
   return `<button class="btn btn-icon ${isHired ? (extraClass||'btn-accent') : 'btn-outline'}" title="${isHired ? 'Onboarding Details' : 'Onboarding Details — available once Hired'}" ${isHired ? `onclick="openOnboardingView('${a.id}')"` : 'disabled'}>${ICON_ONBOARD}</button>`;
 }
@@ -639,22 +667,22 @@ const STATUS_LABELS = {
   // here so any existing historical record still in one of those statuses
   // displays its label correctly instead of showing "undefined".
   interview_scheduled:'Interview Scheduled', offer_sent:'Offer Sent', withdrawn:'Withdrawn',
-  kiv:'Keep In View', hired:'Hired', offboarding:'Offboarding', rejected:'Rejected', blacklisted:'Blacklisted'
+  kiv:'Keep In View', hired:'Hired', rejected:'Rejected', blacklisted:'Blacklisted'
 };
-const STATUS_OPTIONS = ['shortlisted','kiv','hired','offboarding','rejected','blacklisted'];
-// 'offboarding' is intentionally NOT routed through rpc_admin_update_status —
-// see rpc_admin_set_offboarding in add_offboarding_exit_interview.sql for why.
-// quickUpdateStatus/updateStatus/applyBulkStatus below all branch on this.
-const STATUS_VIA_DEDICATED_RPC = { offboarding: 'rpc_admin_set_offboarding' };
+const STATUS_OPTIONS = ['shortlisted','kiv','hired','rejected','blacklisted'];
 
-// Fixed reason checkboxes from the paper "Employee Exit Interview Form" —
-// order matches the two printed columns exactly, so a PDF export or a
-// two-column render can reproduce the original layout. Kept in this same
-// order/wording in app.js too (duplicated rather than shared, per this
-// project's no-build-step, no-shared-module setup).
-const EXIT_REASONS_LEFT = ['Compensation (Salary / Benefits)','Better Offer','Career Advancement','Lack of promotional opportunities','Lack of training','Working Hours'];
-const EXIT_REASONS_RIGHT = ['Conflict with colleague/superior','Relocation','Retirement','Health','Return to Study','Distance travelled to work'];
-
+// Non-blocking message (replaces uiToast() for errors / notices). Errors stay
+// on screen longer and are announced to screen readers.
+function uiToast(msg, kind){
+  let host = document.getElementById('uiToasts');
+  if(!host){ host = document.createElement('div'); host.id = 'uiToasts'; host.className = 'ob-toasts'; host.setAttribute('role','status'); host.setAttribute('aria-live','polite'); document.body.appendChild(host); }
+  const t = document.createElement('div');
+  const isErr = kind === 'err' || /error|fail|could not|couldn't|invalid|please/i.test(String(msg));
+  t.className = 'ob-toast' + (isErr ? ' err' : '');
+  t.textContent = String(msg);
+  host.appendChild(t);
+  setTimeout(() => t.remove(), isErr ? 8000 : 4500);
+}
 function esc(v){ if(v===null||v===undefined) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function showLoading(text){ document.getElementById('loadingText').innerText = text||'Working...'; document.getElementById('loadingOverlay').style.display='flex'; }
 function hideLoading(){ document.getElementById('loadingOverlay').style.display='none'; }
@@ -675,21 +703,19 @@ function hideLoading(){ document.getElementById('loadingOverlay').style.display=
 // ============================================================================
 let lastRenderedView = null;
 
-function render(){
-  const root = document.getElementById('root');
-  const appShellEl = document.getElementById('appShell');
-  if(appShellEl) appShellEl.classList.toggle('pre-auth', !adminToken);
-  renderTopbarUser();
-  const scopeEl = document.getElementById('sidebarScope');
-  if(scopeEl) scopeEl.textContent = adminToken ? (adminScope==='ALL' ? 'All Units Access' : adminScope+' Access') : '';
-
+function renderSidebarNavOnly(){
   const navEl = document.getElementById('sidebarNav');
   if(navEl){
     const newCount = stats.by_status?.submitted || 0;
-    navEl.innerHTML = adminToken ? `
+    const hr = obIsHr();
+    const obCount = (OB.tasks && OB.tasks.count) || 0;
+    const obLink = `<a class="${currentView==='offboarding'?'active':''}" onclick="setView('offboarding')" title="Offboarding">${NAV_ICONS.offboarding}<span class="nav-label">Offboarding</span>${obCount>0?`<span class="nav-badge" aria-label="${obCount} tasks waiting">${obCount}</span>`:''}</a>`;
+    // Payroll PIC / Clearance PIC / superior sessions only get Offboarding.
+    navEl.innerHTML = !adminToken ? '' : !hr ? obLink : `
       <a class="${currentView==='home'?'active':''}" onclick="setView('home')" title="Dashboard">${NAV_ICONS.home}<span class="nav-label">Dashboard</span>${newCount>0?`<span class="nav-badge">${newCount}</span>`:''}</a>
       <a class="${currentView==='analytics'?'active':''}" onclick="setView('analytics')" title="Analytics">${NAV_ICONS.analytics}<span class="nav-label">Analytics</span></a>
       <a class="${currentView==='aiInsights'?'active':''}" onclick="setView('aiInsights')" title="AI Insights">${NAV_ICONS.aiInsights}<span class="nav-label">AI Insights</span></a>
+      ${obLink}
       <a class="${currentView==='companies'?'active':''}" onclick="setView('companies')" title="Company Settings">${NAV_ICONS.companies}<span class="nav-label">Company Settings</span></a>
       ${adminScope==='ALL' ? `<a class="${currentView==='permissions'?'active':''}" onclick="setView('permissions')" title="Business Unit Settings">${NAV_ICONS.permissions}<span class="nav-label">Business Unit Settings</span></a>` : ''}
       <!-- Manager Settings retired — notification recipients are now derived
@@ -700,8 +726,19 @@ function render(){
            everything else orphaned in this project. -->
       
       ${adminScope==='ALL' ? `<a class="${currentView==='adminAccess'?'active':''}" onclick="setView('adminAccess')" title="Admin Access">${NAV_ICONS.adminAccess}<span class="nav-label">Admin Access</span></a>` : ''}
-    ` : '';
+    `;
   }
+}
+
+function render(){
+  const root = document.getElementById('root');
+  const appShellEl = document.getElementById('appShell');
+  if(appShellEl) appShellEl.classList.toggle('pre-auth', !adminToken);
+  renderTopbarUser();
+  const scopeEl = document.getElementById('sidebarScope');
+  if(scopeEl) scopeEl.textContent = adminToken ? (adminScope==='ALL' ? 'All Units Access' : adminScope==='SUPERIOR' ? 'Reviewer Access' : adminScope+' Access') : '';
+
+  renderSidebarNavOnly();
   const titleEl = document.getElementById('pageTitle');
   const subtitleEl = document.getElementById('pageSubtitle');
   if(titleEl){
@@ -737,6 +774,13 @@ function render(){
     // first — renderAnalyticsCharts() runs right after this innerHTML
     // assignment completes, not before.
     renderAnalyticsCharts();
+  } else if(currentView === 'offboarding'){
+    if(lastRenderedView !== 'offboarding' || !document.querySelector('.ob-root')){
+      obRenderPage();
+      lastRenderedView = 'offboarding';
+    } else {
+      obRenderResults();
+    }
   } else if(currentView === 'aiInsights'){
     root.innerHTML = `<div class="wrap">${aiInsightsPageView()}</div>`;
     lastRenderedView = 'aiInsights';
@@ -767,6 +811,7 @@ async function setView(view){
   if(view==='analytics'){ await loadAnalyticsData(); }
   if(view==='aiInsights'){ aiChatOpen = true; aiReviewCandidate = null; aiReviewRoleDescription = ''; aiRecommendation = ''; aiQaMessages = []; aiDocResult = ''; aiDocConsent = false; await loadAnalyticsData(); }
   if(view==='adminAccess'){ adminMgmtInviteOpen = false; adminMgmtGrantFormFor = null; await loadAdminMgmtList(); }
+  if(view==='offboarding'){ await obEnter(); lastRenderedView = null; }
   render();
 }
 
@@ -869,7 +914,7 @@ async function attemptAdminBootstrap(idToken, chosenBU){
     if(grantsErr) throw grantsErr;
     if(!g || !g.authorized){
       loginStage = 'error';
-      loginErrorMsg = "Your account isn't set up as an admin yet. Contact your Super Admin to be added.";
+      loginErrorMsg = "Your account isn't set up for this portal yet. Contact HR or your Super Admin to be added.";
       render();
       return;
     }
@@ -880,7 +925,9 @@ async function attemptAdminBootstrap(idToken, chosenBU){
       render();
       return;
     }
-    const business_unit = g.is_super_admin ? null : (chosenBU || (g.bu_grants||[])[0] || null);
+    // Immediate superiors with no grant (g.superior) get a reviewer session
+    // with no business unit — they only see checklists assigned to them.
+    const business_unit = (g.is_super_admin || g.superior) ? null : (chosenBU || (g.bu_grants||[])[0] || null);
     const { data: sessionData, error: sessionErr } = await apiTry(() => api.post('/admin/auth/session', { id_token: tokenToUse, business_unit }));
     if(sessionErr) throw sessionErr;
     adminToken = sessionData.token;
@@ -892,9 +939,7 @@ async function attemptAdminBootstrap(idToken, chosenBU){
     currentUserProfile = { name: claims.name || g.email || '', email: g.email || claims.preferred_username || '' };
     if(adminScope !== 'ALL') filterBusinessUnit = adminScope;
     loginStage = 'signin';
-    render();
-    await loadEverything();
-    await openDeepLinkedAppIfAny();
+    await startSignedInSession();
     loadCurrentUserProfile();
   } catch(e){
     loginStage = 'error';
@@ -924,15 +969,14 @@ async function doLogin(){
     api.setAdminToken(adminToken);
     sessionStorage.setItem('wct_admin_scope', adminScope);
     if(adminScope !== 'ALL') filterBusinessUnit = adminScope;
-    render();
-    await loadEverything();
-    await openDeepLinkedAppIfAny();
+    await startSignedInSession();
   } catch(e){
     document.getElementById('loginErr').innerHTML = `<div class="error-banner">Incorrect passcode.</div>`;
   }
 }
 function logout(){
   currentUserProfile = null; userMenuOpen = false;
+  OB.meta = null; OB.data = null; OB.selected.clear(); OB.drawer = null; OB.tasks = { sections: [], payroll: [], count: 0 }; OB._filtersLoaded = false; currentView = 'home';
   api.setAdminToken(null); sessionStorage.removeItem('wct_admin_scope'); adminToken=null; adminScope=null; render();
 }
 
@@ -944,11 +988,14 @@ function logout(){
 // ============================================================================
 function dashboardShellHtml(){
   return `
-    <div id="pendingSignatureBanner">${pendingSignatureBannerHtml()}</div>
     <div class="stat-row" id="dashStats">${statRowHtml()}</div>
 
     <div class="toolbar">
-      <input type="text" id="searchInput" placeholder="Search by name, reference no., email, or phone..." value="${esc(searchTerm)}" oninput="handleSearchInput(this.value)">
+      <div class="search-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <label for="searchInput" class="sr-only">Search applications</label>
+        <input type="search" id="searchInput" placeholder="Search by name, reference no., email, or phone…" value="${esc(searchTerm)}" oninput="handleSearchInput(this.value)" autocomplete="off">
+      </div>
       ${adminScope === 'ALL' ? `
         <select onchange="setFilter('business_unit', this.value)">
           <option value="">All Business Units</option>
@@ -964,45 +1011,23 @@ function dashboardShellHtml(){
       </select>
       <button class="btn btn-outline btn-sm" onclick="loadEverything()">Refresh</button>
       <button class="btn btn-outline btn-sm" onclick="exportCsv()">Export CSV</button>
+      ${(searchTerm||filterStatus||(adminScope==='ALL'&&filterBusinessUnit)) ? '<button class="btn btn-sm btn-link" onclick="clearDashboardFilters()">Clear filters</button>' : ''}
     </div>
 
     <div id="dashResults">${dashboardResultsHtml()}</div>
   `;
 }
 
-// Employees can sign their own Exit Interview section without HR ever
-// completing Section D — nothing else in the UI would otherwise surface an
-// exit interview stuck in that state, so this banner exists specifically
-// to make sure a signed-by-employee-but-not-HR record doesn't get missed.
-let pendingExitSignatureCount = 0;
-async function loadPendingExitSignatureCount(){
-  try{
-    const { data, error } = await apiTry(() => api.get('/admin/exit-interviews/pending-count', {admin: true}));
-    if(error) throw error;
-    pendingExitSignatureCount = (data && data.count) || 0;
-  } catch(e){ pendingExitSignatureCount = 0; }
-}
-function pendingSignatureBannerHtml(){
-  if(!pendingExitSignatureCount) return '';
-  return `
-    <div class="error-banner" style="background:#F2F1EE;border-color:#D8D6D0;color:#54524F;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-      <span>⚠ ${pendingExitSignatureCount} Exit Interview${pendingExitSignatureCount===1?'':'s'} signed by the employee, awaiting your HR signature.</span>
-      <button class="btn btn-outline btn-sm" style="background:#fff;" onclick="setFilter('status','offboarding')">Review Now →</button>
-    </div>
-  `;
-}
-
 function statRowHtml(){
-  const statClick = (statusVal) => `onclick="setFilter('status', '${statusVal}')" style="cursor:pointer;"`;
+  const statClick = (statusVal) => `type="button" aria-pressed="${filterStatus === statusVal}" onclick="setFilter('status', '${statusVal}')"`;
   const activeCls = (statusVal) => filterStatus === statusVal ? ' stat-active' : '';
   return `
-      <div class="stat${filterStatus===''?' stat-active':''}" ${statClick('')}><div class="n">${stats.total||0}</div><div class="l">Total Applicants</div></div>
-      <div class="stat${activeCls('submitted')}" ${statClick('submitted')}><div class="n">${stats.by_status?.submitted||0}</div><div class="l">New</div></div>
-      <div class="stat${activeCls('shortlisted')}" ${statClick('shortlisted')}><div class="n">${stats.by_status?.shortlisted||0}</div><div class="l">Shortlisted</div></div>
-      <div class="stat${activeCls('kiv')}" ${statClick('kiv')}><div class="n">${stats.by_status?.kiv||0}</div><div class="l">Keep In View</div></div>
-      <div class="stat${activeCls('hired')}" ${statClick('hired')}><div class="n">${stats.by_status?.hired||0}</div><div class="l">Hired</div></div>
-      <div class="stat${activeCls('offboarding')}" ${statClick('offboarding')}><div class="n">${stats.by_status?.offboarding||0}</div><div class="l">Offboarding</div></div>
-      <div class="stat${activeCls('rejected')}" ${statClick('rejected')}><div class="n">${stats.by_status?.rejected||0}</div><div class="l">Rejected</div></div>
+      <button class="stat${filterStatus===''?' stat-active':''}" ${statClick('')}><span class="n">${stats.total||0}</span><span class="l">Total Applicants</span></button>
+      <button class="stat${activeCls('submitted')}" ${statClick('submitted')}><span class="n">${stats.by_status?.submitted||0}</span><span class="l">New</span></button>
+      <button class="stat${activeCls('shortlisted')}" ${statClick('shortlisted')}><span class="n">${stats.by_status?.shortlisted||0}</span><span class="l">Shortlisted</span></button>
+      <button class="stat${activeCls('kiv')}" ${statClick('kiv')}><span class="n">${stats.by_status?.kiv||0}</span><span class="l">Keep In View</span></button>
+      <button class="stat${activeCls('hired')}" ${statClick('hired')}><span class="n">${stats.by_status?.hired||0}</span><span class="l">Hired</span></button>
+      <button class="stat${activeCls('rejected')}" ${statClick('rejected')}><span class="n">${stats.by_status?.rejected||0}</span><span class="l">Rejected</span></button>
   `;
 }
 
@@ -1012,9 +1037,9 @@ function dashboardResultsHtml(){
 
   const rows = applications.map(a => `
     <tr class="data-row ${selectedIds.has(a.id)?'row-selected':''}">
-      <td><input type="checkbox" class="row-check" ${selectedIds.has(a.id)?'checked':''} onchange="toggleSelectRow('${a.id}', this.checked)"></td>
-      <td>${esc(a.reference_no)}</td>
-      <td>
+      <td class="cell-check"><input type="checkbox" class="row-check" aria-label="Select ${esc(a.name_nric||a.reference_no)}" ${selectedIds.has(a.id)?'checked':''} onchange="toggleSelectRow('${a.id}', this.checked)"></td>
+      <td data-label="Reference" class="cell-ref">${esc(a.reference_no)}</td>
+      <td class="cell-candidate">
         <div class="name-cell">
           ${a.profile_picture_url ? `<img class="pfp" src="${a.profile_picture_url}">` : `<div class="pfp pfp-placeholder">${esc((a.name_nric||'?').trim().charAt(0).toUpperCase())}</div>`}
           <div>
@@ -1023,9 +1048,9 @@ function dashboardResultsHtml(){
           </div>
         </div>
       </td>
-      <td style="position:relative;">
+      <td data-label="Unit" style="position:relative;">
         ${adminScope==='ALL' ? `
-          <span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);cursor:pointer;" title="Click to transfer to another business unit" onclick="toggleTransferPanel('${a.id}')">${esc(a.business_unit)} ▾</span>
+          <span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);cursor:pointer;" title="Click to transfer to another business unit" aria-haspopup="true" aria-expanded="${openTransferPanelId === a.id}" onclick="toggleTransferPanel('${a.id}')">${esc(a.business_unit)} ▾</span>
           ${openTransferPanelId === a.id ? `
             <div class="status-panel">
               ${['E&C','Land','Mall'].map(u=>`<button class="status-panel-btn ${a.business_unit===u?'current':''}" onclick="quickTransferBusinessUnit('${a.id}', '${u}')">${u}${a.business_unit===u?' ✓':''}</button>`).join('')}
@@ -1033,18 +1058,18 @@ function dashboardResultsHtml(){
           ` : ''}
         ` : esc(a.business_unit)}
       </td>
-      <td>${esc(a.position_applying)||'<span style="color:var(--ink-soft);">—</span>'}</td>
-      <td>${a.company_id ? esc(companyNameById[a.company_id] || '—') : '<span style="color:var(--ink-soft);">—</span>'}</td>
-      <td style="position:relative;">
-        <span class="badge ${a.status}" style="cursor:pointer;" onclick="toggleStatusPanel('${a.id}')">${STATUS_LABELS[a.status]||a.status} ▾</span>
+      <td data-label="Position">${esc(a.position_applying)||'<span style="color:var(--ink-soft);">—</span>'}</td>
+      <td data-label="Company">${a.company_id ? esc(companyNameById[a.company_id] || '—') : '<span style="color:var(--ink-soft);">—</span>'}</td>
+      <td data-label="Status" style="position:relative;">
+        <span class="badge ${a.status}" style="cursor:pointer;" title="Change status" aria-haspopup="true" aria-expanded="${openStatusPanelId === a.id}" onclick="toggleStatusPanel('${a.id}')">${STATUS_LABELS[a.status]||a.status} ▾</span>
         ${openStatusPanelId === a.id ? `
           <div class="status-panel">
             ${STATUS_OPTIONS.map(s=>`<button class="status-panel-btn ${a.status===s?'current':''}" onclick="quickUpdateStatus('${a.id}', '${s}')">${STATUS_LABELS[s]}${a.status===s?' ✓':''}</button>`).join('')}
           </div>
         ` : ''}
       </td>
-      <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
-      <td>${rowActionsHtml(a)}</td>
+      <td data-label="Submitted">${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'}) : '—'}</td>
+      <td class="cell-actions">${rowActionsHtml(a)}</td>
     </tr>
   `).join('');
 
@@ -1063,10 +1088,10 @@ function dashboardResultsHtml(){
     </div>
     ` : ''}
 
-    ${applications.length===0 ? `<div class="empty-state">No applications match your search/filters.</div>` : `
-      <table>
+    ${applications.length===0 ? `<div class="empty-state"><h3 style="font-size:16px;margin-bottom:6px;">No applications match</h3><p style="margin:0 0 12px;">Try a different search or clear the filters.</p>${(searchTerm||filterStatus||(adminScope==='ALL'&&filterBusinessUnit)) ? '<button class="btn btn-outline btn-sm" onclick="clearDashboardFilters()">Clear filters</button>' : ''}</div>` : `
+      <table class="apps-table">
         <thead><tr>
-          <th style="width:36px;"><input type="checkbox" class="row-check" ${allOnPageSelected?'checked':''} onchange="toggleSelectAll(this.checked)" title="Select all on this page"></th>
+          <th style="width:36px;"><input type="checkbox" class="row-check" aria-label="Select all on this page" ${allOnPageSelected?'checked':''} onchange="toggleSelectAll(this.checked)" title="Select all on this page"></th>
           <th>Reference</th><th>Candidate</th><th>Unit</th><th>Position</th><th>Company</th><th>Status</th><th>Submitted</th><th>Actions</th>
         </tr></thead>
         <tbody>${rows}</tbody>
@@ -1084,8 +1109,6 @@ function dashboardResultsHtml(){
 }
 
 function renderDashboardResults(){
-  const bannerEl = document.getElementById('pendingSignatureBanner');
-  if(bannerEl) bannerEl.innerHTML = pendingSignatureBannerHtml();
   const statsEl = document.getElementById('dashStats');
   if(statsEl) statsEl.innerHTML = statRowHtml();
   const resultsEl = document.getElementById('dashResults');
@@ -1138,6 +1161,11 @@ function positionOpenStatusPanel(){
 window.addEventListener('scroll', function(){ if(openStatusPanelId || openTransferPanelId) positionOpenStatusPanel(); }, true);
 window.addEventListener('resize', function(){ if(openStatusPanelId || openTransferPanelId) positionOpenStatusPanel(); });
 
+function clearDashboardFilters(){
+  searchTerm = ''; filterStatus = ''; if(adminScope === 'ALL') filterBusinessUnit = '';
+  currentPage = 1; selectedIds.clear();
+  lastRenderedView = null; render(); loadApplications();
+}
 function handleSearchInput(val){
   searchTerm = val;
   clearTimeout(searchDebounceTimer);
@@ -1178,29 +1206,22 @@ function clearSelection(){ selectedIds.clear(); render(); }
 
 async function applyBulkStatus(){
   const status = document.getElementById('bulkStatusSelect').value;
-  if(!status){ alert('Please choose a status to apply first.'); return; }
+  if(!status){ uiToast('Please choose a status to apply first.'); return; }
   const count = selectedIds.size;
   if(status === 'blacklisted' && !confirm(`Blacklist ${count} candidate(s)? They will be signed out immediately and blocked from logging in or applying again using this email.`)) return;
-  if(status === 'offboarding' && !confirm(`Move ${count} application(s) to "Offboarding"? Each candidate will be prompted to complete their Exit Interview Form.`)) return;
-  if(status !== 'offboarding' && !confirm(`Change status to "${STATUS_LABELS[status]}" for ${count} selected application(s)?`)) return;
+  if(status !== 'blacklisted' && !confirm(`Change status to "${STATUS_LABELS[status]}" for ${count} selected application(s)?`)) return;
   showLoading(`Updating ${count} application(s)...`);
   let failed = 0;
   for(const id of Array.from(selectedIds)){
     try{
-      let result;
-      if(STATUS_VIA_DEDICATED_RPC[status]){
-        result = await apiTry(() => api.post(`/admin/applications/${id}/offboarding`, {}, {admin: true}));
-      } else {
-        result = await apiTry(() => api.post(`/admin/applications/${id}/status`, {status}, {admin: true}));
-      }
-      const { error } = result;
+      const { error } = await apiTry(() => api.post(`/admin/applications/${id}/status`, {status}, {admin: true}));
       if(error) failed++;
     } catch(e){ failed++; }
   }
   selectedIds.clear();
   hideLoading();
   await Promise.all([loadApplications(), loadStats()]);
-  if(failed) alert(`${failed} of ${count} update(s) failed — please check those applications individually.`);
+  if(failed) uiToast(`${failed} of ${count} update(s) failed — please check those applications individually.`);
 }
 
 async function bulkDelete(){
@@ -1217,7 +1238,7 @@ async function bulkDelete(){
   selectedIds.clear();
   hideLoading();
   await Promise.all([loadApplications(), loadStats()]);
-  if(failed) alert(`${failed} of ${count} deletion(s) failed.`);
+  if(failed) uiToast(`${failed} of ${count} deletion(s) failed.`);
 }
 
 async function bulkExportCsv(){
@@ -1227,7 +1248,7 @@ async function bulkExportCsv(){
     if(error) throw error;
     const filtered = (data||[]).filter(a => selectedIds.has(a.id));
     downloadApplicationsCsv(filtered, `wct-applications-selected-export-${new Date().toISOString().slice(0,10)}.csv`);
-  } catch(e){ alert('Error exporting: '+e.message); }
+  } catch(e){ uiToast('Error exporting: '+e.message); }
   hideLoading();
 }
 
@@ -1245,7 +1266,7 @@ async function loadCompanyLookup(){
 
 async function loadEverything(){
   showLoading('Loading applications...');
-  await Promise.all([loadApplications(), loadStats(), loadCompanyLookup(), loadPendingExitSignatureCount()]);
+  await Promise.all([loadApplications(), loadStats(), loadCompanyLookup()]);
   hideLoading();
 }
 
@@ -1269,7 +1290,7 @@ async function loadApplications(){
   } catch(e){
     if(mySeq !== searchRequestSeq) return;
     if(String(e.message||'').includes('expired')||String(e.message||'').includes('Session')){ logout(); }
-    else alert('Error loading applications: '+e.message);
+    else uiToast('Error loading applications: '+e.message);
   }
 }
 
@@ -1328,29 +1349,21 @@ async function quickTransferBusinessUnit(id, businessUnit){
     const { error } = await apiTry(() => api.patch(`/admin/applications/${id}`, {business_unit: businessUnit}, {admin: true}));
     if(error) throw error;
     await Promise.all([loadApplications(), loadStats()]);
-  } catch(e){ alert('Error transferring: '+e.message); loadApplications(); }
+  } catch(e){ uiToast('Error transferring: '+e.message); loadApplications(); }
 }
 
 async function quickUpdateStatus(id, status){
   const label = STATUS_LABELS[status] || status;
   const warnMsg = status === 'blacklisted'
     ? 'Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email.'
-    : status === 'offboarding'
-    ? `Move this application to "Offboarding"? The candidate will be prompted to complete their Exit Interview Form.`
     : `Change this application's status to "${label}"? The candidate will be notified by email.`;
   if(!confirm(warnMsg)){ openStatusPanelId = null; loadApplications(); return; }
   openStatusPanelId = null;
   try{
-    let result;
-    if(STATUS_VIA_DEDICATED_RPC[status]){
-      result = await apiTry(() => api.post(`/admin/applications/${id}/offboarding`, {}, {admin: true}));
-    } else {
-      result = await apiTry(() => api.post(`/admin/applications/${id}/status`, {status}, {admin: true}));
-    }
-    const { error } = result;
+    const { error } = await apiTry(() => api.post(`/admin/applications/${id}/status`, {status}, {admin: true}));
     if(error) throw error;
     await Promise.all([loadApplications(), loadStats()]);
-  } catch(e){ alert('Error: '+e.message); loadApplications(); }
+  } catch(e){ uiToast('Error: '+e.message); loadApplications(); }
 }
 
 async function confirmDelete(id, name){
@@ -1359,7 +1372,7 @@ async function confirmDelete(id, name){
     const { error } = await apiTry(() => api.del(`/admin/applications/${id}`, {admin: true}));
     if(error) throw error;
     await Promise.all([loadApplications(), loadStats()]);
-  } catch(e){ alert('Error deleting: '+e.message); }
+  } catch(e){ uiToast('Error deleting: '+e.message); }
 }
 
 async function exportCsv(){
@@ -1368,7 +1381,7 @@ async function exportCsv(){
     const { data, error } = await apiTry(() => api.get('/admin/export', {admin: true}));
     if(error) throw error;
     downloadApplicationsCsv(data||[], `wct-applications-full-export-${new Date().toISOString().slice(0,10)}.csv`);
-  } catch(e){ alert('Error exporting: '+e.message); }
+  } catch(e){ uiToast('Error exporting: '+e.message); }
   hideLoading();
 }
 
@@ -1462,10 +1475,6 @@ function downloadApplicationsCsv(data, filename){
 // ============================================================================
 let otherBuMatches = [];
 let assignableCompanies = [];
-let exitInterviewData = null; // this application's exit_interviews row, if any — fetched
-// best-effort in openDetail() so the Exit Interview section can render whenever
-// one exists, not just while status==='offboarding' (a later status change
-// shouldn't hide historical exit interview data).
 
 async function openDetail(id){
   try{
@@ -1483,14 +1492,9 @@ async function openDetail(id){
       const { data: compData } = await apiTry(() => api.get('/admin/companies', {admin: true}));
       assignableCompanies = compData || [];
     } catch(e){ assignableCompanies = []; }
-    // Exit interview data is no longer fetched/shown here — it lives in its
-    // own dedicated modal now (openExitInterviewView), opened via the
-    // onboarding/offboarding icon, exactly like Onboarding Details already
-    // works, rather than embedded under the job application details where
-    // it read as confusing/misplaced.
 
     render();
-  } catch(e){ alert('Error: '+e.message); }
+  } catch(e){ uiToast('Error: '+e.message); }
 }
 function closeDetail(){
   selectedApp=null; editingApp=false;
@@ -1513,233 +1517,6 @@ function fmtMoney(v){
 }
 
 // ============================================================================
-// EXIT INTERVIEW / OFFBOARDING — digitized version of the paper "Employee
-// Exit Interview Form". Candidate fills Sections A–C and signs (app.js);
-// HR reviews and signs Section D here, which triggers the notify-candidate
-// flow (see notify_power_automate_on_exit_interview_signed in the migration).
-// ============================================================================
-function exitInterviewSectionHtml(a){
-  const ei = exitInterviewData;
-  if(!ei || !ei.employee_signed){
-    return `
-      <div class="detail-section">
-        <h4>Employee Exit Interview Form</h4>
-        <div class="hint">The candidate hasn't completed and signed this form yet. It becomes available to them as soon as this application's status is "Offboarding".</div>
-      </div>
-    `;
-  }
-  const reasons = ei.reasons || [];
-  const reasonChips = reasons.length
-    ? reasons.map(r=>`<span class="exit-reason-chip">${esc(r)}</span>`).join('')
-    : '<span style="color:var(--ink-soft);">None selected</span>';
-
-  return `
-    <div class="detail-section">
-      <h4>Employee Exit Interview Form</h4>
-      ${drow('Position', ei.position)}
-      ${drow('Immediate Superior', ei.immediate_superior)}
-      ${drow('Dept/Site', ei.dept_site)}
-      ${drow('Date Joined', fmtDate(ei.date_joined))}
-      ${drow('Notice Period', ei.notice_period)}
-      ${drow('Official Last Day of Employment', fmtDate(ei.official_last_day))}
-      ${drow('Actual Last Day of Employment', fmtDate(ei.actual_last_day))}
-      <div class="drow"><div class="k">Reason(s) for Leaving</div><div class="v">${reasonChips}</div></div>
-      ${ei.reasons_other_specify ? drow('Other Reason Specified', ei.reasons_other_specify) : ''}
-      ${drow('Comments / Suggestions', ei.comments)}
-      ${drow('Employee Signature', `${ei.employee_signed_name} — signed ${new Date(ei.employee_signed_at).toLocaleString()}`)}
-
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line);">
-        <div style="font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin-bottom:8px;">Section D — For HRD (HQ) Use Only</div>
-        ${ei.hr_signed ? `
-          ${drow('Signed By', `${ei.hr_signed_name} (${ei.hr_signed_position})`)}
-          ${drow('Signed At', new Date(ei.hr_signed_at).toLocaleString())}
-          <div class="success-banner">Signed — the candidate has been notified with a link to download their signed copy.</div>
-        ` : `
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-            <div class="field"><label>Name in Full</label><input type="text" id="hrSignName" placeholder="Your full name"></div>
-            <div class="field"><label>Position</label><input type="text" id="hrSignPosition" placeholder="Your position/title"></div>
-          </div>
-          <div class="sign-checkbox-row">
-            <input type="checkbox" id="hrSignConfirm">
-            <label for="hrSignConfirm">I confirm I am signing this Exit Interview Form on behalf of HRD (HQ). Today's date/time will be recorded as the signing date — no physical signature is collected.</label>
-          </div>
-          <div id="hrSignErr"></div>
-          <button class="btn btn-primary btn-sm" onclick="hrSignExitInterview('${a.id}')">Sign Exit Interview Form</button>
-        `}
-      </div>
-      <div style="margin-top:12px;">
-        <button class="btn btn-outline btn-sm" onclick="exportExitInterviewPdf('${a.id}')">📄 Export Exit Interview PDF</button>
-      </div>
-    </div>
-  `;
-}
-
-async function hrSignExitInterview(applicationId){
-  const name = document.getElementById('hrSignName').value.trim();
-  const position = document.getElementById('hrSignPosition').value.trim();
-  const confirmed = document.getElementById('hrSignConfirm').checked;
-  if(!name || !position){
-    document.getElementById('hrSignErr').innerHTML = `<div class="error-banner">Name and position are both required.</div>`;
-    return;
-  }
-  if(!confirmed){
-    document.getElementById('hrSignErr').innerHTML = `<div class="error-banner">Please check the confirmation box to sign.</div>`;
-    return;
-  }
-  if(!confirm('Sign this Exit Interview Form? This is final — the candidate will be emailed a link to their signed copy immediately.')) return;
-  showLoading('Signing...');
-  try{
-    const { data, error } = await apiTry(() => api.post(`/admin/exit-interviews/${applicationId}/sign`, { hr_name: name, hr_position: position }, {admin: true}));
-    if(error) throw error;
-    exitInterviewData = data;
-    await loadPendingExitSignatureCount();
-    hideLoading();
-    // Exit Interview / Offboarding Details lives in its own modal now (not
-    // redrawn by the general render() the way the old embedded section was,
-    // since that only re-renders the job application detail modal) — redraw
-    // it directly so the newly-signed state shows immediately.
-    if(document.getElementById('exitInterviewModalRoot')) renderExitInterviewModal();
-    render();
-  } catch(e){ hideLoading(); document.getElementById('hrSignErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
-}
-
-function exportExitInterviewPdf(applicationId){
-  const a = exitInterviewAppInfo || applications.find(x=>x.id===applicationId) || selectedApp;
-  const ei = exitInterviewData;
-  if(!ei){ alert('No exit interview data loaded.'); return; }
-  const html = buildExitInterviewPdfHtml(a, ei);
-  const win = window.open('', '_blank');
-  if(!win){ alert('Please allow pop-ups for this site to generate the PDF.'); return; }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => setTimeout(() => win.print(), 400);
-}
-
-// Visually mirrors the actual paper form: light-blue section header bars,
-// checkbox grid for Section B, ruled lines for Section C, and a two-column
-// signature block for both Employee and HRD sign-off — same "digitized,
-// no wet signature" pattern used throughout (checkbox + typed name + a
-// server-recorded timestamp stand in for a signature).
-function buildExitInterviewPdfHtml(a, ei){
-  const chk = (checked) => `<span style="display:inline-block;width:13px;height:13px;border:1.5px solid #333;margin-right:8px;vertical-align:middle;text-align:center;line-height:11px;font-size:11px;font-weight:bold;">${checked?'✓':''}</span>`;
-  const reasons = ei.reasons || [];
-  const reasonRow = (label) => `<div style="padding:4px 0;font-size:10.5px;">${chk(reasons.includes(label))}${esc(label)}</div>`;
-
-  return `
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Exit Interview — ${esc(a.reference_no||'')} — WCT Group</title>
-<style>
-  @page{ size:A4; margin:14mm; }
-  *{box-sizing:border-box;}
-  body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;margin:0;line-height:1.5;}
-  .outer{border:2px solid #000;padding:0;}
-  .top-bar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px 6px;}
-  .top-bar img.logo{height:44px;}
-  .top-bar .priv{font-weight:bold;font-size:10px;}
-  .form-title{text-align:center;font-size:19px;font-weight:800;margin:2px 0 14px;}
-  .section-bar{background:#CFE3F2;font-weight:bold;font-size:10.5px;text-transform:uppercase;padding:6px 14px;border-top:1px solid #000;border-bottom:1px solid #000;}
-  .section-body{padding:14px 18px;}
-  .kv-row{display:flex;margin-bottom:10px;font-size:10.5px;}
-  .kv-row .kv-item{width:50%;display:flex;}
-  .kv-row .kv-lbl{width:150px;flex-shrink:0;}
-  .kv-row .kv-line{flex:1;border-bottom:1px solid #333;padding-bottom:2px;min-height:14px;}
-  .reasons-cols{display:flex;gap:30px;}
-  .reasons-cols > div{flex:1;}
-  .comments-lines div{border-bottom:1px solid #333;height:22px;margin-bottom:4px;}
-  .sig-row{display:flex;gap:60px;margin-top:26px;}
-  .sig-block{flex:1;}
-  .sig-line{border-bottom:1px solid #333;height:24px;margin-bottom:4px;font-weight:bold;padding-bottom:2px;}
-  .sig-cap{font-size:9.5px;color:#333;}
-  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
-  .print-bar button{font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
-  @media print{ .print-bar{display:none;} }
-</style>
-</head>
-<body>
-  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
-
-  <div class="outer">
-    <div class="top-bar">
-      <img class="logo" src="${WCT_LOGO_DATA_URI}">
-      <div class="priv">PRIVATE &amp; CONFIDENTIAL</div>
-    </div>
-    <div class="form-title">EMPLOYEE EXIT INTERVIEW FORM</div>
-
-    <div class="section-bar">A: Employee Details</div>
-    <div class="section-body">
-      <div class="kv-row">
-        <div class="kv-item"><span class="kv-lbl">Name (as per NRIC) :</span><span class="kv-line">${fmt(a.name_nric)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Position :</span><span class="kv-line">${fmt(ei.position)}</span></div>
-      </div>
-      <div class="kv-row">
-        <div class="kv-item"><span class="kv-lbl">Immediate Superior :</span><span class="kv-line">${fmt(ei.immediate_superior)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Dept/Site :</span><span class="kv-line">${fmt(ei.dept_site)}</span></div>
-      </div>
-      <div class="kv-row">
-        <div class="kv-item"><span class="kv-lbl">Date Joined :</span><span class="kv-line">${fmtDate(ei.date_joined)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Notice Period :</span><span class="kv-line">${fmt(ei.notice_period)}</span></div>
-      </div>
-      <div class="kv-row">
-        <div class="kv-item"><span class="kv-lbl">Official Last Day of Employment:</span><span class="kv-line">${fmtDate(ei.official_last_day)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Actual Last Day of Employment:</span><span class="kv-line">${fmtDate(ei.actual_last_day)}</span></div>
-      </div>
-    </div>
-
-    <div class="section-bar">B: Please indicate reason(s) below, which contributed to your decision to resign from your current position</div>
-    <div class="section-body">
-      <div class="reasons-cols">
-        <div>${EXIT_REASONS_LEFT.map(reasonRow).join('')}</div>
-        <div>${EXIT_REASONS_RIGHT.map(reasonRow).join('')}</div>
-      </div>
-      <div style="margin-top:6px;font-size:10.5px;">${chk(reasons.includes('Others'))} Others, please specify</div>
-      <div style="border-bottom:1px solid #333;min-height:16px;margin:6px 0 2px 22px;">${fmt(ei.reasons_other_specify)}</div>
-    </div>
-
-    <div class="section-bar">C: Employee's Comment(s) / Suggestion(s) for Improvement(s)</div>
-    <div class="section-body">
-      <div class="comments-lines">
-        ${(String(ei.comments||'').match(/.{1,95}(\s|$)/g) || ['']).slice(0,4).map(line=>`<div>${esc(line.trim())}</div>`).join('')}
-      </div>
-      <div class="sig-row">
-        <div class="sig-block">
-          <div class="sig-line">${fmt(ei.employee_signed_name)}</div>
-          <div class="sig-cap">Employee Signature (digitally confirmed, no wet signature)</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line">${ei.employee_signed_at ? fmtDate(ei.employee_signed_at) : '—'}</div>
-          <div class="sig-cap">Date</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section-bar">D: For HRD (HQ) Use Only — To Be Completed by HR Personnel</div>
-    <div class="section-body">
-      <div class="sig-row">
-        <div class="sig-block">
-          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_name) : '—'}</div>
-          <div class="sig-cap">Signature (digitally confirmed, no wet signature)</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_name) : '—'}</div>
-          <div class="sig-cap">Name in Full</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_position) : '—'}</div>
-          <div class="sig-cap">Position</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line">${ei.hr_signed ? fmtDate(ei.hr_signed_at) : '—'}</div>
-          <div class="sig-cap">Date</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</body></html>
-  `;
-}
-
-// ============================================================================
 // JOB POSTINGS — full page, reached via the header nav
 // ============================================================================
 // ============================================================================
@@ -1754,7 +1531,7 @@ async function loadSettingsForPage(){
     const { data, error } = await apiTry(() => api.get('/admin/settings', {admin: true}));
     if(error) throw error;
     settingsData = data || {};
-  } catch(e){ alert('Error loading settings: '+e.message); settingsData = {}; }
+  } catch(e){ uiToast('Error loading settings: '+e.message); settingsData = {}; }
 }
 
 function settingsPageView(){
@@ -1824,7 +1601,7 @@ async function loadPermissionsForPage(){
     const { data, error } = pmResult;
     if(error) throw error;
     permissionMatrix = data || [];
-  } catch(e){ alert('Error loading permissions: '+e.message); permissionMatrix = []; }
+  } catch(e){ uiToast('Error loading permissions: '+e.message); permissionMatrix = []; }
 }
 
 function permissionsPageView(){
@@ -1983,7 +1760,7 @@ async function savePermissionChanges(){
 // ============================================================================
 // ANALYTICS — built entirely from data already fetched for other purposes
 // (rpc_admin_export_all for CSV, rpc_admin_get_stats for the stat row,
-// rpc_admin_count_pending_exit_signatures for the offboarding banner), so
+// ), so
 // this page needed zero new backend endpoints. All charts are computed
 // client-side from that same raw row data. Business-unit-scoped admins only
 // ever receive their own unit's rows from rpc_admin_export_all, so this
@@ -2047,7 +1824,7 @@ async function generateAiInsights(){
   renderAnalyticsAiSection();
   try{
     const m = analyticsMetrics();
-    const statusOrder = ['submitted','shortlisted','kiv','hired','offboarding','rejected','blacklisted'];
+    const statusOrder = ['submitted','shortlisted','kiv','hired','rejected','blacklisted'];
     const statusCounts = {};
     statusOrder.forEach(s => { statusCounts[STATUS_LABELS[s]||s] = analyticsRows.filter(r=>r.status===s).length; });
     const summaryData = {
@@ -2056,7 +1833,6 @@ async function generateAiInsights(){
       hired_count: m.hired,
       submitted_count: m.submittedCount,
       avg_days_to_hire_approx: m.avgDays,
-      currently_offboarding: m.offboarding,
       status_breakdown: statusCounts,
       referred_count: analyticsRows.filter(r=>r.referral_person==='Yes').length,
       not_referred_count: analyticsRows.filter(r=>r.referral_person!=='Yes').length,
@@ -2418,7 +2194,7 @@ function aiQaPanelHtml(){
   if(!aiReviewCandidate) return '';
   return `
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line);">
-      <h4 style="margin:0 0 8px;font-size:13.5px;">💬 Ask AI About This Candidate</h4>
+      <h4 style="margin:0 0 8px;font-size:13.5px;">Ask AI About This Candidate</h4>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
         ${AI_QA_QUICK_QUESTIONS.map(q => `<button type="button" class="btn btn-outline btn-sm" style="font-size:11.5px;padding:5px 10px;" onclick="askAiQaQuickQuestion('${esc(q).replace(/'/g,"\\'")}')">${esc(q)}</button>`).join('')}
       </div>
@@ -2595,8 +2371,7 @@ async function loadAnalyticsData(){
     const { data, error } = await apiTry(() => api.get('/admin/export', {admin: true}));
     if(error) throw error;
     analyticsRows = data || [];
-    await loadPendingExitSignatureCount();
-  } catch(e){ alert('Error loading analytics: '+e.message); analyticsRows = []; }
+  } catch(e){ uiToast('Error loading analytics: '+e.message); analyticsRows = []; }
   hideLoading();
 }
 
@@ -2605,7 +2380,6 @@ function analyticsMetrics(){
   const total = rows.length;
   const submittedRows = rows.filter(r => r.status !== 'draft');
   const hired = rows.filter(r => r.status === 'hired').length;
-  const offboarding = rows.filter(r => r.status === 'offboarding').length;
   const hireRate = submittedRows.length ? Math.round((hired / submittedRows.length) * 100) : 0;
 
   // Average days from submission to last update, for hired candidates only —
@@ -2631,7 +2405,7 @@ function analyticsMetrics(){
   const assignableRows = rows.filter(r => r.status !== 'draft');
   const assignedCount = assignableRows.filter(r => r.company_id).length;
 
-  return { total, submittedCount: submittedRows.length, hired, offboarding, hireRate, avgDays, flaggedCount, assignedCount, unassignedCount: assignableRows.length - assignedCount };
+  return { total, submittedCount: submittedRows.length, hired, hireRate, avgDays, flaggedCount, assignedCount, unassignedCount: assignableRows.length - assignedCount };
 }
 
 function analyticsPageView(){
@@ -2641,7 +2415,7 @@ function analyticsPageView(){
     <div class="toolbar" style="margin-bottom:16px;">
       <div style="flex:1;font-size:13px;color:var(--ink-soft);">Export this dashboard for a report, board update, or offline record.</div>
       <button class="btn btn-outline btn-sm" onclick="exportAnalyticsCsv()">⬇ Export CSV</button>
-      <button class="btn btn-primary btn-sm" onclick="exportAnalyticsPdf()">📄 Export PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="exportAnalyticsPdf()">${ICON_PDF} Export PDF</button>
     </div>
 
     <div class="metric-grid">
@@ -2658,11 +2432,6 @@ function analyticsPageView(){
         <div class="metric-label">Avg. Days to Hire</div>
         <div class="metric-value">${m.avgDays===null ? '—' : m.avgDays}</div>
         <div class="metric-note">Approximate — based on last status update, not a dedicated hire date</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Currently Offboarding</div>
-        <div class="metric-value">${m.offboarding}</div>
-        ${pendingExitSignatureCount>0 ? `<div class="metric-note" style="color:var(--warn);">${pendingExitSignatureCount} awaiting your HR signature</div>` : ''}
       </div>
       <div class="metric-card">
         <div class="metric-label">Compliance Flags</div>
@@ -2717,8 +2486,8 @@ function renderAnalyticsCharts(){
   Chart.defaults.color = '#6B6D70';
 
   // --- By status ---
-  const statusOrder = ['submitted','shortlisted','kiv','hired','offboarding','rejected','blacklisted'];
-  const statusColors = { submitted:'#2E5AAC', shortlisted:'#8A6D1F', kiv:'#B9770E', hired:'#1E7A46', offboarding:'#6B6D70', rejected:'#C0392B', blacklisted:'#1a1a1a' };
+  const statusOrder = ['submitted','shortlisted','kiv','hired','rejected','blacklisted'];
+  const statusColors = { submitted:'#2E5AAC', shortlisted:'#8A6D1F', kiv:'#B9770E', hired:'#1E7A46', rejected:'#C0392B', blacklisted:'#1a1a1a' };
   const statusCounts = statusOrder.map(s => rows.filter(r=>r.status===s).length);
   const statusLabels = statusOrder.map(s => STATUS_LABELS[s] || s);
   const elStatus = document.getElementById('chartByStatus');
@@ -2814,14 +2583,13 @@ function exportAnalyticsCsv(){
   addRow(['Hired', m.hired]);
   addRow(['Submitted (non-draft)', m.submittedCount]);
   addRow(['Avg. Days to Hire (approx.)', m.avgDays===null?'N/A':m.avgDays]);
-  addRow(['Currently Offboarding', m.offboarding]);
   addRow(['Compliance Flags', m.flaggedCount]);
   addRow(['Assigned to Company/Entity', m.assignedCount]);
   addRow(['Unassigned', m.unassignedCount]);
   addRow([]);
 
   addRow(['Status','Count']);
-  const statusOrder = ['submitted','shortlisted','kiv','hired','offboarding','rejected','blacklisted'];
+  const statusOrder = ['submitted','shortlisted','kiv','hired','rejected','blacklisted'];
   statusOrder.forEach(s => addRow([STATUS_LABELS[s]||s, rows.filter(r=>r.status===s).length]));
   addRow([]);
 
@@ -2906,7 +2674,6 @@ function exportAnalyticsPdf(){
     <div class="metric-box"><div class="lbl">Total Applications</div><div class="val">${m.total}</div></div>
     <div class="metric-box"><div class="lbl">Hire Rate</div><div class="val">${m.hireRate}%</div></div>
     <div class="metric-box"><div class="lbl">Avg. Days to Hire</div><div class="val">${m.avgDays===null?'—':m.avgDays}</div></div>
-    <div class="metric-box"><div class="lbl">Offboarding</div><div class="val">${m.offboarding}</div></div>
     <div class="metric-box"><div class="lbl">Compliance Flags</div><div class="val">${m.flaggedCount}</div></div>
   </div>
 
@@ -2925,7 +2692,7 @@ function exportAnalyticsPdf(){
 </body></html>
   `;
   const win = window.open('', '_blank');
-  if(!win){ alert('Please allow pop-ups for this site to generate the PDF.'); return; }
+  if(!win){ uiToast('Please allow pop-ups for this site to generate the PDF.'); return; }
   win.document.open();
   win.document.write(html);
   win.document.close();
@@ -2955,10 +2722,10 @@ async function loadAdminMgmtList(){
       if(!byId[row.admin_user_id]){
         byId[row.admin_user_id] = { id: row.admin_user_id, email: row.email, display_name: row.display_name, is_active: row.is_active, linked: row.linked, grants: [] };
       }
-      if(row.grant_id){ byId[row.admin_user_id].grants.push({ id: row.grant_id, role: row.role, business_unit: row.business_unit }); }
+      if(row.grant_id){ byId[row.admin_user_id].grants.push({ id: row.grant_id, role: row.role, business_unit: row.business_unit, department_id: row.department_id, department_name: row.department_name }); }
     });
     adminMgmtList = Object.values(byId);
-  } catch(e){ alert('Error loading admin list: '+e.message); adminMgmtList = []; }
+  } catch(e){ uiToast('Error loading admin list: '+e.message); adminMgmtList = []; }
 }
 
 function renderAdminAccessShell(){
@@ -2977,7 +2744,7 @@ function adminAccessPageView(){
     <div class="stat-row">
       <div class="stat" style="flex:none;min-width:auto;">
         <h2 style="font-size:20px;margin:0;">Admin Access</h2>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Invite admins by their @wct.my email, then grant Super Admin or Business Unit Admin access. A person can hold more than one Business Unit grant.</div>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Invite staff by their @wct.my email, then grant access: Business Unit Admin (HR), Super Admin, or the offboarding-only roles — Payroll PIC (per business unit) and Clearance PIC (per business unit and department). A person can hold several grants.</div>
       </div>
     </div>
 
@@ -3010,7 +2777,15 @@ function adminMgmtResultsHtml(){
   return adminMgmtList.map(a => adminMgmtCardHtml(a)).join('');
 }
 
-const ROLE_LABELS = { super_admin: 'Super Admin', bu_admin: 'Business Unit Admin', entity_admin: 'Entity Admin (Phase 2)' };
+const ROLE_LABELS = { super_admin: 'Super Admin', bu_admin: 'Business Unit Admin (HR)', payroll_pic: 'Payroll PIC', clearance_pic: 'Clearance PIC', entity_admin: 'Entity Admin (Phase 2)' };
+const CLEARANCE_DEPARTMENTS = [[1,'Reporting Unit'],[2,'IT'],[3,'Administration'],[4,'Finance'],[5,'Purchasing'],[6,'Human Resources']];
+function grantLabel(g){
+  if(g.role==='super_admin') return 'Super Admin';
+  if(g.role==='bu_admin') return `${g.business_unit} Admin`;
+  if(g.role==='payroll_pic') return `Payroll PIC · ${g.business_unit}`;
+  if(g.role==='clearance_pic') return `${g.department_name || 'Clearance'} PIC · ${g.business_unit}`;
+  return ROLE_LABELS[g.role] || g.role;
+}
 
 function adminMgmtCardHtml(a){
   const existingRoleEl = document.getElementById('newGrantRole_'+a.id);
@@ -3031,19 +2806,22 @@ function adminMgmtCardHtml(a){
       <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;">
         ${a.grants.length === 0 ? `<span style="color:var(--ink-soft);font-size:12.5px;">No grants yet — this person cannot sign in until granted something below.</span>` : a.grants.map(g => `
           <span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);">
-            ${g.role==='super_admin' ? 'Super Admin' : esc(g.business_unit)+' Admin'}
-            <span style="cursor:pointer;margin-left:6px;font-weight:700;" title="Revoke" onclick="revokeGrant('${g.id}')">✕</span>
+            ${esc(grantLabel(g))}
+            <button type="button" class="grant-x" title="Revoke" aria-label="Revoke ${esc(grantLabel(g))}" onclick="revokeGrant('${g.id}')">${ICON_CLOSE}</button>
           </span>
         `).join('')}
       </div>
 
       ${adminMgmtGrantFormFor === a.id ? `
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-          <select id="newGrantRole_${a.id}" class="select-clean" onchange="renderAdminMgmtResults()">
-            <option value="bu_admin" ${grantRoleSel!=='super_admin'?'selected':''}>Business Unit Admin</option>
+          <select id="newGrantRole_${a.id}" class="select-clean" onchange="renderAdminMgmtResults()" aria-label="Role">
+            <option value="bu_admin" ${grantRoleSel==='bu_admin'?'selected':''}>Business Unit Admin (HR)</option>
+            <option value="payroll_pic" ${grantRoleSel==='payroll_pic'?'selected':''}>Payroll PIC (offboarding)</option>
+            <option value="clearance_pic" ${grantRoleSel==='clearance_pic'?'selected':''}>Clearance PIC (offboarding)</option>
             <option value="super_admin" ${grantRoleSel==='super_admin'?'selected':''}>Super Admin</option>
           </select>
-          <select id="newGrantBu_${a.id}" class="select-clean" ${grantRoleSel==='super_admin'?'disabled':''}>
+          ${grantRoleSel==='clearance_pic' ? `<select id="newGrantDept_${a.id}" class="select-clean" aria-label="Department">${CLEARANCE_DEPARTMENTS.map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('')}</select>` : ''}
+          <select id="newGrantBu_${a.id}" class="select-clean" aria-label="Business unit" ${grantRoleSel==='super_admin'?'disabled':''}>
             <option value="E&C">E&amp;C</option>
             <option value="Land">Land</option>
             <option value="Mall">Mall</option>
@@ -3081,16 +2859,18 @@ async function submitInviteAdmin(){
 async function submitAddGrant(adminUserId){
   const role = document.getElementById('newGrantRole_'+adminUserId).value;
   const buEl = document.getElementById('newGrantBu_'+adminUserId);
-  const businessUnit = role === 'bu_admin' ? buEl.value : null;
+  const businessUnit = role === 'super_admin' ? null : buEl.value;
+  const deptEl = document.getElementById('newGrantDept_'+adminUserId);
+  const department_id = role === 'clearance_pic' && deptEl ? Number(deptEl.value) : undefined;
   showLoading('Adding grant...');
   try{
-    const { error } = await apiTry(() => api.post(`/admin/admins/${adminUserId}/grants`, { role, business_unit: businessUnit }, {admin: true}));
+    const { error } = await apiTry(() => api.post(`/admin/admins/${adminUserId}/grants`, { role, business_unit: businessUnit, department_id }, {admin: true}));
     if(error) throw error;
     adminMgmtGrantFormFor = null;
     await loadAdminMgmtList();
     hideLoading();
     renderAdminMgmtResults();
-  } catch(e){ hideLoading(); alert('Error: '+e.message); }
+  } catch(e){ hideLoading(); uiToast('Error: '+e.message); }
 }
 
 async function revokeGrant(grantId){
@@ -3102,7 +2882,7 @@ async function revokeGrant(grantId){
     await loadAdminMgmtList();
     hideLoading();
     renderAdminMgmtResults();
-  } catch(e){ hideLoading(); alert('Error: '+e.message); }
+  } catch(e){ hideLoading(); uiToast('Error: '+e.message); }
 }
 
 async function toggleAdminActive(adminUserId, newActive){
@@ -3114,7 +2894,7 @@ async function toggleAdminActive(adminUserId, newActive){
     await loadAdminMgmtList();
     hideLoading();
     renderAdminMgmtResults();
-  } catch(e){ hideLoading(); alert('Error: '+e.message); }
+  } catch(e){ hideLoading(); uiToast('Error: '+e.message); }
 }
 
 // ============================================================================
@@ -3147,7 +2927,7 @@ async function loadCompanyMgmtList(){
     const { data, error } = await apiTry(() => api.get('/admin/companies/manage', {admin: true}));
     if(error) throw error;
     companyMgmtList = data || [];
-  } catch(e){ alert('Error loading companies: '+e.message); companyMgmtList = []; }
+  } catch(e){ uiToast('Error loading companies: '+e.message); companyMgmtList = []; }
 }
 
 function filterCompanyMgmtList(v){
@@ -3209,7 +2989,7 @@ function addCompanyFormHtml(){
           ` : `
             <div style="display:flex;gap:6px;">
               <input type="text" id="newCompanyCategory" placeholder="e.g. Aviation" style="flex:1;">
-              <button type="button" class="btn btn-outline btn-sm" title="Choose an existing entity instead" onclick="showNewEntityInput=false; renderCompanySettingsShell();">✕</button>
+              <button type="button" class="btn btn-outline btn-sm btn-icon" title="Choose an existing entity instead" aria-label="Choose an existing entity instead" onclick="showNewEntityInput=false; renderCompanySettingsShell();">${ICON_CLOSE}</button>
             </div>
             <div class="hint" style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">This creates a brand-new entity type — it'll also appear in Business Unit Settings automatically so an All Units admin can grant assignment permission for it.</div>
           `}
@@ -3367,7 +3147,7 @@ async function submitEditCompany(id){
     await loadCompanyLookup();
     hideLoading();
     render();
-  } catch(e){ hideLoading(); alert('Error saving: '+e.message); }
+  } catch(e){ hideLoading(); uiToast('Error saving: '+e.message); }
 }
 
 async function deleteCompanyRow(id, name){
@@ -3380,7 +3160,7 @@ async function deleteCompanyRow(id, name){
     await loadCompanyLookup();
     hideLoading();
     render();
-  } catch(e){ hideLoading(); alert('Error deleting: '+e.message); }
+  } catch(e){ hideLoading(); uiToast('Error deleting: '+e.message); }
 }
 
 async function saveCompanyAssignment(id){
@@ -3408,7 +3188,7 @@ function renderModal(){
 
   div.innerHTML = `
     <div class="modal">
-      <button class="modal-close" onclick="closeDetail()">✕</button>
+      <button class="modal-close" onclick="closeDetail()" aria-label="Close">${ICON_CLOSE}</button>
       <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">
         ${a.profile_picture_url?`<img class="pfp" style="width:64px;height:64px;" src="${a.profile_picture_url}">`:''}
         <div>
@@ -3521,7 +3301,7 @@ function viewDetailHtml(a){
             <div class="k" style="width:auto;"></div>
             <div class="v" style="display:flex;align-items:center;gap:10px;">
               <span style="width:40px;height:40px;border-radius:6px;background:#EFEEEA;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;overflow:hidden;">
-                ${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;">` : '📄'}
+                ${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;">` : ICON_PDF}
               </span>
               <a href="${f.url}" target="_blank">${esc(f.name)}</a>
             </div>
@@ -3541,21 +3321,20 @@ function viewDetailHtml(a){
       </div>
 
       <div class="status-actions">
-        <button class="btn btn-outline btn-sm" onclick="startEdit()">✎ Edit</button>
-        <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf(selectedApp.id)">📄 Export Full PDF</button>
-        <a class="btn btn-outline btn-sm" style="text-decoration:none;" href="mailto:${encodeURIComponent(a.email||'')}?subject=${encodeURIComponent('Regarding your application '+a.reference_no)}&body=${encodeURIComponent('Dear '+(a.name_nric||'Candidate')+',\n\n')}">✉ Email</a>
-        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">🗑 Delete</button>
+        <button class="btn btn-outline btn-sm" onclick="startEdit()">${ICON_EDIT} Edit</button>
+        <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf(selectedApp.id)">${ICON_PDF} Export Full PDF</button>
+        <a class="btn btn-outline btn-sm" style="text-decoration:none;" href="mailto:${encodeURIComponent(a.email||'')}?subject=${encodeURIComponent('Regarding your application '+a.reference_no)}&body=${encodeURIComponent('Dear '+(a.name_nric||'Candidate')+',\n\n')}">${ICON_MAIL} Email</a>
+        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">${ICON_DELETE} Delete</button>
       </div>
-      ${(a.status==='hired' || a.status==='offboarding') ? `
+      ${a.status==='hired' ? `
       <div class="status-actions">
-        ${a.status==='offboarding'
-          ? `<button class="btn btn-offboarding btn-sm" onclick="openExitInterviewView('${a.id}')">${ICON_OFFBOARD} Exit Interview / Offboarding Details</button>`
-          : `<button class="btn btn-accent btn-sm" onclick="openOnboardingView('${a.id}')">${ICON_ONBOARD} Onboarding Details</button>`}
+        <button class="btn btn-accent btn-sm" onclick="openOnboardingView('${a.id}')">${ICON_ONBOARD} Onboarding Details</button>
+        <button class="btn btn-outline btn-sm" onclick="obStartInviteFromApplication('${a.id}')">${ICON_OFFBOARD} Start Offboarding</button>
       </div>
       ` : ''}
       <div class="status-actions">
         ${STATUS_OPTIONS.map(s => {
-          const styleMap = { hired:'btn-success', shortlisted:'btn-shortlist', rejected:'btn-danger', blacklisted:'btn-blacklist', offboarding:'btn-offboarding' };
+          const styleMap = { hired:'btn-success', shortlisted:'btn-shortlist', rejected:'btn-danger', blacklisted:'btn-blacklist' };
           const cls = styleMap[s] || 'btn-outline';
           return `<button class="btn ${cls} btn-sm" onclick="updateStatus('${s}')">${STATUS_LABELS[s]}</button>`;
         }).join('')}
@@ -3603,29 +3382,21 @@ async function saveEdit(){
     editingApp = false;
     await openDetail(selectedApp.id);
     await loadApplications();
-  } catch(e){ alert('Error saving: '+e.message); }
+  } catch(e){ uiToast('Error saving: '+e.message); }
 }
 
 async function updateStatus(status){
   const label = STATUS_LABELS[status] || status;
   const warnMsg = status === 'blacklisted'
     ? 'Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email. This can be reversed later by changing their status.'
-    : status === 'offboarding'
-    ? `Move this application to "Offboarding"? The candidate will be prompted to complete their Exit Interview Form.`
     : `Change this application's status to "${label}"? The candidate will be notified by email.`;
   if(!confirm(warnMsg)) return;
   try{
-    let result;
-    if(STATUS_VIA_DEDICATED_RPC[status]){
-      result = await apiTry(() => api.post(`/admin/applications/${selectedApp.id}/offboarding`, {}, {admin: true}));
-    } else {
-      result = await apiTry(() => api.post(`/admin/applications/${selectedApp.id}/status`, {status}, {admin: true}));
-    }
-    const { error } = result;
+    const { error } = await apiTry(() => api.post(`/admin/applications/${selectedApp.id}/status`, {status}, {admin: true}));
     if(error) throw error;
     await openDetail(selectedApp.id);
     await Promise.all([loadApplications(), loadStats()]);
-  } catch(e){ alert('Error: '+e.message); }
+  } catch(e){ uiToast('Error: '+e.message); }
 }
 
 // ============================================================================
@@ -3654,69 +3425,13 @@ async function openOnboardingView(applicationId){
     onboardingData = obRes.data;
     onboardingAppInfo = appRes.data;
     renderOnboardingModal();
-  } catch(e){ alert('Error loading onboarding details: '+e.message); }
+  } catch(e){ uiToast('Error loading onboarding details: '+e.message); }
 }
 function closeOnboardingModal(){
   onboardingData = null;
   onboardingAppInfo = null;
   const existing = document.getElementById('onboardingModalRoot');
   if(existing) existing.remove();
-}
-
-// Exit Interview / Offboarding Details — its own dedicated modal, mirroring
-// the Onboarding Details modal above exactly (same reasoning: kept separate
-// from selectedApp/the job application detail modal). Previously this was
-// embedded inline under the job application details in the detail modal,
-// which read as confusing since it mixed "the application" with "the exit
-// process" in one view — now it's reached the same way Onboarding Details
-// is, via the same icon slot in the row actions (onboardOffboardBtnHtml)
-// and the detail modal's own status-actions row, switching identity once
-// status is 'offboarding' instead of 'hired'.
-let exitInterviewAppInfo = null; // basic application record for this modal's header/PDF export — see onboardingAppInfo's comment above for why this is kept separate from selectedApp.
-
-async function openExitInterviewView(applicationId){
-  try{
-    const needsAppFetch = !(selectedApp && selectedApp.id === applicationId);
-    const [eiRes, appRes] = await Promise.all([
-      apiTry(() => api.get(`/admin/applications/${applicationId}/exit-interview`, {admin: true})),
-      needsAppFetch
-        ? apiTry(() => api.get(`/admin/applications/${applicationId}`, {admin: true}))
-        : Promise.resolve({ data: selectedApp, error: null })
-    ]);
-    if(eiRes.error) throw eiRes.error;
-    if(appRes.error) throw appRes.error;
-    exitInterviewData = eiRes.data || null;
-    exitInterviewAppInfo = appRes.data;
-    renderExitInterviewModal();
-  } catch(e){ alert('Error loading exit interview details: '+e.message); }
-}
-function closeExitInterviewModal(){
-  exitInterviewData = null;
-  exitInterviewAppInfo = null;
-  const existing = document.getElementById('exitInterviewModalRoot');
-  if(existing) existing.remove();
-}
-function renderExitInterviewModal(){
-  const existing = document.getElementById('exitInterviewModalRoot');
-  if(existing) existing.remove();
-  const a = exitInterviewAppInfo;
-  if(!a){ alert('Could not load this application.'); return; }
-
-  const div = document.createElement('div');
-  div.id = 'exitInterviewModalRoot';
-  div.className = 'modal-overlay';
-  div.style.zIndex = '70';
-  div.onclick = (e)=>{ if(e.target===div) closeExitInterviewModal(); };
-  div.innerHTML = `
-    <div class="modal" style="max-width:760px;">
-      <button class="modal-close" onclick="closeExitInterviewModal()">✕</button>
-      <h2>Exit Interview / Offboarding Details</h2>
-      <p style="color:var(--ink-soft);font-size:13px;margin-top:-6px;">${esc(a.reference_no)} · ${esc(a.name_nric)}</p>
-
-      ${exitInterviewSectionHtml(a)}
-    </div>
-  `;
-  document.body.appendChild(div);
 }
 
 function obRow(k, v){ return `<div class="drow"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
@@ -3789,7 +3504,7 @@ function renderOnboardingModal(){
   if(existing) existing.remove();
   const o = onboardingData;
   if(!o){
-    alert('No onboarding record found for this candidate yet — they may not have started it.');
+    uiToast('No onboarding record found for this candidate yet — they may not have started it.');
     return;
   }
 
@@ -3800,7 +3515,7 @@ function renderOnboardingModal(){
   div.onclick = (e)=>{ if(e.target===div) closeOnboardingModal(); };
   div.innerHTML = `
     <div class="modal" style="max-width:760px;">
-      <button class="modal-close" onclick="closeOnboardingModal()">✕</button>
+      <button class="modal-close" onclick="closeOnboardingModal()" aria-label="Close">${ICON_CLOSE}</button>
       <h2>Onboarding Details</h2>
       <p style="color:var(--ink-soft);font-size:13px;margin-top:-6px;">Status: ${o.status==='completed' ? '<strong style="color:var(--ok);">Completed</strong>' : '<strong style="color:var(--warn);">In Progress</strong>'}</p>
 
@@ -3808,7 +3523,7 @@ function renderOnboardingModal(){
       ${adminObPage2Html(o)}
 
       <div class="status-actions">
-        <button class="btn btn-outline btn-sm" onclick="exportOnboardingPdf()">📄 Export to PDF</button>
+        <button class="btn btn-outline btn-sm" onclick="exportOnboardingPdf()">${ICON_PDF} Export to PDF</button>
       </div>
     </div>
   `;
@@ -3816,10 +3531,10 @@ function renderOnboardingModal(){
 }
 
 function exportOnboardingPdf(){
-  if(!onboardingData || !onboardingAppInfo){ alert('No onboarding data loaded.'); return; }
+  if(!onboardingData || !onboardingAppInfo){ uiToast('No onboarding data loaded.'); return; }
   const html = buildOnboardingPdfHtml(onboardingAppInfo, onboardingData);
   const win = window.open('', '_blank');
-  if(!win){ alert('Please allow pop-ups for this site to generate the PDF.'); return; }
+  if(!win){ uiToast('Please allow pop-ups for this site to generate the PDF.'); return; }
   win.document.open();
   win.document.write(html);
   win.document.close();
@@ -3978,11 +3693,11 @@ async function exportCandidatePdf(id){
       const { data, error } = await apiTry(() => api.get(`/admin/applications/${id}`, {admin: true}));
       if(error) throw error;
       a = data;
-    } catch(e){ alert('Could not load record for export: '+e.message); return; }
+    } catch(e){ uiToast('Could not load record for export: '+e.message); return; }
   }
   const html = buildFormalPdfHtml(a);
   const win = window.open('', '_blank');
-  if(!win){ alert('Please allow pop-ups for this site to generate the PDF.'); return; }
+  if(!win){ uiToast('Please allow pop-ups for this site to generate the PDF.'); return; }
   win.document.open();
   win.document.write(html);
   win.document.close();
@@ -4213,7 +3928,10 @@ function buildFormalPdfHtml(a){
 // the same modal, and consumed once whichever of boot-with-existing-session
 // or doLogin() runs first actually has a token to fetch with.
 let deepLinkAppId = new URLSearchParams(window.location.search).get('app');
-if(deepLinkAppId) window.history.replaceState({}, '', window.location.pathname);
+// ?offboarding=<case id> — links in offboarding emails (clearance tasks,
+// reminders, payroll) open that case's drawer right after sign-in.
+let deepLinkOffboardingId = new URLSearchParams(window.location.search).get('offboarding');
+if(deepLinkAppId || deepLinkOffboardingId) window.history.replaceState({}, '', window.location.pathname);
 async function openDeepLinkedAppIfAny(){
   if(!deepLinkAppId) return;
   const id = deepLinkAppId;
@@ -4221,9 +3939,30 @@ async function openDeepLinkedAppIfAny(){
   await openDetail(id);
 }
 
-if(adminToken && adminScope && adminScope !== 'ALL') filterBusinessUnit = adminScope;
+// After sign-in (or on reload with a saved session): learn this session's
+// roles first. HR sessions load the job-application dashboard as before;
+// Payroll PIC / Clearance PIC / superior sessions go straight to
+// Offboarding, since every job-application endpoint refuses them.
+async function startSignedInSession(){
+  await obLoadMeta();
+  if(!obIsHr() || deepLinkOffboardingId){
+    await setView('offboarding');
+  } else {
+    render();
+    await loadEverything();
+    obLoadTasks();
+    await openDeepLinkedAppIfAny();
+  }
+  if(deepLinkOffboardingId){
+    const id = deepLinkOffboardingId;
+    deepLinkOffboardingId = null;
+    await obOpenCase(id);
+  }
+}
+
+if(adminToken && adminScope && adminScope !== 'ALL' && adminScope !== 'SUPERIOR') filterBusinessUnit = adminScope;
 render();
-if(adminToken) loadEverything().then(openDeepLinkedAppIfAny).then(loadCurrentUserProfile);
+if(adminToken) startSignedInSession().then(loadCurrentUserProfile);
 
 // ============================================================================
 // Microsoft sign-in no longer has a persistent Supabase Auth session to
@@ -4251,7 +3990,12 @@ setInterval(() => {
   if(adminToken && currentView === 'home' && !selectedApp){
     loadApplications();
     loadStats();
-    loadPendingExitSignatureCount().then(renderDashboardResults);
+  }
+  // Offboarding: refresh quietly unless a case/modal is open or the user is
+  // typing in the toolbar (so nothing moves under their cursor).
+  if(adminToken && currentView === 'offboarding' && !OB.drawer && !document.getElementById('obModal')
+     && !(document.activeElement && document.activeElement.closest && document.activeElement.closest('.ob-toolbar'))){
+    obLoadTasks().then(() => { if(OB.view === 'all') obLoadList(); else obRenderResults(); });
   }
 }, 20000);
 </script>

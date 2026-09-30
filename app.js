@@ -145,13 +145,50 @@ async function saveDraft(){
 // ---------------------------------------------------------------------------
 // Progress bar
 // ---------------------------------------------------------------------------
+// Short names for the progress caption ("Step 3 of 11 · Education").
+const STEP_LABELS = {
+  personal:'Personal Particulars', language:'Language Ability', education:'Education',
+  experience:'Working Experience', questions:'Employment Questions', referees:'Referees & Declarations',
+  attachments:'Attachments & Photo', review:'Review', 'consent-lang':'Consent Language', pdpa:'PDPA Consent', final:'Submit'
+};
+
+// SVG icons (replacing emoji so they render the same everywhere and can be
+// labelled for screen readers).
+const UI_ICON = {
+  pdf: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M12 18v-6m0 6-3-3m3 3 3-3"/></svg>',
+  draft: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  calendar: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  camera: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>',
+  clip: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>',
+  x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  file: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
+};
+
 function renderProgress(){
+  if(state.step === 'offboarding'){
+    // Offboarding has its own stepper inside the card.
+    progressBar.innerHTML = '';
+    const userPart0 = currentUser ? `<span style="margin-right:14px;">${esc(currentUser.email)}</span><button class="btn" style="background:#fff;color:var(--navy);border:1px solid #fff;padding:6px 12px;font-size:12.5px;" onclick="signOut()">Sign out</button>` : '';
+    topRefDisplay.innerHTML = userPart0;
+    return;
+  }
   const visibleSteps = STEPS.filter(s=>s!=='start' && s!=='done');
   const idx = visibleSteps.indexOf(state.step);
-  progressBar.innerHTML = visibleSteps.map((s,i)=>{
-    let cls='seg'; if(i<idx) cls+=' done'; if(i===idx) cls+=' active';
-    return `<div class="${cls}"></div>`;
-  }).join('');
+  // Visible caption + an accessible progressbar for the application wizard;
+  // pages outside the wizard (home, onboarding, details) show no bar.
+  if(idx < 0){ progressBar.innerHTML = ''; progressBar.removeAttribute('role'); }
+  else {
+    progressBar.setAttribute('role', 'progressbar');
+    progressBar.setAttribute('aria-valuemin', '1');
+    progressBar.setAttribute('aria-valuemax', String(visibleSteps.length));
+    progressBar.setAttribute('aria-valuenow', String(idx + 1));
+    progressBar.setAttribute('aria-valuetext', `Step ${idx + 1} of ${visibleSteps.length}: ${STEP_LABELS[state.step] || ''}`);
+    progressBar.innerHTML = `<div class="progress-caption">Step ${idx + 1} of ${visibleSteps.length} · <strong>${esc(STEP_LABELS[state.step] || '')}</strong></div>
+      <div class="progress-segs">${visibleSteps.map((s,i)=>{
+        let cls='seg'; if(i<idx) cls+=' done'; if(i===idx) cls+=' active';
+        return `<div class="${cls}" title="${esc(STEP_LABELS[s]||'')}"></div>`;
+      }).join('')}</div>`;
+  }
   const refPart = state.reference_no ? `<span style="margin-right:14px;">Ref: ${state.reference_no}</span>` : '';
   const userPart = currentUser ? `<span style="margin-right:14px;">${esc(currentUser.email)}</span><button class="btn" style="background:#fff;color:var(--navy);border:1px solid #fff;padding:6px 12px;font-size:12.5px;" onclick="signOut()">Sign out</button>` : '';
   topRefDisplay.innerHTML = refPart + userPart;
@@ -177,7 +214,7 @@ function render(){
     case 'final': root.innerHTML = tplFinal(); break;
     case 'done': root.innerHTML = tplDone(); break;
     case 'onboarding': root.innerHTML = tplOnboarding(); break;
-    case 'exit-interview': root.innerHTML = tplExitInterview(); break;
+    case 'offboarding': root.innerHTML = tplMyOffboarding(); break;
     case 'my-application-detail': root.innerHTML = tplMyApplicationDetail(); break;
   }
 }
@@ -205,11 +242,13 @@ function tplStart(){
     <h2>Employment Application</h2>
     <p class="step-desc">Apply once — your application will be routed to the right hiring team across E&amp;C, Land, and Mall.</p>
 
+    ${obEmpHomeCardHtml()}
+
     ${drafts.length ? `
       <div class="section-title" style="margin-top:0;">Continue a Saved Application</div>
       ${drafts.map(a=>`
         <div class="draft-banner">
-          <div class="draft-banner-icon">📝</div>
+          <div class="draft-banner-icon">${UI_ICON.draft}</div>
           <div class="draft-banner-body">
             <div class="draft-banner-title">${esc(a.reference_no)}</div>
             <div class="draft-banner-meta">${esc(a.business_unit)} · Draft in progress</div>
@@ -237,8 +276,7 @@ function tplStart(){
               <td>
                 <div class="history-actions">
                   ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding Details</button>` : ''}
-                  ${a.status==='offboarding' ? `<button class="btn" style="background:#6B6D70;color:#fff;" onclick="openExitInterview('${a.id}')">Exit Interview Form</button>` : ''}
-                  ${a.status!=='hired' && a.status!=='offboarding' ? '<span style="color:var(--ink-soft);font-size:12.5px;">—</span>' : ''}
+                  ${a.status!=='hired' ? '<span style="color:var(--ink-soft);font-size:12.5px;">—</span>' : ''}
                 </div>
               </td>
             </tr>
@@ -247,6 +285,7 @@ function tplStart(){
       </table>
     ` : ''}
 
+    ${(!VALID_BUSINESS_UNITS.includes(linkBusinessUnit) && obEmpHasCases()) ? '' : `
     <div class="section-title" style="margin-top:26px;">Start a New Application</div>
     ${VALID_BUSINESS_UNITS.includes(linkBusinessUnit) ? `
       <p class="step-desc" style="margin-top:0;">You are applying for a position with <strong>${esc(linkBusinessUnit)}</strong>.</p>
@@ -259,6 +298,7 @@ function tplStart(){
       <div class="btn-row"><div></div><div class="right"><button class="btn btn-primary" onclick="startNewApplication()">Begin Application →</button></div></div>
     ` : `
       <div class="error-banner">This application link doesn't specify a valid business unit. Please use the link provided by HR for the specific business unit you're applying to (E&amp;C, Land, or Mall).</div>
+    `}
     `}
   `;
 }
@@ -381,7 +421,7 @@ function tplMyApplicationDetail(){
         return `<div class="file-thumb-row">
           <div class="k" style="width:44%;"></div>
           <div class="v" style="width:56%;display:flex;align-items:center;gap:10px;">
-            <span class="file-thumb">${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : '📄'}</span>
+            <span class="file-thumb">${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : UI_ICON.file}</span>
             <a href="${f.url}" target="_blank">${esc(f.name)}</a>
           </div>
         </div>`;
@@ -390,7 +430,7 @@ function tplMyApplicationDetail(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="goStep('start')">← Back to My Applications</button>
-      <div class="right"><button class="btn btn-primary" onclick="exportMyApplicationPdfById('${a.id}')">📄 Download as PDF</button></div>
+      <div class="right"><button class="btn btn-primary" onclick="exportMyApplicationPdfById('${a.id}')">${UI_ICON.pdf} Download as PDF</button></div>
     </div>
   `;
 }
@@ -448,7 +488,7 @@ function loadStateFromRow(row){
 // ---------------------------------------------------------------------------
 function tplPersonal(){
   return `
-    <div class="step-eyebrow">Step 1 of 8</div>
+    <div class="step-eyebrow">Application Form</div>
     <h2>Personal Particulars</h2>
     <p class="step-desc">Applying with <strong>${esc(state.business_unit)}</strong></p>
 
@@ -510,11 +550,11 @@ function tplPersonal(){
         <div style="display:flex;gap:6px;">
           <input type="text" id="dobTextInput" inputmode="numeric" autocomplete="off" placeholder="DD/MM/YYYY" maxlength="10"
             value="${esc(formatDobForDisplay(state.date_of_birth))}" oninput="handleDobTextInput(this)" style="flex:1;">
-          <button type="button" class="btn btn-outline btn-sm" title="Pick from calendar" style="padding:0 10px;"
-            onclick="const p=document.getElementById('dobPickerInput'); if(p.showPicker){p.showPicker();} else {p.focus();}">📅</button>
+          <button type="button" class="btn btn-ghost btn-sm icon-btn" title="Pick from calendar" aria-label="Pick date of birth from calendar"
+            onclick="const p=document.getElementById('dobPickerInput'); if(p.showPicker){p.showPicker();} else {p.focus();}">${UI_ICON.calendar}</button>
         </div>
         <!-- Kept as a real (but visually hidden) native date input purely so
-             the 📅 button can open the browser's own calendar picker via
+             the calendar button can open the browser's own calendar picker via
              showPicker() — the visible field above is the actual typing UI,
              always displayed/entered as DD/MM/YYYY regardless of the
              browser's locale, since a bare <input type="date"> renders in
@@ -850,7 +890,7 @@ function tplObSpouseChildren(){
             <td><input type="date" id="childBelow18Dob${i}" value="${esc(c.date_of_birth)}" oninput="updateChildBelow18(${i},'date_of_birth',this.value)"></td>
             <td><select onchange="updateChildBelow18(${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></td>
             <td style="text-align:center;"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="updateChildBelow18(${i},'tax_relief',this.checked)"></td>
-            <td><button class="remove-x" onclick="removeChildBelow18(${i})">✕</button></td>
+            <td><button class="remove-x" type="button" aria-label="Remove this row" onclick="removeChildBelow18(${i})">${UI_ICON.x}</button></td>
           </tr>
         `).join('')}
       </tbody>
@@ -875,7 +915,7 @@ function tplObSpouseChildren(){
             <td><input type="date" id="child18to23Dob${i}" value="${esc(c.date_of_birth)}" oninput="updateChild18to23(${i},'date_of_birth',this.value)"></td>
             <td><select onchange="updateChild18to23(${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></td>
             <td style="text-align:center;"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="updateChild18to23(${i},'tax_relief',this.checked)"></td>
-            <td><button class="remove-x" onclick="removeChild18to23(${i})">✕</button></td>
+            <td><button class="remove-x" type="button" aria-label="Remove this row" onclick="removeChild18to23(${i})">${UI_ICON.x}</button></td>
           </tr>
         `).join('')}
       </tbody>
@@ -904,7 +944,7 @@ function tplObEmergencyBeneficiary(){
             <td><input type="text" value="${esc(c.name)}" oninput="updateEmergencyContact(${i},'name',this.value)"></td>
             <td><input type="text" value="${esc(c.relationship)}" oninput="updateEmergencyContact(${i},'relationship',this.value)"></td>
             <td><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" value="${esc(c.contact)}" oninput="this.value=numericOnly(this.value);updateEmergencyContact(${i},'contact',this.value)"></td>
-            <td><button class="remove-x" onclick="removeEmergencyContact(${i})">✕</button></td>
+            <td><button class="remove-x" type="button" aria-label="Remove this row" onclick="removeEmergencyContact(${i})">${UI_ICON.x}</button></td>
           </tr>
         `).join('')}
       </tbody>
@@ -1041,346 +1081,9 @@ function tplObReview(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="backFromOnboarding()">← Back to My Applications</button>
-      <div class="right"><button class="btn btn-ghost" onclick="exportMyOnboardingPdf()">📄 Download as PDF</button></div>
+      <div class="right"><button class="btn btn-ghost" onclick="exportMyOnboardingPdf()">${UI_ICON.pdf} Download as PDF</button></div>
     </div>
   `;
-}
-
-// ============================================================================
-// EXIT INTERVIEW / OFFBOARDING — digitized "Employee Exit Interview Form".
-// Opened via the "Exit Interview Form" button in "Your Previous Applications"
-// (shown when status==='offboarding') or via an emailed link of the form
-// index.html?exit=<application id> (see boot() below), same pattern as the
-// existing ?onboarding=<id> deep link.
-//
-// Unlike onboarding this is a SINGLE page, not a multi-step wizard — the
-// paper form is short enough that splitting it into steps would add
-// friction without helping anyone, so it's just Sections A/B/C on one
-// screen with a Save Draft + Sign & Submit action. Section D (HR sign-off)
-// is admin.html-only — the candidate never sees or edits that part.
-// ============================================================================
-let exitInterviewAppId = null;
-let exitInterviewData = null;
-let exitInterviewMode = 'edit'; // 'edit' | 'review' — the review screen is
-// the "offboarding details to check before submit" step: a plain read-only
-// summary of everything just entered, plus the sign-off checkbox, so the
-// candidate sees exactly what HR will see before it's locked in.
-
-// Same fixed reason list/order as admin.html's EXIT_REASONS_LEFT/RIGHT —
-// duplicated rather than shared since this project has no build step or
-// shared module system between index.html and admin.html.
-const EXIT_REASONS_LEFT = ['Compensation (Salary / Benefits)','Better Offer','Career Advancement','Lack of promotional opportunities','Lack of training','Working Hours'];
-const EXIT_REASONS_RIGHT = ['Conflict with colleague/superior','Relocation','Retirement','Health','Return to Study','Distance travelled to work'];
-
-async function openExitInterview(applicationId){
-  showLoading('Loading your Exit Interview Form...');
-  try{
-    const { data, error } = await apiTry(() => api.get(`/exit-interviews/${applicationId}`));
-    if(error) throw error;
-    exitInterviewAppId = applicationId;
-    exitInterviewData = data;
-    hideLoading();
-    goStep('exit-interview');
-  } catch(e){
-    hideLoading();
-    alert('Could not load your Exit Interview Form: ' + e.message);
-  }
-}
-
-function toggleExitReason(reason, checked){
-  const set = new Set(exitInterviewData.reasons || []);
-  if(checked) set.add(reason); else set.delete(reason);
-  exitInterviewData.reasons = Array.from(set);
-}
-
-function backFromExitInterview(){
-  exitInterviewAppId = null; exitInterviewData = null; exitInterviewMode = 'edit';
-  goStep('start');
-}
-
-async function saveExitInterview(showAlert){
-  try{
-    const patch = {
-      position: document.getElementById('ei_position')?.value.trim() || '',
-      immediate_superior: document.getElementById('ei_immediate_superior')?.value.trim() || '',
-      dept_site: document.getElementById('ei_dept_site')?.value.trim() || '',
-      date_joined: document.getElementById('ei_date_joined')?.value || '',
-      notice_period: document.getElementById('ei_notice_period')?.value.trim() || '',
-      official_last_day: document.getElementById('ei_official_last_day')?.value || '',
-      actual_last_day: document.getElementById('ei_actual_last_day')?.value || '',
-      reasons: exitInterviewData.reasons || [],
-      reasons_other_specify: document.getElementById('ei_reasons_other')?.value.trim() || '',
-      comments: document.getElementById('ei_comments')?.value.trim() || ''
-    };
-    Object.keys(patch).forEach(key => {
-      if(patch[key] === '' ) delete patch[key];
-    });
-    // reasons is always sent (even if empty array) since it's read from
-    // state, not the DOM, so it's always accurate regardless of this being
-    // a single-page form (no "off-screen field" risk like onboarding's
-    // multi-step save has).
-    patch.reasons = exitInterviewData.reasons || [];
-    const { data, error } = await apiTry(() => api.patch(`/exit-interviews/${exitInterviewAppId}`, { patch }));
-    if(error) throw error;
-    exitInterviewData = data;
-    if(showAlert) alert('Saved.');
-    return true;
-  } catch(e){ alert('Error saving: ' + e.message); return false; }
-}
-
-async function goToExitInterviewReview(){
-  const ok = await saveExitInterview(false);
-  if(!ok) return;
-  exitInterviewMode = 'review';
-  render();
-  window.scrollTo(0,0);
-}
-
-async function submitExitInterview(){
-  if(!document.getElementById('ei_sign_confirm').checked){
-    alert('Please check the confirmation box to sign and submit.');
-    return;
-  }
-  if(!confirm('Submit and sign your Exit Interview Form? Once signed, you won\'t be able to edit Sections A–C anymore, and HR will be notified to complete their review.')) return;
-  try{
-    const { data, error } = await apiTry(() => api.post(`/exit-interviews/${exitInterviewAppId}/submit`));
-    if(error) throw error;
-    exitInterviewData = data;
-    exitInterviewMode = 'edit'; // the locked edit view now doubles as the final read-only view
-    render();
-    window.scrollTo(0,0);
-  } catch(e){ alert('Error submitting: ' + e.message); }
-}
-
-function eiReviewRow(k,v){ return `<div class="review-row"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
-
-function tplExitInterview(){
-  if(exitInterviewMode === 'review' && !exitInterviewData.employee_signed) return tplExitInterviewReview();
-  return tplExitInterviewEdit();
-}
-
-function tplExitInterviewReview(){
-  const ei = exitInterviewData;
-  const a = myApplications.find(x=>x.id===exitInterviewAppId) || {};
-  const reasons = ei.reasons || [];
-  return `
-    <div class="step-eyebrow">Offboarding</div>
-    <h2>Review Your Offboarding Details</h2>
-    <p class="step-desc">Please check everything below carefully before signing — this locks Sections A–C and notifies HR.</p>
-
-    <div class="review-block">
-      <h4>A: Employee Details</h4>
-      ${eiReviewRow('Name (as per NRIC)', a.name_nric)}
-      ${eiReviewRow('Position', ei.position)}
-      ${eiReviewRow('Immediate Superior', ei.immediate_superior)}
-      ${eiReviewRow('Dept/Site', ei.dept_site)}
-      ${eiReviewRow('Date Joined', ei.date_joined)}
-      ${eiReviewRow('Notice Period', ei.notice_period)}
-      ${eiReviewRow('Official Last Day of Employment', ei.official_last_day)}
-      ${eiReviewRow('Actual Last Day of Employment', ei.actual_last_day)}
-    </div>
-
-    <div class="review-block">
-      <h4>B: Reason(s) for Leaving</h4>
-      ${eiReviewRow('Selected', reasons.length ? reasons.join(', ') : 'None selected')}
-      ${ei.reasons_other_specify ? eiReviewRow('Other, specified', ei.reasons_other_specify) : ''}
-    </div>
-
-    <div class="review-block">
-      <h4>C: Comments / Suggestions</h4>
-      ${eiReviewRow('Comments', ei.comments)}
-    </div>
-
-    <div class="checkbox-row" style="background:#FBFAF7;border-color:var(--line);">
-      <input type="checkbox" id="ei_sign_confirm">
-      <label for="ei_sign_confirm">I confirm the information above is true and correct. Checking this box and submitting acts as my signature — no physical signature is required. Today's date will be recorded automatically.</label>
-    </div>
-
-    <div class="btn-row">
-      <button class="btn btn-ghost" onclick="exitInterviewMode='edit';render();">← Back to Edit</button>
-      <div class="right"><button class="btn btn-primary" onclick="submitExitInterview()">Sign &amp; Submit →</button></div>
-    </div>
-  `;
-}
-
-function tplExitInterviewEdit(){
-  const ei = exitInterviewData;
-  const a = myApplications.find(x=>x.id===exitInterviewAppId) || {};
-  const locked = ei.employee_signed;
-  const reasonCheckbox = (r) => `
-    <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;padding:5px 0;">
-      <input type="checkbox" ${(ei.reasons||[]).includes(r)?'checked':''} ${locked?'disabled':''} onchange="toggleExitReason('${r.replace(/'/g,"\\'")}', this.checked)">
-      ${esc(r)}
-    </label>`;
-
-  return `
-    <div class="step-eyebrow">Offboarding</div>
-    <h2>Employee Exit Interview Form</h2>
-    <p class="step-desc">${a.reference_no ? esc(a.reference_no)+' · ' : ''}Private &amp; confidential.</p>
-
-    ${locked ? `<div class="success-banner">Submitted and signed on ${new Date(ei.employee_signed_at).toLocaleString()}. This form is now locked — HR will complete their review next.</div>` : ''}
-
-    <div class="section-title" style="margin-top:0;">A: Employee Details</div>
-    <div class="grid">
-      <div class="field"><label>Name (as per NRIC)</label><input type="text" value="${esc(a.name_nric)}" disabled></div>
-      <div class="field"><label>Position</label><input type="text" id="ei_position" placeholder="e.g. Site Engineer" value="${esc(ei.position)}" ${locked?'disabled':''}></div>
-      <div class="field"><label>Immediate Superior</label><input type="text" id="ei_immediate_superior" value="${esc(ei.immediate_superior)}" ${locked?'disabled':''}></div>
-      <div class="field"><label>Dept/Site</label><input type="text" id="ei_dept_site" value="${esc(ei.dept_site)}" ${locked?'disabled':''}></div>
-      <div class="field"><label>Date Joined</label><input type="date" id="ei_date_joined" value="${ei.date_joined||''}" ${locked?'disabled':''}></div>
-      <div class="field"><label>Notice Period</label><input type="text" id="ei_notice_period" value="${esc(ei.notice_period)}" ${locked?'disabled':''}></div>
-      <div class="field"><label>Official Last Day of Employment</label><input type="date" id="ei_official_last_day" value="${ei.official_last_day||''}" ${locked?'disabled':''}></div>
-      <div class="field"><label>Actual Last Day of Employment</label><input type="date" id="ei_actual_last_day" value="${ei.actual_last_day||''}" ${locked?'disabled':''}></div>
-    </div>
-
-    <div class="section-title">B: Please indicate reason(s) below, which contributed to your decision to resign from your current position</div>
-    <div class="grid">
-      <div>${EXIT_REASONS_LEFT.map(reasonCheckbox).join('')}</div>
-      <div>${EXIT_REASONS_RIGHT.map(reasonCheckbox).join('')}</div>
-    </div>
-    <div class="field" style="margin-top:8px;">
-      <label>Others, please specify</label>
-      <input type="text" id="ei_reasons_other" value="${esc(ei.reasons_other_specify)}" ${locked?'disabled':''}>
-    </div>
-
-    <div class="section-title">C: Employee's Comment(s) / Suggestion(s) for Improvement(s)</div>
-    <div class="field">
-      <textarea id="ei_comments" rows="4" ${locked?'disabled':''}>${esc(ei.comments)}</textarea>
-    </div>
-
-    <div class="btn-row">
-      <button class="btn btn-ghost" onclick="backFromExitInterview()">← Back to My Applications</button>
-      <div class="right">
-        ${!locked ? `
-          <button class="btn btn-ghost" onclick="saveExitInterview(true)">Save Draft</button>
-          <button class="btn btn-primary" onclick="goToExitInterviewReview()">Review Before Submitting →</button>
-        ` : `
-          <button class="btn btn-primary" onclick="exportMyExitInterviewPdf()">📄 Download as PDF</button>
-        `}
-      </div>
-    </div>
-  `;
-}
-
-
-function exportMyExitInterviewPdf(){
-  if(!exitInterviewData || !exitInterviewAppId){ alert('No exit interview data loaded.'); return; }
-  const a = myApplications.find(x=>x.id===exitInterviewAppId) || {};
-  const ei = exitInterviewData;
-  const chk = (checked) => `<span style="display:inline-block;width:13px;height:13px;border:1.5px solid #333;margin-right:8px;vertical-align:middle;text-align:center;line-height:11px;font-size:11px;font-weight:bold;">${checked?'✓':''}</span>`;
-  const reasons = ei.reasons || [];
-  const reasonRow = (label) => `<div style="padding:4px 0;font-size:10.5px;">${chk(reasons.includes(label))}${esc(label)}</div>`;
-
-  const html = `
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Exit Interview — ${esc(a.reference_no||'')} — WCT Group</title>
-<style>
-  @page{ size:A4; margin:14mm; }
-  *{box-sizing:border-box;}
-  body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;margin:0;line-height:1.5;}
-  .outer{border:2px solid #000;}
-  .top-bar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px 6px;}
-  .top-bar img.logo{height:44px;}
-  .top-bar .priv{font-weight:bold;font-size:10px;}
-  .form-title{text-align:center;font-size:19px;font-weight:800;margin:2px 0 14px;}
-  .section-bar{background:#CFE3F2;font-weight:bold;font-size:10.5px;text-transform:uppercase;padding:6px 14px;border-top:1px solid #000;border-bottom:1px solid #000;}
-  .section-body{padding:14px 18px;}
-  .kv-row{display:flex;margin-bottom:10px;font-size:10.5px;}
-  .kv-row .kv-item{width:50%;display:flex;}
-  .kv-row .kv-lbl{width:150px;flex-shrink:0;}
-  .kv-row .kv-line{flex:1;border-bottom:1px solid #333;padding-bottom:2px;min-height:14px;}
-  .reasons-cols{display:flex;gap:30px;}
-  .reasons-cols > div{flex:1;}
-  .comments-lines div{border-bottom:1px solid #333;height:22px;margin-bottom:4px;}
-  .sig-row{display:flex;gap:60px;margin-top:26px;}
-  .sig-block{flex:1;}
-  .sig-line{border-bottom:1px solid #333;height:24px;margin-bottom:4px;font-weight:bold;padding-bottom:2px;}
-  .sig-cap{font-size:9.5px;color:#333;}
-  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
-  .print-bar button{font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
-  @media print{ .print-bar{display:none;} }
-</style>
-</head>
-<body>
-  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
-  <div class="outer">
-    <div class="top-bar">
-      <img class="logo" src="${WCT_LOGO_DATA_URI}">
-      <div class="priv">PRIVATE &amp; CONFIDENTIAL</div>
-    </div>
-    <div class="form-title">EMPLOYEE EXIT INTERVIEW FORM</div>
-
-    <div class="section-bar">A: Employee Details</div>
-    <div class="section-body">
-      <div class="kv-row">
-        <div class="kv-item"><span class="kv-lbl">Name (as per NRIC) :</span><span class="kv-line">${fmt(a.name_nric)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Position :</span><span class="kv-line">${fmt(ei.position)}</span></div>
-      </div>
-      <div class="kv-row">
-        <div class="kv-item"><span class="kv-lbl">Immediate Superior :</span><span class="kv-line">${fmt(ei.immediate_superior)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Dept/Site :</span><span class="kv-line">${fmt(ei.dept_site)}</span></div>
-      </div>
-      <div class="kv-row">
-        <div class="kv-item"><span class="kv-lbl">Date Joined :</span><span class="kv-line">${fmtDate(ei.date_joined)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Notice Period :</span><span class="kv-line">${fmt(ei.notice_period)}</span></div>
-      </div>
-      <div class="kv-row">
-        <div class="kv-item"><span class="kv-lbl">Official Last Day of Employment:</span><span class="kv-line">${fmtDate(ei.official_last_day)}</span></div>
-        <div class="kv-item"><span class="kv-lbl">Actual Last Day of Employment:</span><span class="kv-line">${fmtDate(ei.actual_last_day)}</span></div>
-      </div>
-    </div>
-
-    <div class="section-bar">B: Please indicate reason(s) below, which contributed to your decision to resign from your current position</div>
-    <div class="section-body">
-      <div class="reasons-cols">
-        <div>${EXIT_REASONS_LEFT.map(reasonRow).join('')}</div>
-        <div>${EXIT_REASONS_RIGHT.map(reasonRow).join('')}</div>
-      </div>
-      <div style="margin-top:6px;font-size:10.5px;">${chk(!!ei.reasons_other_specify)} Others, please specify</div>
-      <div style="border-bottom:1px solid #333;min-height:16px;margin:6px 0 2px 22px;">${fmt(ei.reasons_other_specify)}</div>
-    </div>
-
-    <div class="section-bar">C: Employee's Comment(s) / Suggestion(s) for Improvement(s)</div>
-    <div class="section-body">
-      <div class="comments-lines">
-        ${(String(ei.comments||'').match(/.{1,95}(\s|$)/g) || ['']).slice(0,4).map(line=>`<div>${esc(line.trim())}</div>`).join('')}
-      </div>
-      <div class="sig-row">
-        <div class="sig-block">
-          <div class="sig-line">${fmt(ei.employee_signed_name)}</div>
-          <div class="sig-cap">Employee Signature (digitally confirmed, no wet signature)</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line">${ei.employee_signed_at ? fmtDate(ei.employee_signed_at) : '—'}</div>
-          <div class="sig-cap">Date</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="section-bar">D: For HRD (HQ) Use Only — To Be Completed by HR Personnel</div>
-    <div class="section-body">
-      <div class="sig-row">
-        <div class="sig-block">
-          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_name) : '—'}</div>
-          <div class="sig-cap">Signature (digitally confirmed, no wet signature)</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_name) : '—'}</div>
-          <div class="sig-cap">Name in Full</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line">${ei.hr_signed ? fmt(ei.hr_signed_position) : '—'}</div>
-          <div class="sig-cap">Position</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-line">${ei.hr_signed ? fmtDate(ei.hr_signed_at) : '—'}</div>
-          <div class="sig-cap">Date</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</body></html>
-  `;
-  openPrintWindow(html);
 }
 
 function handleCitizenChange(val){
@@ -1537,7 +1240,7 @@ function tplLanguage(){
       <td>${selectGFS(r.written, `updateArrayField('language_ability',${i},'written',this.value)`)}</td>
     </tr>`).join('');
   return `
-    <div class="step-eyebrow">Step 2 of 8</div>
+    <div class="step-eyebrow">Application Form</div>
     <h2>Language Ability</h2>
     <p class="step-desc">Rate your spoken and written ability for each language.</p>
     <table class="dyn">
@@ -1583,10 +1286,10 @@ function tplEducation(){
       <td style="width:110px;min-width:110px;"><select style="min-width:96px;" onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></td>
       <td style="min-width:170px;"><select id="field-edu-qualification-${i}" onchange="updateArrayField('education',${i},'qualification',this.value)">${educationOptionsHtml(r.qualification)}</select></td>
       <td style="min-width:150px;"><input type="text" value="${esc(r.course_name)}" oninput="updateArrayField('education',${i},'course_name',this.value)"></td>
-      <td><button class="remove-x" onclick="removeRow('education',${i})">✕</button></td>
+      <td><button class="remove-x" type="button" aria-label="Remove this row" onclick="removeRow('education',${i})">${UI_ICON.x}</button></td>
     </tr>`).join('');
   return `
-    <div class="step-eyebrow">Step 3 of 8</div>
+    <div class="step-eyebrow">Application Form</div>
     <h2>Education</h2>
     <p class="step-desc">Add your school, college/university, and any professional body memberships.</p>
 
@@ -1634,7 +1337,7 @@ function tplExperience(){
       <button class="btn-danger-outline" onclick="removeRow('working_experience',${i})">Remove this entry</button>
     </div>`).join('');
   return `
-    <div class="step-eyebrow">Step 4 of 8</div>
+    <div class="step-eyebrow">Application Form</div>
     <h2>Working Experience / Achievement</h2>
     <p class="step-desc">Please complete this even if a resume/CV is attached. You'll be able to attach your CV in a later step.</p>
     ${rows}
@@ -1712,7 +1415,7 @@ function yesNo(field, val, rerenderOnChange){
 }
 function tplQuestions(){
   return `
-    <div class="step-eyebrow">Step 5 of 8</div>
+    <div class="step-eyebrow">Application Form</div>
     <h2>Employment Questions</h2>
 
     <div class="grid">
@@ -1767,7 +1470,7 @@ function tplQuestions(){
 // ---------------------------------------------------------------------------
 function tplReferees(){
   return `
-    <div class="step-eyebrow">Step 6 of 8</div>
+    <div class="step-eyebrow">Application Form</div>
     <h2>Referees &amp; Declarations</h2>
     <p class="step-desc">Please give two referees whose reference can be obtained on your application.</p>
 
@@ -1835,20 +1538,20 @@ function tplAttachments(){
   const attList = state.attachments.map((a,i)=>{
     const isImg = a.type && a.type.startsWith('image/');
     return `<div class="attach-item">
-      <div class="attach-thumb">${isImg ? `<img src="${a.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : '📄'}</div>
+      <div class="attach-thumb">${isImg ? `<img src="${a.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : UI_ICON.file}</div>
       <div class="attach-name">${esc(a.name)}</div>
       <button class="remove-x" onclick="removeAttachment(${i})">Remove</button>
     </div>`;
   }).join('');
 
   return `
-    <div class="step-eyebrow">Step 7 of 8</div>
+    <div class="step-eyebrow">Application Form</div>
     <h2>Attachments &amp; Passport Size Photo</h2>
 
     <div class="section-title" style="margin-top:0;">Passport Size Photo <span class="req-star">*</span></div>
     ${state.profile_picture_url ? `<img src="${state.profile_picture_url}" class="profile-preview">` : ''}
     <div class="upload-box" id="field-profile_picture_url" onclick="document.getElementById('profileInput').click()">
-      <div style="font-size:14px;">📷 Click to ${state.profile_picture_url?'change':'upload'} your passport size photo</div>
+      <div style="font-size:14px;display:flex;gap:8px;align-items:center;justify-content:center;">${UI_ICON.camera} Click to ${state.profile_picture_url?'change':'upload'} your passport size photo</div>
       <div class="hint">JPG or PNG, clear passport-style photo recommended — max ${MAX_UPLOAD_MB}MB</div>
     </div>
     <div id="profileUploadErr"></div>
@@ -1857,7 +1560,7 @@ function tplAttachments(){
     <div class="section-title">Supporting Documents</div>
     <p class="hint">Resume/CV, certificates, testimonials, IC copy (front and back), payslip, etc. Add attachments if you need more space than the form provides.</p>
     <div class="upload-box" onclick="document.getElementById('attachInput').click()">
-      <div style="font-size:14px;">📎 Click to add a document</div>
+      <div style="font-size:14px;display:flex;gap:8px;align-items:center;justify-content:center;">${UI_ICON.clip} Click to add a document</div>
       <div class="hint">PDF, JPG, PNG, or Word files — max ${MAX_UPLOAD_MB}MB each</div>
     </div>
     <div id="attachUploadErr"></div>
@@ -1938,7 +1641,7 @@ function reviewHeader(title, step){ return `<h4>${title} <span class="edit-link"
 
 function tplReview(){
   return `
-    <div class="step-eyebrow">Step 8 of 8</div>
+    <div class="step-eyebrow">Application Form</div>
     <h2>Review Your Application</h2>
     <p class="step-desc">Please check every section carefully before proceeding to the consent forms. Reference number: <strong>${state.reference_no}</strong></p>
 
@@ -2013,7 +1716,7 @@ function tplReview(){
         return `<div class="file-thumb-row">
           <div class="k" style="width:44%;"></div>
           <div class="v" style="width:56%;display:flex;align-items:center;gap:10px;">
-            <span class="file-thumb">${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : '📄'}</span>
+            <span class="file-thumb">${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : UI_ICON.file}</span>
             <a href="${f.url}" target="_blank">${esc(f.name)}</a>
           </div>
         </div>`;
@@ -2152,7 +1855,7 @@ function tplDone(){
       <div class="ref-box">${state.reference_no}</div>
       <p class="step-desc">Our HR team will be in touch if your profile matches the role. You may close this page now.</p>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-        <button class="btn btn-ghost" onclick="exportMyApplicationPdf(state)">📄 Download as PDF</button>
+        <button class="btn btn-ghost" onclick="exportMyApplicationPdf(state)">${UI_ICON.pdf} Download as PDF</button>
         <button class="btn btn-ghost" onclick="backToMyApplications()">Back to My Applications</button>
       </div>
     </div>
@@ -2514,13 +2217,10 @@ function signOut(){
     await openOnboarding(onboardingId);
   }
 
-  // Same deep-link pattern as onboarding above, but for the HR-signed Exit
-  // Interview notification email: index.html?exit=<application id>.
-  const exitId = new URLSearchParams(window.location.search).get('exit');
-  if(exitId){
-    window.history.replaceState({}, '', window.location.pathname);
-    await openExitInterview(exitId);
-  }
+  // Offboarding invitation links (index.html?offboard=<token>, carried
+  // through login.html when signed out) open the leaver's own offboarding
+  // page — see offboarding-employee.js.
+  await obEmpBoot();
 
   render();
 })();
