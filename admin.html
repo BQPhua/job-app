@@ -462,6 +462,23 @@
 // ============================================================================
 let adminToken = api.getAdminToken();
 let adminScope = sessionStorage.getItem('wct_admin_scope');
+// The token lives in localStorage (survives new tabs) but the scope lived only
+// in sessionStorage, so a new tab showed "null Access" and a PIC-only menu.
+// Read the scope back out of the saved token, and drop tokens that have
+// expired or carry no scope so the sign-in screen shows instead.
+(function restoreAdminSession(){
+  if(!adminToken) return;
+  const claims = decodeJwtPayload(adminToken);
+  const expired = !claims || (claims.exp && claims.exp * 1000 <= Date.now());
+  const scope = (claims && claims.unit_scope) || (adminScope && adminScope !== 'null' ? adminScope : null);
+  if(expired || !scope){
+    api.setAdminToken(null); sessionStorage.removeItem('wct_admin_scope');
+    adminToken = ''; adminScope = null;
+    return;
+  }
+  adminScope = scope;
+  sessionStorage.setItem('wct_admin_scope', scope);
+})();
 // Entra ID login flow state — see doMicrosoftLogin()/attemptAdminBootstrap()
 let loginStage = 'signin'; // 'signin' | 'choosing_bu' | 'error'
 let loginErrorMsg = '';
@@ -736,7 +753,7 @@ function render(){
   if(appShellEl) appShellEl.classList.toggle('pre-auth', !adminToken);
   renderTopbarUser();
   const scopeEl = document.getElementById('sidebarScope');
-  if(scopeEl) scopeEl.textContent = adminToken ? (adminScope==='ALL' ? 'All Units Access' : adminScope==='SUPERIOR' ? 'Reviewer Access' : adminScope+' Access') : '';
+  if(scopeEl) scopeEl.textContent = adminToken && adminScope ? (adminScope==='ALL' ? 'All Units Access' : adminScope==='SUPERIOR' ? 'Reviewer Access' : adminScope+' Access') : '';
 
   renderSidebarNavOnly();
   const titleEl = document.getElementById('pageTitle');
