@@ -446,7 +446,16 @@
     <div id="loadingText">Working...</div>
   </div>
 </div>
-<script>window.API_BASE_URL = "https://wct-job-app-api.azurewebsites.net/api";</script>
+<script>
+  // Where the API lives. Old Azure / GitHub Pages copies keep using the Azure
+  // API; on our own server (nginx) the API is on the same address under /api;
+  // local development (localhost) falls back to api.js's default :3000.
+  (function () {
+    var h = location.hostname;
+    if (/\.web\.core\.windows\.net$|\.github\.io$/.test(h)) window.API_BASE_URL = "https://wct-job-app-api.azurewebsites.net/api";
+    else if (h !== "localhost" && h !== "127.0.0.1") window.API_BASE_URL = location.origin + "/api";
+  })();
+</script>
 <script>window.MS_CLIENT_ID = "f776b1ef-50fd-4c76-88a1-c4e738392ac4";</script>
 <script>window.MS_AUTHORITY = "https://login.microsoftonline.com/e41691d3-0c45-41fd-92c7-6d4d99849050";</script>
 <script src="ui-a11y.js"></script>
