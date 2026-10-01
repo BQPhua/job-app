@@ -455,6 +455,7 @@
 <script src="logo.js"></script>
 <script src="login-bg.js"></script>
 <script src="offboarding-admin.js"></script>
+<script src="analytics.js"></script>
 <script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);</script>
 <script>
 // ============================================================================
@@ -600,7 +601,7 @@ const NAV_ICONS = {
 };
 const PAGE_TITLES = {
   home: ['Dashboard', 'All candidate applications'],
-  analytics: ['Analytics', 'Trends across your applications'],
+  analytics: ['Analytics', 'Recruitment and offboarding trends'],
   companies: ['Company Settings', 'Manage the company/entity list'],
   permissions: ['Business Unit Settings', 'Cross-business-unit assignment access'],
   settings: ['Manager Settings', 'Notification email routing'],
@@ -2425,296 +2426,8 @@ function analyticsMetrics(){
   return { total, submittedCount: submittedRows.length, hired, hireRate, avgDays, flaggedCount, assignedCount, unassignedCount: assignableRows.length - assignedCount };
 }
 
-function analyticsPageView(){
-  const m = analyticsMetrics();
-  const isAll = adminScope === 'ALL';
-  return `
-    <div class="toolbar" style="margin-bottom:16px;">
-      <div style="flex:1;font-size:13px;color:var(--ink-soft);">Export this dashboard for a report, board update, or offline record.</div>
-      <button class="btn btn-outline btn-sm" onclick="exportAnalyticsCsv()">⬇ Export CSV</button>
-      <button class="btn btn-primary btn-sm" onclick="exportAnalyticsPdf()">${ICON_PDF} Export PDF</button>
-    </div>
-
-    <div class="metric-grid">
-      <div class="metric-card">
-        <div class="metric-label">Total Applications</div>
-        <div class="metric-value">${m.total}</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Hire Rate</div>
-        <div class="metric-value">${m.hireRate}%</div>
-        <div class="metric-note">${m.hired} hired of ${m.submittedCount} submitted</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Avg. Days to Hire</div>
-        <div class="metric-value">${m.avgDays===null ? '—' : m.avgDays}</div>
-        <div class="metric-note">Approximate — based on last status update, not a dedicated hire date</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">Compliance Flags</div>
-        <div class="metric-value">${m.flaggedCount}</div>
-        <div class="metric-note">Declared Yes to a lawsuit or other-matters question — worth a manual check</div>
-      </div>
-    </div>
-
-    ${analyticsRows.length===0 ? `<div class="empty-state">No application data yet to chart.</div>` : `
-    <div class="chart-grid">
-      <div class="chart-card">
-        <h3>Applications by Status</h3>
-        <div class="chart-canvas-wrap"><canvas id="chartByStatus"></canvas></div>
-      </div>
-      <div class="chart-card">
-        <h3>Referral Source</h3>
-        <div class="chart-canvas-wrap"><canvas id="chartReferral"></canvas></div>
-      </div>
-      <div class="chart-card">
-        <h3>Company/Entity Assignment</h3>
-        <div class="chart-canvas-wrap"><canvas id="chartAssignment"></canvas></div>
-      </div>
-      <div class="chart-card full-width">
-        <h3>Applications Submitted Over Time</h3>
-        <div class="chart-canvas-wrap"><canvas id="chartOverTime"></canvas></div>
-      </div>
-      ${isAll ? `
-      <div class="chart-card full-width">
-        <h3>Applications by Business Unit</h3>
-        <div class="chart-canvas-wrap"><canvas id="chartByUnit"></canvas></div>
-      </div>
-      ` : `
-      <div class="chart-card full-width">
-        <p style="color:var(--ink-soft);font-size:13px;margin:0;">Business-unit breakdown is only shown to All Units admins — you're viewing analytics for <strong>${esc(adminScope)}</strong> only.</p>
-      </div>
-      `}
-    </div>
-    `}
-  `;
-}
-
-function renderAnalyticsCharts(){
-  // Tear down any previous instances before redrawing — Chart.js throws if
-  // you create a second chart on a canvas that already has one attached.
-  Object.values(analyticsCharts).forEach(c => c && c.destroy());
-  analyticsCharts = {};
-  if(analyticsRows.length === 0) return;
-
-  const rows = analyticsRows;
-  const chartFont = { family: 'Inter, system-ui, sans-serif', size: 12 };
-  Chart.defaults.font = chartFont;
-  Chart.defaults.color = '#6B6D70';
-
-  // --- By status ---
-  const statusOrder = ['submitted','shortlisted','kiv','hired','rejected','blacklisted'];
-  const statusColors = { submitted:'#2E5AAC', shortlisted:'#8A6D1F', kiv:'#B9770E', hired:'#1E7A46', rejected:'#C0392B', blacklisted:'#1a1a1a' };
-  const statusCounts = statusOrder.map(s => rows.filter(r=>r.status===s).length);
-  const statusLabels = statusOrder.map(s => STATUS_LABELS[s] || s);
-  const elStatus = document.getElementById('chartByStatus');
-  if(elStatus){
-    analyticsCharts.byStatus = new Chart(elStatus, {
-      type: 'doughnut',
-      data: { labels: statusLabels, datasets: [{ data: statusCounts, backgroundColor: statusOrder.map(s=>statusColors[s]), borderWidth: 0 }] },
-      options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 12, padding: 12 } } }, cutout: '60%' }
-    });
-  }
-
-  // --- Referral source ---
-  const referredYes = rows.filter(r => r.referral_person === 'Yes').length;
-  const referredNo = rows.length - referredYes;
-  const elReferral = document.getElementById('chartReferral');
-  if(elReferral){
-    analyticsCharts.referral = new Chart(elReferral, {
-      type: 'doughnut',
-      data: { labels: ['Referred', 'Not Referred'], datasets: [{ data: [referredYes, referredNo], backgroundColor: ['#3E5C76', '#E5E5E4'], borderWidth: 0 }] },
-      options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 12, padding: 12 } } }, cutout: '60%' }
-    });
-  }
-
-  // --- Over time (by month, based on submitted_at) ---
-  const monthCounts = {};
-  rows.forEach(r => {
-    if(!r.submitted_at) return;
-    const d = new Date(r.submitted_at);
-    const key = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-    monthCounts[key] = (monthCounts[key] || 0) + 1;
-  });
-  const sortedMonths = Object.keys(monthCounts).sort();
-  const monthLabels = sortedMonths.map(k => {
-    const [y,mo] = k.split('-');
-    return new Date(Number(y), Number(mo)-1, 1).toLocaleDateString(undefined, { month:'short', year:'2-digit' });
-  });
-  const elTime = document.getElementById('chartOverTime');
-  if(elTime){
-    analyticsCharts.overTime = new Chart(elTime, {
-      type: 'line',
-      data: { labels: monthLabels, datasets: [{ label:'Submitted', data: sortedMonths.map(k=>monthCounts[k]), borderColor:'#101B2D', backgroundColor:'rgba(16,27,45,.08)', fill:true, tension:.3, pointRadius:3 }] },
-      options: { maintainAspectRatio: false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
-    });
-  }
-
-  // --- By business unit (ALL scope only) ---
-  const elUnit = document.getElementById('chartByUnit');
-  if(elUnit){
-    const units = ['E&C','Land','Mall'];
-    const unitCounts = units.map(u => rows.filter(r=>r.business_unit===u).length);
-    analyticsCharts.byUnit = new Chart(elUnit, {
-      type: 'bar',
-      data: { labels: units, datasets: [{ label:'Applications', data: unitCounts, backgroundColor:'#3E5C76', borderRadius:6, maxBarThickness:60 }] },
-      options: { maintainAspectRatio: false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
-    });
-  }
-
-  // --- Company/entity assignment progress ---
-  const elAssign = document.getElementById('chartAssignment');
-  if(elAssign){
-    const m = analyticsMetrics();
-    analyticsCharts.assignment = new Chart(elAssign, {
-      type: 'doughnut',
-      data: { labels: ['Assigned','Unassigned'], datasets: [{ data: [m.assignedCount, m.unassignedCount], backgroundColor: ['#1E7A46','#E5E5E4'], borderWidth: 0 }] },
-      options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 12, padding: 12 } } }, cutout: '60%' }
-    });
-  }
-}
-
-// ============================================================================
-// ANALYTICS EXPORT — CSV (raw numbers, for pasting into Excel/Sheets) and
-// PDF (formatted report, charts included as static images captured straight
-// off the live Chart.js canvases via canvas.toDataURL() — no server-side
-// rendering, same browser-print-to-PDF approach used everywhere else in
-// this project). Both are summary-level exports only — no candidate PII,
-// consistent with how Analytics has worked from the start.
-// ============================================================================
-function exportAnalyticsCsv(){
-  const m = analyticsMetrics();
-  const rows = analyticsRows;
-  const lines = [];
-  const q = (v) => `"${String(v??'').replace(/"/g,'""')}"`;
-  const addRow = (arr) => lines.push(arr.map(q).join(','));
-
-  addRow(['WCT Group — Analytics Export']);
-  addRow(['Generated', new Date().toLocaleString()]);
-  addRow(['Scope', adminScope === 'ALL' ? 'All Business Units' : adminScope]);
-  addRow([]);
-
-  addRow(['Summary Metric','Value']);
-  addRow(['Total Applications', m.total]);
-  addRow(['Hire Rate', m.hireRate+'%']);
-  addRow(['Hired', m.hired]);
-  addRow(['Submitted (non-draft)', m.submittedCount]);
-  addRow(['Avg. Days to Hire (approx.)', m.avgDays===null?'N/A':m.avgDays]);
-  addRow(['Compliance Flags', m.flaggedCount]);
-  addRow(['Assigned to Company/Entity', m.assignedCount]);
-  addRow(['Unassigned', m.unassignedCount]);
-  addRow([]);
-
-  addRow(['Status','Count']);
-  const statusOrder = ['submitted','shortlisted','kiv','hired','rejected','blacklisted'];
-  statusOrder.forEach(s => addRow([STATUS_LABELS[s]||s, rows.filter(r=>r.status===s).length]));
-  addRow([]);
-
-  addRow(['Referral Source','Count']);
-  const referredCount = rows.filter(r=>r.referral_person==='Yes').length;
-  addRow(['Referred', referredCount]);
-  addRow(['Not Referred', rows.length - referredCount]);
-  addRow([]);
-
-  addRow(['Month','Applications Submitted']);
-  const monthCounts = {};
-  rows.forEach(r => { if(!r.submitted_at) return; const d=new Date(r.submitted_at); const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); monthCounts[key]=(monthCounts[key]||0)+1; });
-  Object.keys(monthCounts).sort().forEach(k => addRow([k, monthCounts[k]]));
-  addRow([]);
-
-  if(adminScope === 'ALL'){
-    addRow(['Business Unit','Count']);
-    ['E&C','Land','Mall'].forEach(u => addRow([u, rows.filter(r=>r.business_unit===u).length]));
-    addRow([]);
-  }
-
-  const csv = lines.join('\n');
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `wct-analytics-summary-${new Date().toISOString().slice(0,10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function exportAnalyticsPdf(){
-  const m = analyticsMetrics();
-  const chartImg = (key) => { const c = analyticsCharts[key]; return c ? c.canvas.toDataURL('image/png') : null; };
-  const statusImg = chartImg('byStatus');
-  const referralImg = chartImg('referral');
-  const assignmentImg = chartImg('assignment');
-  const overTimeImg = chartImg('overTime');
-  const byUnitImg = chartImg('byUnit');
-
-  const html = `
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>WCT Analytics Report — ${new Date().toLocaleDateString()}</title>
-<style>
-  @page{ size:A4; margin:16mm; }
-  *{box-sizing:border-box;}
-  body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a1a;margin:0;}
-  .letterhead{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #101B2D;padding-bottom:14px;margin-bottom:20px;}
-  .letterhead img.logo{height:52px;}
-  .letterhead h1{font-family:Georgia,serif;font-size:19px;margin:0;color:#101B2D;}
-  .letterhead .meta{text-align:right;font-size:10px;color:#666;}
-  .metric-row{display:flex;gap:10px;margin-bottom:6px;flex-wrap:wrap;}
-  .metric-box{flex:1;min-width:110px;border:1px solid #ddd;border-radius:6px;padding:10px 12px;}
-  .metric-box .lbl{font-size:8.5px;text-transform:uppercase;color:#888;letter-spacing:.04em;}
-  .metric-box .val{font-family:Georgia,serif;font-size:20px;font-weight:bold;color:#101B2D;}
-  h2.section{font-family:Arial,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#101B2D;padding:5px 10px;margin:22px 0 12px;}
-  .chart-row{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;}
-  .chart-box{flex:1;min-width:260px;border:1px solid #eee;border-radius:6px;padding:10px;page-break-inside:avoid;}
-  .chart-box img{width:100%;height:auto;display:block;}
-  .chart-box .cap{font-size:10px;font-weight:bold;margin-bottom:6px;color:#101B2D;}
-  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;}
-  .print-bar button{font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
-  @media print{ .print-bar{display:none;} }
-  .footer{margin-top:24px;border-top:1px solid #ccc;padding-top:8px;font-size:8.5px;color:#888;text-align:center;}
-</style>
-</head>
-<body>
-  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
-
-  <div class="letterhead">
-    <div style="display:flex;align-items:center;gap:14px;">
-      <img class="logo" src="${WCT_LOGO_DATA_URI}">
-      <h1>WCT Group — Applicant Analytics Report</h1>
-    </div>
-    <div class="meta">
-      Generated ${new Date().toLocaleString()}<br>
-      Scope: ${adminScope==='ALL' ? 'All Business Units' : esc(adminScope)}
-    </div>
-  </div>
-
-  <div class="metric-row">
-    <div class="metric-box"><div class="lbl">Total Applications</div><div class="val">${m.total}</div></div>
-    <div class="metric-box"><div class="lbl">Hire Rate</div><div class="val">${m.hireRate}%</div></div>
-    <div class="metric-box"><div class="lbl">Avg. Days to Hire</div><div class="val">${m.avgDays===null?'—':m.avgDays}</div></div>
-    <div class="metric-box"><div class="lbl">Compliance Flags</div><div class="val">${m.flaggedCount}</div></div>
-  </div>
-
-  <h2 class="section">Application Trends</h2>
-  <div class="chart-row">
-    ${statusImg ? `<div class="chart-box"><div class="cap">Applications by Status</div><img src="${statusImg}"></div>` : ''}
-    ${referralImg ? `<div class="chart-box"><div class="cap">Referral Source</div><img src="${referralImg}"></div>` : ''}
-  </div>
-  <div class="chart-row">
-    ${assignmentImg ? `<div class="chart-box"><div class="cap">Company/Entity Assignment</div><img src="${assignmentImg}"></div>` : ''}
-  </div>
-  ${overTimeImg ? `<h2 class="section">Applications Over Time</h2><div class="chart-row"><div class="chart-box" style="min-width:100%;"><img src="${overTimeImg}"></div></div>` : ''}
-  ${byUnitImg ? `<h2 class="section">By Business Unit</h2><div class="chart-row"><div class="chart-box" style="min-width:100%;"><img src="${byUnitImg}"></div></div>` : ''}
-
-  <div class="footer">WCT Group Employment Application Portal — Confidential Internal Report</div>
-</body></html>
-  `;
-  const win = window.open('', '_blank');
-  if(!win){ uiToast('Please allow pop-ups for this site to generate the PDF.'); return; }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => setTimeout(() => win.print(), 400);
-}
+// analyticsPageView, renderAnalyticsCharts and the analytics exports live in
+// analytics.js (Recruitment + Offboarding tabs).
 
 // ============================================================================
 // ADMIN ACCESS — Super Admin only. Replaces manual SQL for managing who can
@@ -2795,7 +2508,9 @@ function adminMgmtResultsHtml(){
 }
 
 const ROLE_LABELS = { super_admin: 'Super Admin', bu_admin: 'Business Unit Admin (HR)', payroll_pic: 'Payroll PIC', clearance_pic: 'Clearance PIC', entity_admin: 'Entity Admin (Phase 2)' };
-const CLEARANCE_DEPARTMENTS = [[1,'Reporting Unit'],[2,'IT'],[3,'Administration'],[4,'Finance'],[5,'Purchasing'],[6,'Human Resources']];
+// No Reporting Unit here: the employee's immediate superior (the superior
+// email HR enters when inviting) is the Reporting Unit, so it needs no PIC.
+const CLEARANCE_DEPARTMENTS = [[2,'IT'],[3,'Administration'],[4,'Finance'],[5,'Purchasing'],[6,'Human Resources']];
 function grantLabel(g){
   if(g.role==='super_admin') return 'Super Admin';
   if(g.role==='bu_admin') return `${g.business_unit} Admin`;

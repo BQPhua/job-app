@@ -236,14 +236,14 @@ function obEmpFormHtml(b) {
       </div>
       <div class="field${inv('official_last_day')}">
         <label for="obEmpOfficial">Official last day <span class="req-star">*</span></label>
-        <input type="date" id="obEmpOfficial" min="${minOfficial}" value="${obEmpAttr(d.official_last_day)}" oninput="OB_EMP.draft.official_last_day=this.value">
+        <input type="date" id="obEmpOfficial" min="${minOfficial}" value="${obEmpAttr(d.official_last_day)}" oninput="OB_EMP.draft.official_last_day=this.value;obEmpRefreshActualMin()">
         <div class="hint" id="obEmpOfficialHint">Must be on or after ${obEmpDate(minOfficial)} (today + notice period).</div>
         ${obEmpErr('official_last_day')}
       </div>
       <div class="field${inv('actual_last_day')}">
         <label for="obEmpActual">Actual last day <span class="req-star">*</span></label>
-        <input type="date" id="obEmpActual" min="${today}" value="${obEmpAttr(d.actual_last_day)}" oninput="OB_EMP.draft.actual_last_day=this.value">
-        <div class="hint">The day you'll actually stop working (can be earlier than the official last day if agreed).</div>
+        <input type="date" id="obEmpActual" min="${d.official_last_day && d.official_last_day > today ? obEmpAttr(d.official_last_day) : today}" value="${obEmpAttr(d.actual_last_day)}" oninput="OB_EMP.draft.actual_last_day=this.value">
+        <div class="hint">The day you'll actually stop working. It can't be before your official last day.</div>
         ${obEmpErr('actual_last_day')}
       </div>
     </div>
@@ -301,6 +301,11 @@ function obEmpRefreshMin() {
   const hint = document.getElementById('obEmpOfficialHint');
   if (hint) hint.textContent = `Must be on or after ${obEmpDate(min)} (today + notice period).`;
 }
+function obEmpRefreshActualMin() {
+  const el = document.getElementById('obEmpActual');
+  const off = OB_EMP.draft.official_last_day;
+  if (el) el.min = off && off > OB_EMP.bundle.today ? off : OB_EMP.bundle.today;
+}
 function obEmpToggleReason(i, on) {
   const r = OB_EMP.bundle.reasons[i];
   const set = new Set(OB_EMP.draft.reasons);
@@ -348,6 +353,7 @@ async function obEmpSubmit() {
   if (d.notice_period_days === '') errs.notice_period_days = 'Please enter your notice period in days.';
   if (!d.official_last_day) errs.official_last_day = 'Please choose your official last day.';
   if (!d.actual_last_day) errs.actual_last_day = 'Please choose your actual last day.';
+  else if (d.official_last_day && d.actual_last_day < d.official_last_day) errs.actual_last_day = 'Your actual last day cannot be before your official last day.';
   if (!d.reasons.length && !d.reasons_other.length) errs.reasons = 'Please choose at least one reason, or add your own.';
   if (!d.signature_name.trim()) errs.signature_name = 'Please type your full name to sign.';
   if (!d.declaration) errs.declaration = 'Please tick the confirmation box.';
