@@ -99,7 +99,11 @@ function clearAllInvalidFields(){
   document.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
 }
 
-function goStep(s){ state.step = s; window.scrollTo(0,0); render(); }
+function goStep(s){
+  const prev = state.step;
+  state.step = s; window.scrollTo(0,0); render();
+  if(window.WXC && prev !== s) WXC.stepChanged(prev, s);
+}
 
 // ---------------------------------------------------------------------------
 // Persistence helpers
@@ -132,6 +136,8 @@ async function saveDraft(){
       console.error(error);
       success = false;
       alert(`Your progress could not be saved:\n\n${error.message}\n\nPlease try again — if this keeps happening, contact support before continuing, since your latest changes have NOT been saved.`);
+    } else if(window.WX){
+      WX.toast('Progress saved', { kind: 'ok', timeout: 1800 });
     }
   } catch(e){
     console.error(e);
@@ -217,6 +223,7 @@ function render(){
     case 'offboarding': root.innerHTML = tplMyOffboarding(); break;
     case 'my-application-detail': root.innerHTML = tplMyApplicationDetail(); break;
   }
+  if(window.WXC) WXC.afterRender(state.step);
 }
 
 // ---------------------------------------------------------------------------
@@ -295,11 +302,12 @@ function tplStart(){
         </div>
       ` : ''}
       <div id="startErr"></div>
-      <div class="btn-row"><div></div><div class="right"><button class="btn btn-primary" onclick="startNewApplication()">Begin Application →</button></div></div>
+      <div class="btn-row"><div></div><div class="right"><button class="btn btn-primary" id="beginAppBtn" onclick="startNewApplication()">Begin Application →</button></div></div>
     ` : `
       <div class="error-banner">This application link doesn't specify a valid business unit. Please use the link provided by HR for the specific business unit you're applying to (E&amp;C, Land, or Mall).</div>
     `}
     `}
+    ${window.WXC ? WXC.replayLinkHtml() : ''}
   `;
 }
 
@@ -350,6 +358,7 @@ function tplMyApplicationDetail(){
     <div class="step-eyebrow">${esc(a.reference_no)}</div>
     <h2>Application Details</h2>
     <p class="step-desc">${esc(a.business_unit)} · ${statusBadgeHtml(a.status)} · Submitted ${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</p>
+    ${window.WXC ? WXC.trackerHtml(a.status) : ''}
 
     <div class="review-block">
       <h4>Personal Particulars</h4>
@@ -1837,6 +1846,7 @@ async function finalSubmit(){
     if(error) throw error;
     hideLoading();
     goStep('done');
+    if(window.WX) setTimeout(() => WX.celebrate(), 250);
   } catch(e){
     hideLoading();
     document.getElementById('finalErr').innerHTML = `<div class="error-banner">${e.message}</div>`;
@@ -1849,6 +1859,7 @@ async function finalSubmit(){
 function tplDone(){
   return `
     <div class="thankyou">
+      ${window.WXC ? WXC.checkSvg : ''}
       <div class="step-eyebrow">Application Received</div>
       <h2>Thank you for applying to WCT Group</h2>
       <p class="step-desc">Please keep this reference number for your records — you'll need it for any follow-up.</p>

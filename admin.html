@@ -409,6 +409,7 @@
 </style>
 <link rel="stylesheet" href="ui-refresh.css">
 <link rel="stylesheet" href="wct-theme.css">
+<link rel="stylesheet" href="wct-motion.css">
 </head>
 <body>
 
@@ -438,7 +439,10 @@
         <div class="page-title" id="pageTitle"></div>
         <div class="page-subtitle" id="pageSubtitle"></div>
       </div>
-      <div id="topbarUserArea" style="margin-left:auto;position:relative;"></div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+        <div id="wxTools"></div>
+        <div id="topbarUserArea" style="position:relative;"></div>
+      </div>
     </div>
     <div id="root"></div>
   </div>
@@ -463,12 +467,14 @@
 <script>window.MS_CLIENT_ID = "f776b1ef-50fd-4c76-88a1-c4e738392ac4";</script>
 <script>window.MS_AUTHORITY = "https://login.microsoftonline.com/e41691d3-0c45-41fd-92c7-6d4d99849050";</script>
 <script src="ui-a11y.js"></script>
+<script src="wct-experience.js"></script>
 <script src="api.js"></script>
 <script src="oauth.js"></script>
 <script src="logo.js"></script>
 <script src="offboarding-admin.js"></script>
 <script src="analytics.js"></script>
 <script src="live.js"></script>
+<script src="admin-experience.js"></script>
 <script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);document.querySelectorAll('.wct-mark-img').forEach(el=>el.src=WCT_MARK_DATA_URI);</script>
 <script>
 // ============================================================================
@@ -476,6 +482,8 @@
 // ============================================================================
 let adminToken = api.getAdminToken();
 let adminScope = sessionStorage.getItem('wct_admin_scope');
+// A real business unit (not ALL / GROUP payroll / SUPERIOR reviewer).
+function isBuScope(scope){ return ['E&C','Land','Mall'].includes(scope); }
 // The token lives in localStorage (survives new tabs) but the scope lived only
 // in sessionStorage, so a new tab showed "null Access" and a PIC-only menu.
 // Read the scope back out of the saved token, and drop tokens that have
@@ -575,9 +583,12 @@ async function loadCurrentUserProfile(){
 }
 function toggleUserMenu(){ userMenuOpen = !userMenuOpen; renderTopbarUser(); }
 function renderTopbarUser(){
+  if(window.WXA) WXA.renderTools();
   const el = document.getElementById('topbarUserArea');
   if(!el) return;
   if(!adminToken || !currentUserProfile){ el.innerHTML = ''; return; }
+  const sub = document.getElementById('pageSubtitle');
+  if(sub && currentView === 'home' && window.WXA) sub.textContent = WXA.greeting();
   const initial = (currentUserProfile.name || '?').trim().charAt(0).toUpperCase();
   el.innerHTML = `
     <div class="user-chip" onclick="toggleUserMenu()">
@@ -767,7 +778,7 @@ function render(){
   if(appShellEl) appShellEl.classList.toggle('pre-auth', !adminToken);
   renderTopbarUser();
   const scopeEl = document.getElementById('sidebarScope');
-  if(scopeEl) scopeEl.textContent = adminToken && adminScope ? (adminScope==='ALL' ? 'All Units Access' : adminScope==='SUPERIOR' ? 'Reviewer Access' : adminScope+' Access') : '';
+  if(scopeEl) scopeEl.textContent = adminToken && adminScope ? (adminScope==='ALL' ? 'All Units Access' : adminScope==='SUPERIOR' ? 'Reviewer Access' : adminScope==='GROUP' ? 'Group Payroll Access' : adminScope+' Access') : '';
 
   renderSidebarNavOnly();
   const titleEl = document.getElementById('pageTitle');
@@ -775,7 +786,7 @@ function render(){
   if(titleEl){
     const t = PAGE_TITLES[currentView] || ['',''];
     titleEl.textContent = t[0];
-    if(subtitleEl) subtitleEl.textContent = t[1];
+    if(subtitleEl) subtitleEl.textContent = (currentView === 'home' && adminToken && window.WXA) ? WXA.greeting() : t[1];
   }
   renderSidebarChrome();
 
@@ -832,7 +843,35 @@ function render(){
     lastRenderedView = currentView;
   }
   if(selectedApp) renderModal();
+  wxAfterRender();
 }
+// Motion: stagger a view's cards/rows the first time it appears (and when
+// its first rows arrive), and let changed numbers tick. Live re-renders of
+// the same view are left still so nothing flickers.
+let wxLastView = null;
+const wxRowCounts = {};
+function wxAfterRender(){
+  if(!window.WX || !adminToken) { wxLastView = null; return; }
+  const root = document.getElementById('root');
+  if(!root) return;
+  const changed = wxLastView !== currentView;
+  if(changed){
+    wxLastView = currentView;
+    Object.keys(wxRowCounts).forEach(k => delete wxRowCounts[k]);
+    WX.enter(root.firstElementChild || root);
+  }
+  ['#dashResults', '#obResults', '#obTasks', '#companyMgmtResults', '#adminMgmtResults'].forEach(sel => {
+    const el = root.querySelector(sel);
+    if(!el) return;
+    const n = el.querySelectorAll('tbody tr, .ob-task, .detail-section').length;
+    const key = currentView + sel;
+    const prev = wxRowCounts[key];
+    if(!changed && (prev === undefined || prev === 0) && n > 0) WX.enter(el);
+    wxRowCounts[key] = n;
+  });
+  WX.countUp(root);
+}
+
 async function setView(view){
   currentView = view;
   closeMobileSidebar(); // tapping a nav item on mobile should dismiss the drawer, not leave it covering the new page
@@ -974,7 +1013,7 @@ async function attemptAdminBootstrap(idToken, chosenBU){
     pendingMsIdToken = null;
     const claims = decodeJwtPayload(tokenToUse) || {};
     currentUserProfile = { name: claims.name || g.email || '', email: g.email || claims.preferred_username || '' };
-    if(adminScope !== 'ALL') filterBusinessUnit = adminScope;
+    if(isBuScope(adminScope)) filterBusinessUnit = adminScope;
     loginStage = 'signin';
     await startSignedInSession();
     loadCurrentUserProfile();
@@ -1005,7 +1044,7 @@ async function doLogin(){
     adminScope = data.unit_scope;
     api.setAdminToken(adminToken);
     sessionStorage.setItem('wct_admin_scope', adminScope);
-    if(adminScope !== 'ALL') filterBusinessUnit = adminScope;
+    if(isBuScope(adminScope)) filterBusinessUnit = adminScope;
     await startSignedInSession();
   } catch(e){
     document.getElementById('loginErr').innerHTML = `<div class="error-banner">Incorrect passcode.</div>`;
@@ -1013,6 +1052,9 @@ async function doLogin(){
 }
 function logout(){
   liveStop();
+  if(window.WX && WX.tour.active) WX.tour.end('replaced');
+  wxLastView = null;
+  if(window.WXA) WXA.resetTourCheck();
   currentUserProfile = null; userMenuOpen = false;
   OB.meta = null; OB.data = null; OB.selected.clear(); OB.drawer = null; OB.tasks = { sections: [], payroll: [], count: 0 }; OB._filtersLoaded = false; currentView = 'home';
   api.setAdminToken(null); sessionStorage.removeItem('wct_admin_scope'); adminToken=null; adminScope=null; render();
@@ -2494,7 +2536,7 @@ function adminAccessPageView(){
     <div class="stat-row">
       <div class="stat" style="flex:none;min-width:auto;">
         <h2 style="font-size:20px;margin:0;">Admin Access</h2>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Invite staff by their @wct.my email, then grant access: Business Unit Admin (HR), Super Admin, or the offboarding-only roles — Payroll PIC (per business unit) and Clearance PIC (per business unit and department). A person can hold several grants.</div>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Invite staff by their @wct.my email, then grant access: Business Unit Admin (HR), Super Admin, or the offboarding-only roles — Payroll PIC (covers every business unit) and Clearance PIC (per business unit and department). A person can hold several grants.</div>
       </div>
     </div>
 
@@ -2534,7 +2576,7 @@ const CLEARANCE_DEPARTMENTS = [[2,'IT'],[3,'Administration'],[4,'Finance'],[5,'P
 function grantLabel(g){
   if(g.role==='super_admin') return 'Super Admin';
   if(g.role==='bu_admin') return `${g.business_unit} Admin`;
-  if(g.role==='payroll_pic') return `Payroll PIC · ${g.business_unit}`;
+  if(g.role==='payroll_pic') return 'Payroll PIC · All business units';
   if(g.role==='clearance_pic') return `${g.department_name || 'Clearance'} PIC · ${g.business_unit}`;
   return ROLE_LABELS[g.role] || g.role;
 }
@@ -2568,16 +2610,21 @@ function adminMgmtCardHtml(a){
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
           <select id="newGrantRole_${a.id}" class="select-clean" onchange="renderAdminMgmtResults()" aria-label="Role">
             <option value="bu_admin" ${grantRoleSel==='bu_admin'?'selected':''}>Business Unit Admin (HR)</option>
-            <option value="payroll_pic" ${grantRoleSel==='payroll_pic'?'selected':''}>Payroll PIC (offboarding)</option>
+            <option value="payroll_pic" ${grantRoleSel==='payroll_pic'?'selected':''}>Payroll PIC (all business units)</option>
             <option value="clearance_pic" ${grantRoleSel==='clearance_pic'?'selected':''}>Clearance PIC (offboarding)</option>
             <option value="super_admin" ${grantRoleSel==='super_admin'?'selected':''}>Super Admin</option>
           </select>
           ${grantRoleSel==='clearance_pic' ? `<select id="newGrantDept_${a.id}" class="select-clean" aria-label="Department">${CLEARANCE_DEPARTMENTS.map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('')}</select>` : ''}
-          <select id="newGrantBu_${a.id}" class="select-clean" aria-label="Business unit" ${grantRoleSel==='super_admin'?'disabled':''}>
+          ${(grantRoleSel==='super_admin' || grantRoleSel==='payroll_pic') ? `
+          <select id="newGrantBu_${a.id}" class="select-clean" aria-label="Business unit" disabled aria-describedby="grantBuNote_${a.id}">
+            <option value="">All business units</option>
+          </select>
+          <span id="grantBuNote_${a.id}" class="grant-bu-note">${grantRoleSel==='payroll_pic' ? 'Payroll covers every business unit' : 'Super Admin covers every business unit'}</span>` : `
+          <select id="newGrantBu_${a.id}" class="select-clean" aria-label="Business unit">
             <option value="E&C">E&amp;C</option>
             <option value="Land">Land</option>
             <option value="Mall">Mall</option>
-          </select>
+          </select>`}
           <button class="btn btn-primary btn-sm" onclick="submitAddGrant('${a.id}')">Add Grant</button>
           <button class="btn btn-outline btn-sm" onclick="adminMgmtGrantFormFor=null;renderAdminMgmtResults();">Cancel</button>
         </div>
@@ -2611,7 +2658,8 @@ async function submitInviteAdmin(){
 async function submitAddGrant(adminUserId){
   const role = document.getElementById('newGrantRole_'+adminUserId).value;
   const buEl = document.getElementById('newGrantBu_'+adminUserId);
-  const businessUnit = role === 'super_admin' ? null : buEl.value;
+  // Super Admin and Payroll PIC cover every business unit.
+  const businessUnit = (role === 'super_admin' || role === 'payroll_pic') ? null : buEl.value;
   const deptEl = document.getElementById('newGrantDept_'+adminUserId);
   const department_id = role === 'clearance_pic' && deptEl ? Number(deptEl.value) : undefined;
   showLoading('Adding grant...');
@@ -2935,7 +2983,7 @@ function renderModal(){
   if(existing) existing.remove();
   const div = document.createElement('div');
   div.id = 'modalRoot';
-  div.className = 'modal-overlay';
+  div.className = 'modal-overlay' + (existing ? '' : ' wx-pop');
   div.onclick = (e)=>{ if(e.target===div) closeDetail(); };
 
   div.innerHTML = `
@@ -3711,9 +3759,10 @@ async function startSignedInSession(){
     deepLinkOffboardingId = null;
     await obOpenCase(id);
   }
+  if(window.WXA) WXA.maybeStartTour();
 }
 
-if(adminToken && adminScope && adminScope !== 'ALL' && adminScope !== 'SUPERIOR') filterBusinessUnit = adminScope;
+if(adminToken && isBuScope(adminScope)) filterBusinessUnit = adminScope;
 render();
 if(adminToken) startSignedInSession().then(loadCurrentUserProfile);
 

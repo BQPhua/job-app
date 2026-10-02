@@ -110,7 +110,11 @@ function obApi(method, path, body) {
 }
 function obIsHr() {
   if (OB.meta) return !!OB.meta.is_hr;
-  return adminScope === 'ALL' || (!!adminScope && adminScope !== 'SUPERIOR');
+  return adminScope === 'ALL' || (!!adminScope && adminScope !== 'SUPERIOR' && adminScope !== 'GROUP');
+}
+/** Sessions that read cases from every BU (super admin, group-wide Payroll PIC). */
+function obAllUnits() {
+  return adminScope === 'ALL' || !!(OB.meta && OB.meta.all_units);
 }
 function obToast(msg, kind) {
   let host = document.getElementById('obToasts');
@@ -217,6 +221,7 @@ function obRenderPage() {
   if (!root) return;
   root.innerHTML = `<div class="wrap">${obPageHtml()}</div>`;
   obRenderBulk();
+  if (typeof wxAfterRender === 'function') wxAfterRender();
 }
 function obRenderResults() {
   const k = document.getElementById('obKpis');
@@ -226,6 +231,7 @@ function obRenderResults() {
   const t = document.getElementById('obTasks');
   if (t) t.innerHTML = obTasksHtml();
   obRenderBulk();
+  if (typeof wxAfterRender === 'function') wxAfterRender();
 }
 
 function obSetView(v) {
@@ -276,7 +282,7 @@ function obKpiDue(due) {
 function obToolbarHtml() {
   const f = OB.filters;
   const m = OB.meta || { departments: [], companies: [], business_units: [] };
-  const isSuper = adminScope === 'ALL';
+  const isSuper = obAllUnits();
   const statusSummary = f.status.length === 0 ? 'All statuses' : f.status.length === 1 ? OB_STATUS_LABELS[f.status[0]] : `${f.status.length} statuses`;
   const companies = [...new Set((m.companies || []).map((c) => c.name))].sort();
   const active = obActiveFilterCount();
@@ -421,7 +427,7 @@ function obResultsHtml() {
         ${hr ? `<th style="width:36px"><input type="checkbox" class="row-check" aria-label="Select all on this page" ${allChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="obSelectAll(this.checked)"></th>` : ''}
         ${sortTh('ref', 'Ref')}
         ${sortTh('name', 'Employee')}
-        ${adminScope === 'ALL' ? '<th>BU</th>' : ''}
+        ${obAllUnits() ? '<th>BU</th>' : ''}
         <th>Department / Position</th>
         ${sortTh('last_day', 'Last day')}
         ${sortTh('status', 'Status')}
@@ -434,7 +440,7 @@ function obResultsHtml() {
             ${hr ? `<td onclick="event.stopPropagation()"><input type="checkbox" class="row-check" aria-label="Select ${obAttr(r.employee_name)}" ${OB.selected.has(r.id) ? 'checked' : ''} onchange="obSelectRow('${r.id}', this.checked)"></td>` : ''}
             <td class="ob-ref">${esc(r.ref_no)}</td>
             <td class="ob-emp"><div class="nm">${esc(r.employee_name)}</div><div class="em">${esc(r.employee_email)}</div></td>
-            ${adminScope === 'ALL' ? `<td>${esc(r.business_unit)}</td>` : ''}
+            ${obAllUnits() ? `<td>${esc(r.business_unit)}</td>` : ''}
             <td><div>${esc(r.department || '—')}</div><div class="ob-sub">${esc(r.position || '')}</div></td>
             <td class="ob-date">${obDate(r.effective_last_day)}<br>${obDueHtml(r)}</td>
             <td>${obBadge(r.status)}</td>
