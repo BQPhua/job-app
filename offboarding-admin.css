@@ -24,7 +24,7 @@
 .ob-kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kpi,var(--accent));}
 .ob-kpi:hover{border-color:#C9C9C8;box-shadow:var(--shadow-md);}
 .ob-kpi[aria-pressed="true"]{border-color:var(--navy);box-shadow:0 0 0 1px var(--navy),var(--shadow-md);}
-.ob-kpi .n{font-family:'Source Serif 4',serif;font-size:24px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums;}
+.ob-kpi .n{font-family:'Lexend',sans-serif;font-size:24px;font-weight:700;color:var(--navy);line-height:1.1;font-variant-numeric:tabular-nums;}
 .ob-kpi .l{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:3px;}
 .ob-kpi.is-alert .n{color:var(--danger);}
 @media(max-width:1100px){ .ob-kpis{grid-template-columns:repeat(3,minmax(0,1fr));} }
@@ -137,7 +137,7 @@ dialog.ob-drawer[open]{display:flex;flex-direction:column;animation:obSlide .2s 
 
 /* Cards inside drawer */
 .ob-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin-bottom:12px;}
-.ob-card h3{font-size:14px;margin:0 0 10px;font-family:'Inter',system-ui,sans-serif;font-weight:700;color:var(--navy);}
+.ob-card h3{font-size:14px;margin:0 0 10px;font-family:'Source Sans 3',system-ui,sans-serif;font-weight:700;color:var(--navy);}
 .ob-kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px;}
 .ob-kv div .k{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em;}
 .ob-kv div .v{font-size:13.5px;font-weight:500;overflow-wrap:anywhere;}
@@ -160,7 +160,7 @@ dialog.ob-drawer[open]{display:flex;flex-direction:column;animation:obSlide .2s 
 .ob-reason{background:var(--accent-tint);color:var(--accent-dark);border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;}
 .ob-reason.custom{background:var(--warn-tint);color:var(--warn);}
 .ob-quote{white-space:pre-wrap;font-size:13.5px;line-height:1.55;background:#FAFAF9;border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
-.ob-sig{font-family:'Source Serif 4',serif;font-style:italic;font-size:18px;color:var(--navy);}
+.ob-sig{font-family:'Lexend',sans-serif;font-style:italic;font-size:18px;color:var(--navy);}
 
 /* Clearance accordion */
 .ob-sec{background:#fff;border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;}

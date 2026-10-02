@@ -46,6 +46,7 @@ async function apiRequest(path, { method = 'GET', body, admin = false, formData 
   const token = admin ? getAdminToken() : getToken();
   const headers = {};
   if (token) headers.Authorization = 'Bearer ' + token;
+  if (window.WCT_CLIENT_ID) headers['X-Client-Id'] = window.WCT_CLIENT_ID; // live updates ignore this tab's own changes
   if (body !== undefined && !formData) headers['Content-Type'] = 'application/json';
 
   let res;

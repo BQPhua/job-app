@@ -62,3 +62,15 @@
   .an-actions .btn{flex:1;}
   .an-filter{width:100%;} .an-filter select{flex:1;}
 }
+
+/* Live updates (live.js) */
+.live-dot{font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:#9AA4B0;padding:0 12px 8px;display:flex;align-items:center;gap:6px;}
+.live-dot:empty{display:none;}
+.live-dot::before{content:"";width:7px;height:7px;border-radius:50%;background:#9AA4B0;flex:none;}
+.live-dot[data-state="live"]{color:#9fdcb4;}
+.live-dot[data-state="live"]::before{background:#2fb36b;box-shadow:0 0 0 3px rgba(47,179,107,.18);}
+.live-dot[data-state="reconnecting"]::before{background:#E0A43A;}
+.sidebar.collapsed .live-dot{padding:0 0 8px;justify-content:center;font-size:0;gap:0;}
+.live-notice{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding:10px 12px;border-radius:8px;background:#EEF4FF;border:1px solid #C9D9F5;color:#1D3B6E;font-size:13px;}
+@media (prefers-reduced-motion: no-preference){ .live-dot[data-state="live"]::before{animation:live-pulse 2.4s ease-in-out infinite;} }
+@keyframes live-pulse{50%{box-shadow:0 0 0 5px rgba(47,179,107,.05);}}

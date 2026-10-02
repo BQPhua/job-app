@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WCT Group — HR Admin Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="msal-browser.min.js"></script>
 <link rel="stylesheet" href="offboarding-admin.css">
@@ -32,11 +34,11 @@
     --shadow-sm:0 1px 2px rgba(10,10,10,.06);
     --shadow-md:0 4px 14px rgba(10,10,10,.10);
     --shadow-lg:0 10px 30px rgba(10,10,10,.16);
-    font-family:'Inter',system-ui,sans-serif;
+    font-family:'Source Sans 3',system-ui,sans-serif;
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--cream);color:var(--ink);}
-  h1,h2,h3{font-family:'Source Serif 4',serif;color:var(--navy);margin:0 0 .3em;}
+  h1,h2,h3{font-family:'Lexend',sans-serif;color:var(--navy);margin:0 0 .3em;}
   a{color:var(--info);}
 
   /* ============================================================
@@ -103,7 +105,7 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--navy);flex-shrink:0;
   }
   .sidebar-toggle-btn:hover{background:var(--cream);}
-  .topbar-slim .page-title{font-family:'Source Serif 4',serif;color:var(--navy);font-size:17px;font-weight:700;}
+  .topbar-slim .page-title{font-family:'Lexend',sans-serif;color:var(--navy);font-size:17px;font-weight:700;}
   .topbar-slim .page-subtitle{font-size:12px;color:var(--ink-soft);margin-top:1px;}
 
   /* Topbar user profile chip — since admins now sign in with their real
@@ -111,7 +113,7 @@
      Logout button hiding in the sidebar. */
   .user-chip{display:flex;align-items:center;gap:9px;cursor:pointer;padding:6px 10px 6px 6px;border-radius:20px;transition:background .15s ease;}
   .user-chip:hover{background:var(--cream);}
-  .user-avatar{width:32px;height:32px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;font-family:'Source Serif 4',serif;}
+  .user-avatar{width:32px;height:32px;border-radius:50%;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;font-family:'Lexend',sans-serif;}
   .user-chip-name{font-size:13px;font-weight:600;color:var(--ink);line-height:1.2;}
   .user-chip-name .sub{font-weight:400;color:var(--ink-soft);font-size:11px;}
   .user-dropdown{position:absolute;top:100%;right:0;margin-top:8px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-md);min-width:230px;padding:14px;z-index:50;}
@@ -156,7 +158,7 @@
   .stat{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;flex:1;min-width:110px;box-shadow:var(--shadow-sm);transition:border-color .15s ease,box-shadow .15s ease;}
   .stat:hover{border-color:var(--accent);box-shadow:var(--shadow-md);}
   .stat.stat-active{border-color:var(--navy);border-width:2px;box-shadow:var(--shadow-md);}
-  .stat .n{font-size:24px;font-weight:700;color:var(--navy);font-family:'Source Serif 4',serif;}
+  .stat .n{font-size:24px;font-weight:700;color:var(--navy);font-family:'Lexend',sans-serif;}
   .stat .l{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;margin-top:2px;}
 
   .toolbar{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px;box-shadow:var(--shadow-sm);display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
@@ -210,7 +212,7 @@
   .empty-state{text-align:center;padding:60px 20px;color:var(--ink-soft);background:#fff;border:1px solid var(--line);border-radius:var(--radius);}
 
   img.pfp,.pfp{width:44px;height:44px;border-radius:8px;object-fit:cover;background:#eee;flex-shrink:0;}
-  .pfp-placeholder{display:flex;align-items:center;justify-content:center;background:var(--navy);color:#fff;font-weight:700;font-size:16px;font-family:'Source Serif 4',serif;}
+  .pfp-placeholder{display:flex;align-items:center;justify-content:center;background:var(--navy);color:#fff;font-weight:700;font-size:16px;font-family:'Lexend',sans-serif;}
   .name-cell{display:flex;align-items:center;gap:10px;}
   .row-check{width:16px;height:16px;cursor:pointer;accent-color:var(--navy);}
   tr.row-selected td{background:var(--accent-tint);}
@@ -251,7 +253,7 @@
   .metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;}
   .metric-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow-sm);}
   .metric-card .metric-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft);margin-bottom:6px;}
-  .metric-card .metric-value{font-family:'Source Serif 4',serif;font-size:28px;font-weight:700;color:var(--navy);}
+  .metric-card .metric-value{font-family:'Lexend',sans-serif;font-size:28px;font-weight:700;color:var(--navy);}
   .metric-card .metric-note{font-size:11.5px;color:var(--ink-soft);margin-top:4px;}
   .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
   .chart-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow-sm);}
@@ -381,7 +383,7 @@
   .modal-close:hover{background:var(--cream);}
   .row-actions{flex-wrap:nowrap;}
   .apps-table td.cell-ref{white-space:nowrap;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--ink-soft);}
-  .empty-state h3{font-family:'Inter',system-ui,sans-serif;}
+  .empty-state h3{font-family:'Source Sans 3',system-ui,sans-serif;}
   /* Keep the column headings visible while scrolling long lists. */
   @media(min-width:821px){
     .apps-table thead th{position:sticky;top:63px;z-index:6;}
@@ -406,6 +408,7 @@
   }
 </style>
 <link rel="stylesheet" href="ui-refresh.css">
+<link rel="stylesheet" href="wct-theme.css">
 </head>
 <body>
 
@@ -413,7 +416,7 @@
   <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileSidebar()"></div>
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
-      <img class="wct-logo-img" alt="WCT Group">
+      <img class="wct-mark-img" alt="WCT Group">
       <div class="brand-text">
         <div class="name">WCT Admin</div>
         <div class="sub">Employment Portal</div>
@@ -422,6 +425,7 @@
     <nav class="sidebar-nav" id="sidebarNav"></nav>
     <div class="sidebar-footer">
       <div class="sidebar-scope" id="sidebarScope"></div>
+      <div class="live-dot" id="liveDot" aria-live="polite"></div>
     </div>
   </aside>
 
@@ -462,10 +466,10 @@
 <script src="api.js"></script>
 <script src="oauth.js"></script>
 <script src="logo.js"></script>
-<script src="login-bg.js"></script>
 <script src="offboarding-admin.js"></script>
 <script src="analytics.js"></script>
-<script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);</script>
+<script src="live.js"></script>
+<script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);document.querySelectorAll('.wct-mark-img').forEach(el=>el.src=WCT_MARK_DATA_URI);</script>
 <script>
 // ============================================================================
 // STATE
@@ -846,58 +850,64 @@ async function setView(view){
 // LOGIN
 // ============================================================================
 function loginView(){
-  const bgHtml = `
-    <div class="login-bg-layer" style="background-image:url('${ADMIN_LOGIN_BG_DATA_URI}');"></div>
-    <div class="login-overlay"></div>
-  `;
+  // Split layout shared with the candidate login (wct-theme.css, .auth-*):
+  // brand panel with the WCT road motif + a calm sign-in panel.
+  const brand = `
+    <aside class="auth-brand" aria-label="About the HR Admin Portal">
+      <div class="auth-road" aria-hidden="true"><div class="surface"><div class="edge l"></div><div class="edge r"></div><div class="lane"></div></div></div>
+      <div class="auth-brand-top"><span class="auth-chip"><i></i>HR Admin Portal</span></div>
+      <div class="auth-headline">
+        <h1>Hiring to handover, <em>one console.</em></h1>
+        <p>Review applications, onboard new hires and run offboarding clearance for your business unit.</p>
+        <ul class="auth-points">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span><b>Your business unit, at a glance.</b> Applications, tasks and analytics in one place.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span><b>Live updates.</b> Changes by your team appear instantly.</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Secured with Microsoft.</b> Sign in with your WCT work account.</span></li>
+        </ul>
+      </div>
+      <div class="auth-brand-foot"><span>WCT Group · Building Values</span><span>Employment Portal</span></div>
+    </aside>`;
+  const logo = `<img class="wct-logo-img auth-logo" src="${WCT_LOGO_DATA_URI}" alt="WCT Group — Building Values">`;
+  const msIcon = `<svg viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>`;
+  const alertIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>`;
+  const infoIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>`;
+  const foot = `<div class="auth-foot"><span>Applying for a job? <a href="login.html">Go to the Careers Portal →</a></span><span>Need access? Ask your Super Admin to add you under Admin Access.</span></div>`;
+  let body;
   if(loginStage === 'choosing_bu'){
-    return `
-      <div class="login-page">
-        ${bgHtml}
-        <div class="login-card">
-          <img class="wct-logo-img login-card-logo" src="${WCT_LOGO_DATA_URI}" alt="WCT Group">
-          <div class="login-eyebrow">HR Admin Portal</div>
-          <h2>Choose Business Unit</h2>
-          <p style="color:var(--ink-soft);font-size:13px;">You have access to more than one business unit. Choose which one to work in for this session — you can sign in again later to switch.</p>
-          <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;">
-            ${availableBuGrants.map(bu=>`<button class="btn btn-outline" style="justify-content:center;" onclick="chooseBuAndContinue('${bu}')">${esc(bu)}</button>`).join('')}
-          </div>
-        </div>
+    body = `
+      ${logo}
+      <h2 class="auth-title">Choose a business unit</h2>
+      <p class="auth-sub">You have access to more than one. Pick where to work this session. You can sign in again later to switch.</p>
+      <div class="auth-bu" role="list">
+        ${availableBuGrants.map(bu=>`<button type="button" role="listitem" onclick="chooseBuAndContinue('${bu}')">${esc(bu)} <span>Continue →</span></button>`).join('')}
       </div>
-    `;
+      ${foot}`;
+  } else if(loginStage === 'error'){
+    body = `
+      ${logo}
+      <h2 class="auth-title">Sign-in didn’t work</h2>
+      <p class="auth-sub">Nothing has changed on your account. You can try again.</p>
+      <div class="auth-alert err" role="alert">${alertIcon}<span>${esc(loginErrorMsg)}</span></div>
+      <button type="button" class="auth-submit" onclick="retryLogin()">Try again</button>
+      ${foot}`;
+  } else {
+    body = `
+      ${logo}
+      <h2 class="auth-title">Admin sign in</h2>
+      <p class="auth-sub">Use your WCT Microsoft 365 work account.</p>
+      <div class="auth-oauth single">
+        <button type="button" class="auth-oauth-btn primary" id="msLoginBtn" onclick="adminMsClick(this)">${msIcon} Sign in with Microsoft</button>
+      </div>
+      <div id="loginErr" style="margin-top:16px"></div>
+      <div class="auth-alert info" style="margin-top:4px">${infoIcon}<span>A Microsoft window will open. If nothing happens, allow pop-ups for this site.</span></div>
+      ${foot}`;
   }
-  if(loginStage === 'error'){
-    return `
-      <div class="login-page">
-        ${bgHtml}
-        <div class="login-card">
-          <img class="wct-logo-img login-card-logo" src="${WCT_LOGO_DATA_URI}" alt="WCT Group">
-          <div class="login-eyebrow">HR Admin Portal</div>
-          <h2>Sign-in Failed</h2>
-          <div class="error-banner">${esc(loginErrorMsg)}</div>
-          <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:14px;" onclick="retryLogin()">← Try Again</button>
-          <a href="login.html" class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:16px;text-decoration:none;">← Main Site</a>
-        </div>
-      </div>
-    `;
-  }
-  return `
-    <div class="login-page">
-      ${bgHtml}
-      <div class="login-card">
-        <img class="wct-logo-img login-card-logo" src="${WCT_LOGO_DATA_URI}" alt="WCT Group">
-        <div class="login-eyebrow">HR Admin Portal</div>
-        <h2>Admin Sign In</h2>
-        <p style="color:var(--ink-soft);font-size:13px;">Sign in with your WCT Microsoft account.</p>
-        <button class="btn btn-primary" style="width:100%;justify-content:center;gap:10px;margin-top:16px;" onclick="doMicrosoftLogin()">
-          <svg width="16" height="16" viewBox="0 0 21 21"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>
-          Sign in with Microsoft
-        </button>
-        <div id="loginErr"></div>
-        <a href="login.html" class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:16px;text-decoration:none;">← Main Site</a>
-      </div>
-    </div>
-  `;
+  return `<main class="auth">${brand}<section class="auth-panel"><div class="auth-box">${body}</div></section></main>`;
+}
+function adminMsClick(btn){
+  btn.disabled = true; btn.setAttribute('aria-busy','true');
+  btn.innerHTML = '<span class="auth-spin" aria-hidden="true"></span> Waiting for Microsoft…';
+  doMicrosoftLogin();
 }
 
 // ============================================================================
@@ -1002,6 +1012,7 @@ async function doLogin(){
   }
 }
 function logout(){
+  liveStop();
   currentUserProfile = null; userMenuOpen = false;
   OB.meta = null; OB.data = null; OB.selected.clear(); OB.drawer = null; OB.tasks = { sections: [], payroll: [], count: 0 }; OB._filtersLoaded = false; currentView = 'home';
   api.setAdminToken(null); sessionStorage.removeItem('wct_admin_scope'); adminToken=null; adminScope=null; render();
@@ -3686,6 +3697,7 @@ async function openDeepLinkedAppIfAny(){
 // Offboarding, since every job-application endpoint refuses them.
 async function startSignedInSession(){
   await obLoadMeta();
+  liveStart();
   if(!obIsHr() || deepLinkOffboardingId){
     await setView('offboarding');
   } else {
@@ -3728,6 +3740,7 @@ window.addEventListener('resize', () => {
 // submissions and status changes appear without needing a manual refresh.
 // ============================================================================
 setInterval(() => {
+  if(LIVE.state === 'live') return; // live updates are on; this poll is only the fallback
   if(adminToken && currentView === 'home' && !selectedApp){
     loadApplications();
     loadStats();

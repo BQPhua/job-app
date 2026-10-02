@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WCT Group — Employment Application</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --navy:#101B2D;
@@ -21,14 +21,14 @@
     --danger:#B3423A;
     --ok:#3D7A5C;
     --radius:10px;
-    font-family:'Inter',system-ui,sans-serif;
+    font-family:'Source Sans 3',system-ui,sans-serif;
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--cream);color:var(--ink);line-height:1.5;}
-  h1,h2,h3{font-family:'Source Serif 4',serif;font-weight:700;color:var(--navy);margin:0 0 .3em;}
+  h1,h2,h3{font-family:'Lexend',sans-serif;font-weight:700;color:var(--navy);margin:0 0 .3em;}
   .topbar{background:var(--navy);color:#fff;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;}
   .topbar .brand{display:flex;align-items:center;gap:14px;}
-  .brand-mark{width:38px;height:38px;border-radius:8px;background:linear-gradient(135deg,var(--accent-dark),var(--accent));display:flex;align-items:center;justify-content:center;font-family:'Source Serif 4',serif;font-weight:700;color:var(--navy);font-size:18px;}
+  .brand-mark{width:38px;height:38px;border-radius:8px;background:linear-gradient(135deg,var(--accent-dark),var(--accent));display:flex;align-items:center;justify-content:center;font-family:'Lexend',sans-serif;font-weight:700;color:var(--navy);font-size:18px;}
   .brand-text .name{font-weight:700;font-size:19px;letter-spacing:.02em;}
   .brand-text .sub{font-size:12.5px;color:#C9D3DE;}
   .topbar .ref{font-size:13px;color:#C9D3DE;}
@@ -171,7 +171,7 @@
   .lang-choice .opt{flex:1;border:2px solid var(--line);border-radius:10px;padding:22px;text-align:center;cursor:pointer;font-weight:700;color:var(--navy);}
   .lang-choice .opt.selected{border-color:var(--accent);background:var(--accent-tint);}
   .thankyou{text-align:center;padding:50px 20px;}
-  .thankyou .ref-box{display:inline-block;background:var(--navy);color:#fff;padding:14px 26px;border-radius:8px;font-family:'Source Serif 4',serif;font-size:20px;font-weight:700;letter-spacing:.03em;margin:16px 0;}
+  .thankyou .ref-box{display:inline-block;background:var(--navy);color:#fff;padding:14px 26px;border-radius:8px;font-family:'Lexend',sans-serif;font-size:20px;font-weight:700;letter-spacing:.03em;margin:16px 0;}
   .footer-note{text-align:center;font-size:12px;color:var(--ink-soft);margin-top:26px;}
   a{color:var(--navy-2);}
   .link-btn{background:none;border:none;color:var(--navy-2);text-decoration:underline;cursor:pointer;font-size:13px;font-family:inherit;padding:0;}
@@ -231,12 +231,13 @@
 </style>
 <link rel="stylesheet" href="offboarding-employee.css">
 <link rel="stylesheet" href="ui-refresh.css">
+<link rel="stylesheet" href="wct-theme.css">
 </head>
 <body>
 
 <div class="topbar">
   <div class="brand">
-    <img class="wct-logo-img" alt="WCT Group" style="height:46px;image-rendering:-webkit-optimize-contrast;">
+    <img class="wct-mark-img" alt="WCT Group">
     <div class="brand-text">
       <div class="name" style="font-size:15px;font-weight:700;color:#fff;letter-spacing:.01em;">WCT Group</div>
       <div class="sub" style="font-size:12.5px;font-weight:500;color:#B9C4D0;">Employment Application Portal</div>
@@ -272,7 +273,7 @@
 <script src="ui-a11y.js"></script>
 <script src="api.js"></script>
 <script src="logo.js"></script>
-<script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);</script>
+<script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);document.querySelectorAll('.wct-mark-img').forEach(el=>el.src=WCT_MARK_DATA_URI);</script>
 <script src="consent-text.js"></script>
 <script src="offboarding-employee.js"></script>
 <script src="app.js"></script>

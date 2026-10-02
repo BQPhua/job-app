@@ -3,371 +3,45 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WCT Group — Sign In</title>
-    <link
-      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <meta name="theme-color" content="#0F172A" />
+    <title>WCT Group — Careers Sign In</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <script src="ui-a11y.js"></script>
     <script src="msal-browser.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <link rel="stylesheet" href="ui-refresh.css" />
+    <link rel="stylesheet" href="wct-theme.css" />
     <style>
-      :root {
-        --navy:#101B2D;
-        --navy-2:#1C2C44;
-        --accent:#3E5C76;
-        --accent-dark:#2C4356;
-        --cream: #f7f7f6;
-        --paper: #ffffff;
-        --ink: #1a1a1a;
-        --ink-soft: #6e6e6d;
-        --line: #e4e4e3;
-        --danger: #b3423a;
-        --ok: #3d7a5c;
-        font-family: 'Inter', system-ui, sans-serif;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        color: var(--ink);
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 30px 16px;
-        position: relative;
-      }
-      /* Blurred/darkened WCT building photo as a backdrop — separate fixed
-         layers (not a plain body background-image) so the blur/brightness
-         filter never touches the actual sign-in content sitting on top. */
-      .login-bg-layer {
-        position: fixed; inset: -10px;
-        background-size: cover; background-position: center;
-        filter: blur(2px) brightness(.72) saturate(1.1);
-        transform: scale(1.03);
-        z-index: -2;
-      }
-      .login-overlay {
-        position: fixed; inset: 0;
-        background: linear-gradient(160deg, rgba(16,27,45,.62), rgba(16,27,45,.42) 45%, rgba(62,92,118,.3));
-        z-index: -1;
-      }
-      h1,
-      h2 {
-        font-family: 'Source Serif 4', serif;
-        color: var(--navy);
-        margin: 0 0 4px;
-      }
-      .wrap {
-        max-width: 440px;
-        width: 100%;
-      }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        justify-content: center;
-        margin-bottom: 26px;
-      }
-      .brand-mark {
-        width: 42px;
-        height: 42px;
-        border-radius: 9px;
-        background: linear-gradient(135deg, var(--accent-dark), var(--accent));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: 'Source Serif 4', serif;
-        font-weight: 700;
-        color: var(--navy);
-        font-size: 20px;
-      }
-      .brand-text .name {
-        font-weight: 700;
-        font-size: 15px;
-        color: #fff;
-      }
-      .brand-text .sub {
-        font-size: 14.5px;
-        font-weight: 600;
-        color: #C9D3DE;
-      }
-      .card {
-        background: rgba(255, 255, 255, .98);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 34px;
-        box-shadow: 0 24px 60px rgba(0,0,0,.35);
-      }
-      .tabs {
-        display: flex;
-        gap: 6px;
-        margin-bottom: 22px;
-        background: #efeae0;
-        border-radius: 9px;
-        padding: 4px;
-      }
-      .tabs button {
-        flex: 1;
-        padding: 9px;
-        border: none;
-        border-radius: 7px;
-        background: transparent;
-        font-weight: 600;
-        font-size: 13.5px;
-        color: var(--ink-soft);
-        cursor: pointer;
-        font-family: inherit;
-      }
-      .tabs button.active {
-        background: #fff;
-        color: var(--navy);
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-      }
-      .oauth-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        width: 100%;
-        padding: 11px;
-        border-radius: 8px;
-        border: 1px solid #cbd3db;
-        background: #fff;
-        font-family: inherit;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        margin-bottom: 10px;
-        color: var(--ink);
-      }
-      .oauth-btn:hover {
-        background: #f7f7f5;
-      }
-      .oauth-btn svg {
-        width: 18px;
-        height: 18px;
-      }
-      .divider {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin: 18px 0;
-        color: var(--ink-soft);
-        font-size: 12px;
-      }
-      .divider::before,
-      .divider::after {
-        content: '';
-        flex: 1;
-        height: 1px;
-        background: var(--line);
-      }
-      .field {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-bottom: 14px;
-      }
-      .field label {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--navy);
-      }
-      input[type='text'],
-      input[type='email'],
-      input[type='password'] {
-        font-family: inherit;
-        font-size: 14px;
-        padding: 10px 12px;
-        border: 1px solid #cbd3db;
-        border-radius: 7px;
-        width: 100%;
-      }
-      input:focus {
-        outline: 2px solid var(--accent-dark);
-        outline-offset: 1px;
-        border-color: var(--accent);
-      }
-      .pw-field-wrap {
-        position: relative;
-      }
-      .pw-field-wrap input[type='password'],
-      .pw-field-wrap input[type='text'] {
-        padding-right: 46px;
-      }
-      .pw-toggle-btn {
-        position: absolute;
-        right: 6px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 30px;
-        height: 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #fff;
-        border: 1px solid var(--line);
-        border-radius: 7px;
-        color: var(--ink-soft);
-        cursor: pointer;
-        padding: 0;
-        transition: background .15s ease, color .15s ease;
-      }
-      .pw-toggle-btn:hover {
-        background: var(--cream);
-        color: var(--navy);
-      }
-      /* A custom toggle button is provided above, so suppress any
-         browser-native password reveal icon to avoid two icons stacking
-         in the same corner of the field. */
-      input[type="password"]::-ms-reveal,
-      input[type="password"]::-ms-clear { display: none; }
-      input[type="password"]::-webkit-textfield-decoration-container { visibility: hidden; }
-      input[type="password"]::-webkit-credentials-auto-fill-button,
-      input[type="password"]::-webkit-contacts-auto-fill-button { display: none !important; visibility: hidden; pointer-events: none; position: absolute; right: 0; }
-      .req {
-        color: var(--danger);
-      }
-      .btn {
-        font-family: inherit;
-        font-size: 14px;
-        font-weight: 600;
-        padding: 11px;
-        border-radius: 8px;
-        border: none;
-        cursor: pointer;
-        width: 100%;
-      }
-      .btn-primary {
-        background: var(--navy);
-        color: #fff;
-        margin-top: 6px;
-      }
-      .btn-primary:hover {
-        background: var(--navy-2);
-      }
-      .btn-primary:disabled {
-        background: #a9b6c4;
-        cursor: not-allowed;
-      }
-      .link-btn {
-        background: none;
-        border: none;
-        color: var(--navy-2);
-        text-decoration: underline;
-        cursor: pointer;
-        font-size: 13px;
-        font-family: inherit;
-        padding: 0;
-      }
-      .row-between {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin: -4px 0 14px;
-      }
-      .pw-checklist {
-        list-style: none;
-        padding: 0;
-        margin: 0 0 14px;
-        font-size: 12.5px;
-      }
-      .pw-checklist li {
-        padding: 2px 0;
-        color: var(--ink-soft);
-        display: flex;
-        align-items: center;
-        gap: 7px;
-      }
-      .pw-checklist li.ok {
-        color: var(--ok);
-      }
-      .pw-checklist .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: #cbd3db;
-        flex-shrink: 0;
-      }
-      .pw-checklist li.ok .dot {
-        background: var(--ok);
-      }
-      .error-banner {
-        background: #fbeae8;
-        border: 1px solid #ebbab4;
-        color: var(--danger);
-        padding: 10px 14px;
-        border-radius: 7px;
-        font-size: 13px;
-        margin-bottom: 14px;
-      }
-      .success-banner {
-        background: #eaf3ec;
-        border: 1px solid #bedacb;
-        color: var(--ok);
-        padding: 10px 14px;
-        border-radius: 7px;
-        font-size: 13px;
-        margin-bottom: 14px;
-      }
-      .admin-strip {
-        text-align: center;
-        margin-top: 18px;
-        font-size: 13px;
-        color: #C9D3DE;
-      }
-      .admin-strip a { color: #fff; font-weight: 600; }
-      .footer-note {
-        text-align: center;
-        font-size: 11.5px;
-        color: #AEB9C4;
-        margin-top: 18px;
-      }
-
-      /* ==================================================================
-         MOBILE — additive only, desktop rules above are untouched.
-         ================================================================== */
-      @media (max-width: 480px) {
-        body { padding: 20px 12px; }
-        .card { padding: 22px 18px; }
-        .brand { gap: 10px; margin-bottom: 20px; }
-        .brand-mark { width: 36px; height: 36px; font-size: 17px; }
-        .brand-text .sub { font-size: 13px; }
-        .oauth-btn { padding: 10px 12px; font-size: 13.5px; }
-        .tabs button { padding: 8px 4px; font-size: 13px; }
-      }
+      /* Hide browsers' own password reveal icons: we draw one toggle everywhere. */
+      input[type="password"]::-ms-reveal, input[type="password"]::-ms-clear { display: none; }
+      body { margin: 0; background: #fff; }
     </style>
-    <link rel="stylesheet" href="ui-refresh.css">
   </head>
   <body>
-    <div class="login-bg-layer" id="loginBgLayer"></div>
-    <div class="login-overlay"></div>
-    <div class="wrap">
-      <div class="brand">
-        <img
-          class="wct-logo-img"
-          alt="WCT Group"
-          style="height: 64px; image-rendering: -webkit-optimize-contrast"
-        />
-        <div class="brand-text">
-          <div class="name">WCT Group</div>
-          <div class="sub">Employment Application Portal</div>
+    <a class="sr-only" href="#cardRoot">Skip to sign in</a>
+    <main class="auth">
+      <aside class="auth-brand" aria-label="About WCT Careers">
+        <div class="auth-road" aria-hidden="true"><div class="surface"><div class="edge l"></div><div class="edge r"></div><div class="lane"></div></div></div>
+        <div class="auth-brand-top"><span class="auth-chip"><i></i>WCT Group Careers</span></div>
+        <div class="auth-headline">
+          <h1>Build the road ahead <em>with&nbsp;WCT.</em></h1>
+          <p>Apply for a role, track your application and complete your onboarding, all in one place.</p>
+          <ul class="auth-points">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span><b>Apply in minutes.</b> Save as you go and come back any time.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span><b>Track every step.</b> See your status from submitted to hired.</span></li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Private and secure.</b> Your details are handled under the PDPA.</span></li>
+          </ul>
         </div>
-      </div>
+        <div class="auth-brand-foot"><span>WCT Group · Building Values</span><span>Employment Application Portal</span></div>
+      </aside>
 
-      <div class="card" id="cardRoot"></div>
+      <section class="auth-panel">
+        <div class="auth-box" id="cardRoot" tabindex="-1"></div>
+      </section>
+    </main>
 
-      <div class="admin-strip">
-        HR team member? <a href="admin.html">Login to Admin Dashboard →</a>
-      </div>
-      <div class="footer-note">
-        By continuing, you agree that your data will be processed per the WCT
-        Group Personal Data Protection Notice.
-      </div>
-    </div>
 <script>
   // Where the API lives. Old Azure / GitHub Pages copies keep using the Azure
   // API; on our own server (nginx) the API is on the same address under /api;
@@ -381,58 +55,56 @@
 <script src="api.js"></script>
     <script src="oauth.js"></script>
     <script src="logo.js"></script>
-    <script src="login-bg.js"></script>
-    <script>
-      document
-        .querySelectorAll('.wct-logo-img')
-        .forEach((el) => (el.src = WCT_LOGO_DATA_URI));
-      document.getElementById('loginBgLayer').style.backgroundImage =
-        "url('" + CANDIDATE_LOGIN_BG_DATA_URI + "')";
-    </script>
     <script>
       let tab = 'signin'; // signin | register | forgot
       const root = document.getElementById('cardRoot');
 
-      const GoogleIcon = `<svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.09A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>`;
-      const MsIcon = `<svg viewBox="0 0 23 23"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M12 1h10v10H12z"/><path fill="#00A4EF" d="M1 12h10v10H1z"/><path fill="#FFB900" d="M12 12h10v10H12z"/></svg>`;
+      const GoogleIcon = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.25 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.09A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.09V7.07H2.18A11 11 0 0 0 1 12c0 1.77.42 3.45 1.18 4.93z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.07l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>`;
+      const MsIcon = `<svg viewBox="0 0 23 23" aria-hidden="true"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M12 1h10v10H12z"/><path fill="#00A4EF" d="M1 12h10v10H1z"/><path fill="#FFB900" d="M12 12h10v10H12z"/></svg>`;
+      const I = {
+        mail: '<svg class="lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+        lock: '<svg class="lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+        user: '<svg class="lead" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+        alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>',
+        ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>',
+        back: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M15 18l-6-6 6-6"/></svg>',
+      };
+      const ICON_EYE_OPEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
+      const ICON_EYE_CLOSED = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
       function render() {
-        if (tab === 'signin') root.innerHTML = signinView();
-        else if (tab === 'register') root.innerHTML = registerView();
-        else root.innerHTML = forgotView();
+        root.innerHTML = tab === 'signin' ? signinView() : tab === 'register' ? registerView() : forgotView();
+        const logo = root.querySelector('.auth-logo');
+        if (logo) logo.src = WCT_LOGO_DATA_URI;
       }
       function setTab(t) {
         tab = t;
         render();
+        const first = root.querySelector(t === 'forgot' ? '#forgotEmail' : '[role="tab"][aria-selected="true"]');
+        if (first) first.focus();
+      }
+      function tabKey(e) {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        setTab(tab === 'signin' ? 'register' : 'signin');
       }
 
-      // ---------------------------------------------------------------
-      // Password show/hide — a custom button (not the browser's native
-      // reveal icon) so it looks the same across every browser and never
-      // silently disappears after the form re-renders (e.g. after a
-      // failed login attempt redraws the whole view).
-      // ---------------------------------------------------------------
-      const ICON_EYE_OPEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
-      const ICON_EYE_CLOSED = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
       function togglePwField(inputId, btn) {
         const el = document.getElementById(inputId);
         const showing = el.type === 'password';
         el.type = showing ? 'text' : 'password';
         btn.innerHTML = showing ? ICON_EYE_CLOSED : ICON_EYE_OPEN;
-        btn.title = showing ? 'Hide password' : 'Show password';
-        btn.setAttribute('aria-label', btn.title);
+        btn.setAttribute('aria-label', showing ? 'Hide password' : 'Show password');
+        btn.setAttribute('aria-pressed', String(showing));
       }
 
       // If this login page was reached via a link carrying extra context —
-      // a "Complete Your Onboarding" email link (?onboarding=<id>), a
+      // a "Complete Your Onboarding" email link (?onboarding=<id>), an
       // offboarding invitation link (?offboard=<token>), or a
-      // business-unit-specific application link (?bu=Mall etc.) — bounced
-      // here because the candidate wasn't signed in yet, carry that same
-      // parameter forward to index.html once they do sign in. Explicitly
-      // whitelisted (rather than forwarding the whole query string) so an
-      // unrelated param like a failed OAuth's ?error=... never leaks through.
-      // Offboarding invite token is also kept in sessionStorage, so it
-      // survives any sign-in round trip that drops the query string.
+      // business-unit-specific application link (?bu=Mall etc.) — carry that
+      // same parameter forward to index.html once they sign in. Whitelisted
+      // so an unrelated param (e.g. ?error=...) never leaks through.
       try {
         const obToken = new URLSearchParams(window.location.search).get('offboard');
         if (obToken) sessionStorage.setItem('wct_offboard_token', obToken);
@@ -441,175 +113,202 @@
       function indexRedirectUrl(basePath) {
         const params = new URLSearchParams(window.location.search);
         const forward = new URLSearchParams();
-        if(params.get('onboarding')) forward.set('onboarding', params.get('onboarding'));
-        if(params.get('offboard')) forward.set('offboard', params.get('offboard'));
-        if(params.get('bu')) forward.set('bu', params.get('bu'));
+        if (params.get('onboarding')) forward.set('onboarding', params.get('onboarding'));
+        if (params.get('offboard')) forward.set('offboard', params.get('offboard'));
+        if (params.get('bu')) forward.set('bu', params.get('bu'));
         const qs = forward.toString();
         return basePath + (qs ? '?' + qs : '');
       }
 
-      function oauthButtons() {
-        return `
-    <button class="oauth-btn" onclick="signInOAuth('google')">${GoogleIcon} Continue with Google</button>
-    <button class="oauth-btn" onclick="signInOAuth('azure')">${MsIcon} Continue with Microsoft</button>
-    <div class="divider">or</div>
-  `;
-      }
+      // ---------- shared building blocks ----------
+      const header = (title, sub) => `
+        <img class="auth-logo" alt="WCT Group — Building Values">
+        <h2 class="auth-title" id="authTitle">${title}</h2>
+        <p class="auth-sub">${sub}</p>`;
+      const tabs = () => `
+        <div class="auth-tabs" role="tablist" aria-label="Sign in or create an account">
+          <button type="button" role="tab" id="tabSignin" aria-selected="${tab === 'signin'}" tabindex="${tab === 'signin' ? 0 : -1}" onclick="setTab('signin')" onkeydown="tabKey(event)">Sign in</button>
+          <button type="button" role="tab" id="tabRegister" aria-selected="${tab === 'register'}" tabindex="${tab === 'register' ? 0 : -1}" onclick="setTab('register')" onkeydown="tabKey(event)">Create account</button>
+        </div>`;
+      const oauthButtons = (verb) => `
+        <div class="auth-oauth">
+          <button type="button" class="auth-oauth-btn" id="btnGoogle" onclick="signInOAuth('google', this)">${GoogleIcon} Google</button>
+          <button type="button" class="auth-oauth-btn" id="btnMicrosoft" onclick="signInOAuth('azure', this)">${MsIcon} Microsoft</button>
+        </div>
+        <div class="auth-divider">or ${verb} with email</div>`;
+      const field = ({ id, label, type = 'text', icon, autocomplete, extra = '', eye = false, hint = '' }) => `
+        <div class="auth-field">
+          <label for="${id}">${label}${hint ? ` <span class="opt">${hint}</span>` : ''}</label>
+          <div class="auth-input${eye ? ' has-eye' : ''}">
+            ${icon}
+            <input id="${id}" name="${id}" type="${type}" autocomplete="${autocomplete}" aria-describedby="${id}Err" ${extra}>
+            ${eye ? `<button type="button" class="eye" onclick="togglePwField('${id}', this)" aria-label="Show password" aria-pressed="false">${ICON_EYE_OPEN}</button>` : ''}
+          </div>
+          <div id="${id}Err" class="auth-err" hidden></div>
+        </div>`;
 
       function signinView() {
         return `
-    <div class="tabs">
-      <button class="active" onclick="setTab('signin')">Sign In</button>
-      <button onclick="setTab('register')">Create Account</button>
-    </div>
-    ${oauthButtons()}
-    <div id="msg"></div>
-    <div class="field"><label>Email <span class="req">*</span></label><input type="email" id="siEmail"></div>
-    <div class="field"><label>Password <span class="req">*</span></label>
-      <div class="pw-field-wrap">
-        <input type="password" id="siPassword">
-        <button type="button" class="pw-toggle-btn" onclick="togglePwField('siPassword', this)" title="Show password" aria-label="Show password">${ICON_EYE_OPEN}</button>
-      </div>
-    </div>
-    <div class="row-between"><span></span><button class="link-btn" onclick="setTab('forgot')">Forgot password?</button></div>
-    <button class="btn btn-primary" onclick="doSignIn()">Sign In</button>
-  `;
+          ${header('Welcome back', 'Sign in to continue your application.')}
+          ${tabs()}
+          <div role="tabpanel" aria-labelledby="tabSignin">
+            ${oauthButtons('sign in')}
+            <div id="msg"></div>
+            <form novalidate onsubmit="event.preventDefault();doSignIn()">
+              ${field({ id: 'siEmail', label: 'Email address', type: 'email', icon: I.mail, autocomplete: 'username email', extra: 'inputmode="email" placeholder="you@example.com" required' })}
+              ${field({ id: 'siPassword', label: 'Password', type: 'password', icon: I.lock, autocomplete: 'current-password', eye: true, extra: 'required' })}
+              <div class="auth-row"><span></span><button type="button" class="auth-link" onclick="setTab('forgot')">Forgot password?</button></div>
+              <button type="submit" class="auth-submit" id="siSubmit">Sign in</button>
+            </form>
+          </div>
+          ${footer()}`;
       }
 
       function registerView() {
         return `
-    <div class="tabs">
-      <button onclick="setTab('signin')">Sign In</button>
-      <button class="active" onclick="setTab('register')">Create Account</button>
-    </div>
-    ${oauthButtons()}
-    <div id="msg"></div>
-    <div class="field"><label>Full Name <span class="req">*</span></label><input type="text" id="regName"></div>
-    <div class="field"><label>Email <span class="req">*</span></label><input type="email" id="regEmail"></div>
-    <div class="field"><label>Password <span class="req">*</span></label>
-      <div class="pw-field-wrap">
-        <input type="password" id="regPassword" oninput="checkPasswordStrength(this.value)">
-        <button type="button" class="pw-toggle-btn" onclick="togglePwField('regPassword', this)" title="Show password" aria-label="Show password">${ICON_EYE_OPEN}</button>
-      </div>
-    </div>
-    <ul class="pw-checklist" id="pwChecklist">
-      <li id="pw-len"><span class="dot"></span> At least 8 characters</li>
-      <li id="pw-upper"><span class="dot"></span> One uppercase letter</li>
-      <li id="pw-lower"><span class="dot"></span> One lowercase letter</li>
-      <li id="pw-num"><span class="dot"></span> One number</li>
-      <li id="pw-special"><span class="dot"></span> One special character</li>
-    </ul>
-    <div class="field"><label>Confirm Password <span class="req">*</span></label>
-      <div class="pw-field-wrap">
-        <input type="password" id="regConfirm" oninput="checkPasswordMatch()">
-        <button type="button" class="pw-toggle-btn" onclick="togglePwField('regConfirm', this)" title="Show password" aria-label="Show password">${ICON_EYE_OPEN}</button>
-      </div>
-    </div>
-    <div id="matchMsg" style="font-size:12.5px;margin:-8px 0 14px;"></div>
-    <button class="btn btn-primary" id="regSubmitBtn" disabled onclick="doRegister()">Create Account</button>
-  `;
+          ${header('Create your account', 'It takes a minute. You can save your application and return any time.')}
+          ${tabs()}
+          <div role="tabpanel" aria-labelledby="tabRegister">
+            ${oauthButtons('sign up')}
+            <div id="msg"></div>
+            <form novalidate onsubmit="event.preventDefault();doRegister()">
+              ${field({ id: 'regName', label: 'Full name', icon: I.user, autocomplete: 'name', extra: 'placeholder="As per your NRIC / passport" required oninput="checkPasswordMatch()"' })}
+              ${field({ id: 'regEmail', label: 'Email address', type: 'email', icon: I.mail, autocomplete: 'email', extra: 'inputmode="email" placeholder="you@example.com" required oninput="checkPasswordMatch()"' })}
+              <div class="auth-field">
+                <label for="regPassword">Password</label>
+                <div class="auth-input has-eye">${I.lock}
+                  <input id="regPassword" type="password" autocomplete="new-password" aria-describedby="pwRules regPasswordErr" oninput="checkPasswordStrength(this.value)" required>
+                  <button type="button" class="eye" onclick="togglePwField('regPassword', this)" aria-label="Show password" aria-pressed="false">${ICON_EYE_OPEN}</button>
+                </div>
+                <div class="auth-meter" id="pwMeter" data-score="0" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+                <ul class="auth-rules" id="pwRules" aria-label="Password must have">
+                  <li id="pw-len">8+ characters</li><li id="pw-upper">An uppercase letter</li>
+                  <li id="pw-lower">A lowercase letter</li><li id="pw-num">A number</li>
+                  <li id="pw-special">A special character</li>
+                </ul>
+                <div id="regPasswordErr" class="auth-err" hidden></div>
+              </div>
+              ${field({ id: 'regConfirm', label: 'Confirm password', type: 'password', icon: I.lock, autocomplete: 'new-password', eye: true, extra: 'required oninput="checkPasswordMatch()"' })}
+              <div id="matchMsg" class="auth-match" aria-live="polite"></div>
+              <button type="submit" class="auth-submit" id="regSubmitBtn" disabled style="margin-top:14px">Create account</button>
+            </form>
+          </div>
+          ${footer()}`;
       }
 
       function forgotView() {
         return `
-    <h2 style="font-size:18px;">Reset Your Password</h2>
-    <p style="color:var(--ink-soft);font-size:13px;margin-top:0;">Enter your email and we'll send you a link to reset your password.</p>
-    <div id="msg"></div>
-    <div class="field"><label>Email <span class="req">*</span></label><input type="email" id="forgotEmail"></div>
-    <button class="btn btn-primary" onclick="doForgotPassword()">Send Reset Link</button>
-    <button class="btn" style="width:auto;margin-top:14px;background:#fff;color:var(--navy);border:1px solid var(--navy);padding:9px 18px;display:block;margin-left:auto;margin-right:auto;" onclick="setTab('signin')">← Back to Sign In</button>
-  `;
+          ${header('Reset your password', 'Enter the email you signed up with and we’ll send you a reset link.')}
+          <div id="msg"></div>
+          <form novalidate onsubmit="event.preventDefault();doForgotPassword()">
+            ${field({ id: 'forgotEmail', label: 'Email address', type: 'email', icon: I.mail, autocomplete: 'email', extra: 'inputmode="email" placeholder="you@example.com" required' })}
+            <button type="submit" class="auth-submit" id="forgotSubmit">Send reset link</button>
+          </form>
+          <div class="auth-row" style="justify-content:center;margin:14px 0 0"><button type="button" class="auth-link" onclick="setTab('signin')">${I.back} Back to sign in</button></div>
+          ${footer()}`;
       }
 
-      let pwValid = {
-        len: false,
-        upper: false,
-        lower: false,
-        num: false,
-        special: false,
-      };
+      function footer() {
+        return `
+          <div class="auth-foot">
+            <span>HR team member? <a href="admin.html">Login to Admin Dashboard →</a></span>
+            <span>By continuing, you agree that your data will be processed under the WCT Group Personal Data Protection Notice.</span>
+          </div>`;
+      }
+
+      // ---------- feedback helpers ----------
+      function showMsg(type, text) {
+        const el = document.getElementById('msg');
+        if (!el) return;
+        el.innerHTML = `<div class="auth-alert ${type === 'error' ? 'err' : 'ok'}" role="${type === 'error' ? 'alert' : 'status'}" tabindex="-1">${type === 'error' ? I.alert : I.ok}<span>${esc(text)}</span></div>`;
+        if (type === 'error') el.firstChild.focus();
+      }
+      function clearErrors() {
+        root.querySelectorAll('.auth-err').forEach((e) => { e.hidden = true; e.innerHTML = ''; });
+        root.querySelectorAll('[aria-invalid]').forEach((e) => e.removeAttribute('aria-invalid'));
+        const m = document.getElementById('msg'); if (m) m.innerHTML = '';
+      }
+      function fieldError(id, text) {
+        const input = document.getElementById(id);
+        const err = document.getElementById(id + 'Err');
+        if (input) input.setAttribute('aria-invalid', 'true');
+        if (err) { err.innerHTML = I.alert + '<span>' + esc(text) + '</span>'; err.hidden = false; }
+      }
+      function focusFirstInvalid() { const el = root.querySelector('[aria-invalid="true"]'); if (el) el.focus(); }
+      function busy(btn, on, label) {
+        if (!btn) return;
+        if (on) { btn.dataset.label = btn.innerHTML; btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.innerHTML = `<span class="auth-spin" aria-hidden="true"></span>${label}`; }
+        else { btn.disabled = false; btn.removeAttribute('aria-busy'); if (btn.dataset.label) btn.innerHTML = btn.dataset.label; }
+      }
+      const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const BLACKLIST_MSG = 'This account has been blacklisted and can no longer sign in or submit applications. If you believe this is a mistake, please contact HR directly.';
+
+      // ---------- password rules ----------
+      let pwValid = { len: false, upper: false, lower: false, num: false, special: false };
       function checkPasswordStrength(pw) {
         pwValid.len = pw.length >= 8;
         pwValid.upper = /[A-Z]/.test(pw);
         pwValid.lower = /[a-z]/.test(pw);
         pwValid.num = /[0-9]/.test(pw);
         pwValid.special = /[^A-Za-z0-9]/.test(pw);
-        document.getElementById('pw-len').className = pwValid.len ? 'ok' : '';
-        document.getElementById('pw-upper').className = pwValid.upper
-          ? 'ok'
-          : '';
-        document.getElementById('pw-lower').className = pwValid.lower
-          ? 'ok'
-          : '';
-        document.getElementById('pw-num').className = pwValid.num ? 'ok' : '';
-        document.getElementById('pw-special').className = pwValid.special
-          ? 'ok'
-          : '';
+        Object.keys(pwValid).forEach((k) => { const li = document.getElementById('pw-' + k); if (li) li.className = pwValid[k] ? 'ok' : ''; });
+        const n = Object.values(pwValid).filter(Boolean).length;
+        const meter = document.getElementById('pwMeter');
+        if (meter) meter.dataset.score = pw ? String(n <= 1 ? 1 : n <= 3 ? 2 : n === 4 ? 3 : 4) : '0';
         checkPasswordMatch();
       }
       function checkPasswordMatch() {
-        const pw = document.getElementById('regPassword').value;
+        const pwEl = document.getElementById('regPassword');
+        if (!pwEl) return;
+        const pw = pwEl.value;
         const cf = document.getElementById('regConfirm').value;
         const allValid = Object.values(pwValid).every((v) => v);
         const matches = pw && cf && pw === cf;
         document.getElementById('matchMsg').innerHTML = cf
-          ? matches
-            ? '<span style="color:var(--ok);">Passwords match ✓</span>'
-            : '<span style="color:var(--danger);">Passwords do not match</span>'
+          ? matches ? '<span style="color:var(--ok)">Passwords match</span>' : '<span style="color:var(--danger)">Passwords don’t match yet</span>'
           : '';
-        document.getElementById('regSubmitBtn').disabled = !(
-          allValid &&
-          matches &&
-          document.getElementById('regName').value.trim() &&
-          document.getElementById('regEmail').value.trim()
-        );
+        document.getElementById('regSubmitBtn').disabled = !(allValid && matches &&
+          document.getElementById('regName').value.trim() && document.getElementById('regEmail').value.trim());
       }
 
-      // OAuth here is a two-step client/server split (spec §3.1, backend
-      // src/routes/auth.js): the provider's own SDK (MSAL.js / Google
-      // Identity Services, oauth.js) gets a signed ID token directly from
-      // Google/Microsoft on the client, then THIS backend verifies that
-      // token server-side (signature/audience/issuer) before ever trusting
-      // the email inside it — see backend/src/lib/oauthVerify.js. There is
-      // no redirect-based flow or ?error= callback param anymore; failures
-      // surface as a normal thrown error from the popup/prompt itself.
-      async function signInOAuth(provider) {
+      // OAuth: the provider's SDK (oauth.js) gets a signed ID token in a
+      // popup, then our backend verifies it before trusting the email.
+      async function signInOAuth(provider, btn) {
+        clearErrors();
+        const other = document.getElementById(provider === 'azure' ? 'btnGoogle' : 'btnMicrosoft');
+        busy(btn, true, provider === 'azure' ? 'Microsoft' : 'Google');
+        if (other) other.disabled = true;
         try {
-          const idToken =
-            provider === 'azure'
-              ? await signInWithMicrosoft()
-              : await signInWithGoogle();
+          const idToken = provider === 'azure' ? await signInWithMicrosoft() : await signInWithGoogle();
           const path = provider === 'azure' ? '/auth/oauth/microsoft' : '/auth/oauth/google';
           const { data, error } = await apiTry(() => api.post(path, { id_token: idToken }));
           if (error) {
-            if (error.data && error.data.error === 'blacklisted') {
-              showMsg('error', 'This account has been blacklisted and can no longer sign in or submit applications. If you believe this is a mistake, please contact HR directly.');
-            } else {
-              showMsg('error', error.message);
-            }
+            showMsg('error', error.data && error.data.error === 'blacklisted' ? BLACKLIST_MSG : error.message);
             return;
           }
           api.setToken(data.token); api.setUser(data.user);
           window.location.href = indexRedirectUrl('index.html');
         } catch (err) {
           showMsg('error', err.message || 'Sign-in was cancelled or failed.');
+        } finally {
+          busy(btn, false);
+          if (other) other.disabled = false;
         }
       }
 
       async function doSignIn() {
+        clearErrors();
         const email = document.getElementById('siEmail').value.trim();
         const password = document.getElementById('siPassword').value;
-        if (!email || !password) {
-          showMsg('error', 'Please enter your email and password.');
-          return;
-        }
+        if (!EMAIL_RE.test(email)) fieldError('siEmail', email ? 'Enter a valid email address, like name@example.com.' : 'Enter your email address.');
+        if (!password) fieldError('siPassword', 'Enter your password.');
+        if (root.querySelector('[aria-invalid="true"]')) return focusFirstInvalid();
+        const btn = document.getElementById('siSubmit');
+        busy(btn, true, 'Signing in…');
         const { data, error } = await apiTry(() => api.post('/auth/login', { email, password }));
         if (error) {
-          if (error.data && error.data.error === 'blacklisted') {
-            showMsg('error', 'This account has been blacklisted and can no longer sign in or submit applications. If you believe this is a mistake, please contact HR directly.');
-          } else {
-            showMsg('error', error.message);
-          }
+          busy(btn, false);
+          showMsg('error', error.data && error.data.error === 'blacklisted' ? BLACKLIST_MSG : error.message);
           return;
         }
         api.setToken(data.token); api.setUser(data.user);
@@ -617,68 +316,49 @@
       }
 
       async function doRegister() {
+        clearErrors();
         const name = document.getElementById('regName').value.trim();
         const email = document.getElementById('regEmail').value.trim();
         const password = document.getElementById('regPassword').value;
-        // Unlike the original Supabase flow, the backend's /auth/register
-        // (spec §3.1) issues a session token immediately — there is no
-        // separate "confirm your email" step, since this backend doesn't
-        // yet send verification emails at all (see backend TODOs).
+        if (!name) fieldError('regName', 'Enter your full name.');
+        if (!EMAIL_RE.test(email)) fieldError('regEmail', 'Enter a valid email address, like name@example.com.');
+        if (root.querySelector('[aria-invalid="true"]')) return focusFirstInvalid();
+        const btn = document.getElementById('regSubmitBtn');
+        busy(btn, true, 'Creating account…');
         const { data, error } = await apiTry(() => api.post('/auth/register', { email, password, full_name: name }));
         if (error) {
+          busy(btn, false);
           showMsg('error', error.message);
           return;
         }
         api.setToken(data.token); api.setUser(data.user);
-        showMsg('success', 'Account created! Redirecting...');
-        setTimeout(() => { window.location.href = indexRedirectUrl('index.html'); }, 1200);
+        showMsg('success', 'Account created. Taking you to your application…');
+        setTimeout(() => { window.location.href = indexRedirectUrl('index.html'); }, 900);
       }
 
       async function doForgotPassword() {
+        clearErrors();
         const email = document.getElementById('forgotEmail').value.trim();
-        if (!email) {
-          showMsg('error', 'Please enter your email.');
-          return;
-        }
+        if (!EMAIL_RE.test(email)) { fieldError('forgotEmail', email ? 'Enter a valid email address.' : 'Enter your email address.'); return focusFirstInvalid(); }
+        const btn = document.getElementById('forgotSubmit');
+        busy(btn, true, 'Sending…');
         const { error } = await apiTry(() => api.post('/auth/reset-password/request', { email }));
-        if (error) {
-          showMsg('error', error.message);
-          return;
-        }
-        showMsg(
-          'success',
-          'If an account exists for that email, a reset link has been sent.'
-        );
+        busy(btn, false);
+        if (error) { showMsg('error', error.message); return; }
+        showMsg('success', 'If an account exists for that email, a reset link is on its way. Check your inbox and spam folder.');
       }
 
-      function showMsg(type, text) {
-        const el = document.getElementById('msg');
-        if (el)
-          el.innerHTML = `<div class="${
-            type === 'error' ? 'error-banner' : 'success-banner'
-          }">${text}</div>`;
-      }
-
-      // If already signed in, skip straight to the app. There's no
-      // server-side session to check here (unlike Supabase's getSession()) —
-      // this just checks a token is present; index.html itself is the one
-      // that actually validates it against the backend (via
-      // requireCandidateAuth on every call) and bounces back here if it's
-      // expired/invalid.
+      // Already signed in: go straight to the app (index.html validates the token).
       (function boot() {
         if (api.getToken()) {
           window.location.href = indexRedirectUrl('index.html');
           return;
         }
-        render();
-        // If index.html redirected back here because the stored token was
-        // rejected (expired/invalid), or because the blacklist check
-        // failed, it appends these markers rather than the old Supabase
-        // ?error=/?error_description= OAuth-callback params, since there's
-        // no OAuth redirect round-trip anymore.
         const params = new URLSearchParams(window.location.search);
+        if (params.get('signup') === '1') tab = 'register';
+        render();
         if (params.get('blacklisted') === '1') {
-          showMsg('error', 'This account has been blacklisted and can no longer sign in or submit applications. If you believe this is a mistake, please contact HR directly.');
+          showMsg('error', BLACKLIST_MSG);
           window.history.replaceState({}, '', window.location.pathname);
         } else if (params.get('session_expired') === '1') {
           showMsg('error', 'Your session has expired. Please sign in again.');
