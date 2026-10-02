@@ -2536,7 +2536,7 @@ function adminAccessPageView(){
     <div class="stat-row">
       <div class="stat" style="flex:none;min-width:auto;">
         <h2 style="font-size:20px;margin:0;">Admin Access</h2>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Invite staff by their @wct.my email, then grant access: Business Unit Admin (HR), Super Admin, or the offboarding-only roles — Payroll PIC (covers every business unit) and Clearance PIC (per business unit and department). A person can hold several grants.</div>
+        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Invite staff by their work email, then grant access: Business Unit Admin (HR), Super Admin, or the offboarding-only roles — Payroll PIC (covers every business unit) and Clearance PIC (per business unit and department). A person can hold several grants.</div>
       </div>
     </div>
 
@@ -2549,7 +2549,7 @@ function adminAccessPageView(){
       <div class="detail-section" style="background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow-sm);">
         <h4 style="border-top:none;padding-top:0;">Invite Admin</h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <div class="field"><label>Email <span style="color:var(--danger);">*</span></label><input type="text" id="newAdminEmail" placeholder="name@wct.my"></div>
+          <div class="field"><label>Email <span style="color:var(--danger);">*</span></label><input type="email" id="newAdminEmail" placeholder="name@company.com"></div>
           <div class="field"><label>Display Name</label><input type="text" id="newAdminName" placeholder="Optional"></div>
         </div>
         <div class="hint" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 12px;">They'll appear below as "not yet signed in" until they complete their first Microsoft sign-in — grant their access now, it takes effect the moment they do.</div>
