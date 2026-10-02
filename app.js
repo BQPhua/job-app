@@ -840,10 +840,14 @@ function tplObStatutory(){
       <div class="field"><label>Tax Branch</label><input type="text" id="ob_tax_branch" value="${esc(o.tax_branch)}"></div>
     </div>
     <div class="grid">
-      <div class="field"><label>Bank Account No.</label><input type="text" inputmode="numeric" id="ob_bank_account_no" value="${esc(o.bank_account_no)}" oninput="this.value=numericOnly(this.value)"></div>
       <div class="field"><label>CIDB Green Card No.</label><input type="text" id="ob_cidb_green_card_no" placeholder="e.g. N/A" value="${esc(o.cidb_green_card_no)}"></div>
     </div>
-    <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
+
+    <div class="section-title">Bank Details</div>
+    <div class="grid">
+      <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
+      <div class="field"><label>Bank Account No.</label><input type="text" inputmode="numeric" id="ob_bank_account_no" value="${esc(o.bank_account_no)}" oninput="this.value=numericOnly(this.value)"></div>
+    </div>
 
     <p style="font-size:12.5px;color:var(--ink-soft);margin-top:14px;">I confirm that the information herein is correct and in order. Should there be any discrepancy in the information, which will lead to possible delay or inability to credit my salaries, it is my sole responsibility.<br><br>
     <em>Saya mengesahkan maklumat tersebut diatas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</em></p>
