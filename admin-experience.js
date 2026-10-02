@@ -214,6 +214,11 @@
     if (!adminToken || WX.tour.active) return;
     helpMenuOpen = false; renderTools();
     WX.palette.toggle({ source: paletteSource, placeholder: roleInfo().hr ? 'Search applicants, cases or pages…' : 'Search cases or pages…' });
+    // Offboarding cases only load when that page is first opened; fetch them
+    // in the background so the palette can find a leaver from anywhere.
+    if (typeof OB !== 'undefined' && !OB.data && typeof obLoadList === 'function') {
+      obLoadList().then(() => WX.palette.refresh()).catch(() => {});
+    }
   }
 
   function showShortcuts() {

@@ -518,13 +518,19 @@
       const groups = (typeof source === 'function' ? source(q) : source) || [];
       flat = [];
       let html = '';
-      groups.forEach((g) => {
+      // Rank inside each group, then (when searching) put the group with the
+      // best match first, so "farid" opens Farid's case rather than a fuzzy
+      // hit in an earlier group.
+      const rankedGroups = groups.map((g, gi) => {
         const ranked = (g.items || [])
           .map((it) => ({ it, s: Math.max(score(it.label, q), score(`${it.keywords || ''} ${it.hint || ''}`, q) * 0.6) }))
           .filter((x) => x.s > 0)
           .sort((a, b) => b.s - a.s)
           .slice(0, g.limit || 6);
-        if (!ranked.length) return;
+        return { g, gi, ranked, best: ranked.length ? ranked[0].s : 0 };
+      }).filter((x) => x.ranked.length);
+      if (q) rankedGroups.sort((a, b) => (b.best - a.best) || (a.gi - b.gi));
+      rankedGroups.forEach(({ g, ranked }) => {
         html += `<li class="wx-pal-group" role="presentation">${esc(g.title)}</li>`;
         ranked.forEach(({ it }) => {
           const i = flat.push(it) - 1;
@@ -566,7 +572,7 @@
     }
     function toggle(opts) { if (dlg && dlg.open) dlg.close(); else open(opts); }
 
-    return { open, toggle, get isOpen() { return !!(dlg && dlg.open); } };
+    return { open, toggle, refresh: () => { if (dlg && dlg.open) draw(); }, get isOpen() { return !!(dlg && dlg.open); } };
   })();
 
   // ------------------------------------------------------------------------
