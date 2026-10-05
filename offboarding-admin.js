@@ -889,7 +889,11 @@ function obTimelineHtml(b) {
     const d = e.detail || {};
     if (e.event_type === 'section_signed') return `${esc(d.department || '')}${d.on_behalf ? ' — on behalf, by HR' : ''}`;
     if (e.event_type === 'section_saved' || e.event_type === 'section_reopened') return `${esc(d.department || '')}${d.reason ? ` — ${esc(d.reason)}` : ''}`;
-    if (e.event_type === 'reminder_sent') return `${d.automatic ? `Automatic ${d.days_before}-day reminder` : 'Manual reminder'}${d.failed && d.failed.length ? ` · ${d.failed.length} failed` : ''}`;
+    if (e.event_type === 'reminder_sent') {
+      const kinds = { invite_reminder: 'Exit Interview reminder to the employee', ack_reminder: 'Acknowledgement reminder to the employee', payroll_reminder: 'Final pay reminder to Payroll' };
+      if (d.kind && kinds[d.kind]) return `${kinds[d.kind]} (after ${d.days_since} days)`;
+      return `${d.automatic ? `Automatic ${d.days_before}-day reminder` : 'Manual reminder'}${d.failed && d.failed.length ? ` · ${d.failed.length} failed` : ''}`;
+    }
     if (e.event_type === 'cancelled') return esc(d.reason || '');
     if (e.event_type === 'details_updated') return esc((d.fields || []).join(', ').replace(/_/g, ' '));
     if (e.event_type === 'email_failed') return esc(d.email || '');
