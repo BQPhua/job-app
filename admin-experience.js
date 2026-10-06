@@ -71,7 +71,7 @@
       { target: () => document.querySelector('#dashResults .apps-table tbody tr') || document.getElementById('dashResults'), placement: 'top', before: () => ensureView('home'), title: 'Review an application',
         body: '<ul><li>Click a candidate to open their full profile.</li><li>Change the status, download the PDF or start onboarding from there.</li><li>Tick several rows to act on them together.</li></ul>' },
       { target: navLink('offboarding'), optional: true, placement: 'right', title: 'Offboarding',
-        body: '<p>Invite a leaver, follow their Exit Interview and six-department clearance, then hand over to Payroll.</p><p>The red badge counts tasks waiting on <b>you</b>.</p>' },
+        body: '<p>Invite a leaver, follow their Exit Interview and six-department clearance, then hand over to Payroll.</p><p>The red badge counts tasks waiting on <b>you</b>. A step-by-step offboarding guide opens the first time you go there.</p>' },
       { target: navLink('analytics'), optional: true, placement: 'right', title: 'Analytics',
         body: '<p>Recruitment and offboarding trends in two tabs, ready to export as PDF or CSV.</p>' },
       r.superAdmin ? { target: navLink('adminAccess'), optional: true, placement: 'right', title: 'Admin Access',
@@ -110,6 +110,10 @@
         body: '<p>Payroll covers every business unit. These tiles count cases by status; click <b>Pending payroll</b> to filter.</p>' } : null,
       r.payroll ? { target: '.ob-toolbar', placement: 'bottom', title: 'Narrow it down',
         body: '<p>Search by name or reference, or filter by business unit, company and last day.</p>' } : null,
+      { icon: I.exit, title: 'Inside a case',
+        body: r.payroll
+          ? `<ol><li>Click a case to open it.</li><li>Download the <b>Exit Interview</b> and <b>Clearance</b> PDFs from the buttons at the top (they are also attached to your email).</li><li>Process the final pay, then click <b>Mark payroll done</b> and add a remark if needed.</li></ol><p>If HR reopens a checklist, you'll get a "hold final pay" email and the case comes back later.</p>`
+          : `<ol><li>Click a case. It opens on the <b>Clearance</b> tab at your ${r.superior ? 'Reporting Unit' : "department's"} checklist.</li><li>Tick each item returned or settled and add remarks (amounts owed, items missing).</li><li>Type your name and click <b>Sign</b>. Once signed it's locked; ask HR if something needs correcting.</li></ol><p>The <b>Timeline</b> tab shows every step and email on the case.</p>` },
       { target: '#liveDot', optional: true, placement: 'right', title: 'Live updates',
         body: '<p>New tasks and changes by HR appear on their own. The badge on <b>Offboarding</b> counts what is waiting on you.</p>' },
       { target: '#wxSearchBtn', optional: true, placement: 'bottom', title: 'Jump anywhere',
@@ -119,6 +123,86 @@
       { kind: 'outro', icon: I.flag, title: "You're all set", finishLabel: 'Go to my tasks',
         body: "<p>We'll email you whenever something new needs your attention.</p>" },
     ];
+  }
+
+  // ------------------------------------------------------------------------
+  // Offboarding guide (HR): opens the first time HR visits Offboarding;
+  // replay from Help or the command palette.
+  // ------------------------------------------------------------------------
+  function obTourKey() { return `admin-ob:v1:${email()}`; }
+  async function ensureObAll() {
+    await ensureView('offboarding');
+    if (typeof OB !== 'undefined' && OB.view !== 'all') { obSetView('all'); await new Promise((res) => setTimeout(res, 400)); }
+  }
+
+  function obGuideSteps(r) {
+    return [
+      { kind: 'intro', icon: I.exit, title: 'How offboarding works',
+        body: `<p>Every leaver goes through five stages. The portal emails the right person at each one.</p>
+          <ol style="text-align:left;margin:10px auto 0;max-width:330px"><li><b>Invite</b>: you send the employee their link.</li>
+          <li><b>Exit Interview</b>: the employee fills it in.</li>
+          <li><b>Clearance</b>: six departments tick and sign their checklists.</li>
+          <li><b>Acknowledge</b>: the employee confirms the result.</li>
+          <li><b>Payroll</b>: Payroll processes final pay and closes the case.</li></ol>` },
+      { target: '.ob-head-actions .btn-primary', optional: true, placement: 'bottom', before: ensureObAll, title: 'Start with Invite employee',
+        body: '<ul><li>Enter the employee\'s email, position, last day and <b>immediate superior\'s email</b> (they sign the Reporting Unit).</li><li>If the person was hired through the portal, their details fill in for you.</li><li>The employee gets an email with a personal link to their Exit Interview.</li></ul>' },
+      { target: '.ob-seg', placement: 'bottom', before: ensureObAll, title: 'All cases or just yours',
+        body: '<p><b>All cases</b> lists every leaver in your business unit.</p><p><b>My tasks</b> shows only what is waiting on you, such as the HR checklist you sign for each case.</p>' },
+      { target: '#obKpis', placement: 'bottom', before: ensureObAll, title: 'Where every case stands',
+        body: '<p>Each tile counts cases at one stage. Click a tile to filter the list, and click it again to clear.</p><p><b>Overdue</b> lights up red when a last day has passed and clearance is still open.</p>' },
+      { target: '.ob-toolbar', optional: true, placement: 'bottom', before: ensureObAll, title: 'Find a case',
+        body: '<p>Search by name, email, reference or position, and filter by status, department, company or last day.</p><p><b>Export CSV</b> (top right) downloads exactly what you see.</p>' },
+      { target: '#obResults', placement: 'top', before: ensureObAll, title: 'Follow progress',
+        body: '<ul><li><b>Clearance</b> shows how many of the six checklists are signed.</li><li><b>Waiting on</b> tells you who is holding the case up.</li><li>Tick several cases to <b>remind</b> all their pending departments at once.</li></ul>' },
+      { icon: I.exit, title: 'Inside a case',
+        body: `<p>Click any row to open the case. Across the top:</p>
+          <ul><li><b>Remind pending</b>, <b>Resend invite</b> or <b>Copy invite link</b> if someone is stuck.</li>
+          <li><b>Exit Interview</b> and <b>Clearance</b> PDFs once they are ready.</li>
+          <li><b>Cancel case</b> if the employee withdraws their resignation.</li></ul>
+          <p>Tabs: <b>Overview</b> (edit details or the superior's email), <b>Exit Interview</b>, <b>Clearance</b> and <b>Timeline</b> (every step and email).</p>` },
+      { icon: I.exit, title: 'When a department is away',
+        body: `<ul><li>On the <b>Clearance</b> tab you can fill in and sign any checklist <b>on behalf</b> of a department. It is recorded as signed by HR on behalf.</li>
+          <li>If a signed checklist is wrong, click <b>Reopen checklist</b>. The employee re-acknowledges, and Payroll is told to hold final pay.</li>
+          <li>Nobody can sign a checklist on their own offboarding case.</li></ul>` },
+      { icon: I.bolt, title: 'Reminders run on their own',
+        body: `<p>Every morning at 9:00 the portal emails:</p>
+          <ul><li>departments whose checklist is still open as the last day gets close,</li>
+          <li>employees who haven't done their Exit Interview or acknowledgement after a few days,</li>
+          <li>Payroll if final pay is still pending a few days after acknowledgement.</li></ul>
+          <p>Each reminder appears on the case <b>Timeline</b>.</p>` },
+      { kind: 'outro', icon: I.flag, title: 'Ready to offboard', finishLabel: 'Got it',
+        body: `<p>Replay this guide any time from <b>Help (?)</b> → <b>Offboarding guide</b>.</p>` },
+    ];
+  }
+
+  function startOffboardingTour() {
+    if (!adminToken || typeof WX === 'undefined') return;
+    helpMenuOpen = false; renderTools();
+    const r = roleInfo();
+    if (!r.hr) return startAdminTour();
+    WX.tour.start({
+      key: obTourKey(),
+      label: 'Offboarding guide',
+      startLabel: 'Show me',
+      skipLabel: 'Skip, I know the process',
+      steps: obGuideSteps(r),
+      onEnd: (reason) => {
+        if (reason === 'skipped') WX.toast('Guide skipped. Replay it any time from Help (?)');
+      },
+    });
+  }
+
+  // First visit to Offboarding by an HR admin (not while another tour runs,
+  // and not when they arrived through a link that opened a case).
+  function maybeStartOffboardingTour() {
+    if (!adminToken || typeof WX === 'undefined' || WX.tour.active) return;
+    if (!roleInfo().hr || WX.tour.isDone(obTourKey())) return;
+    if (new URLSearchParams(location.search).get('tour') === 'off') return;
+    setTimeout(() => {
+      if (WX.tour.active || !adminToken || currentView !== 'offboarding') return;
+      if (document.querySelector('#obDrawer[open], dialog[open]')) return;
+      startOffboardingTour();
+    }, 700);
   }
 
   function startAdminTour() {
@@ -192,6 +276,7 @@
       actions.push({ label: 'Export applications to CSV', icon: I.bolt, keywords: 'download excel', run: async () => { await ensureView('home'); exportCsv(); } });
     }
     actions.push({ label: 'Replay the guided tour', icon: I.replay, keywords: 'help onboarding walkthrough', run: startAdminTour });
+    if (r.hr) actions.push({ label: 'Offboarding guide', icon: I.exit, keywords: 'help offboarding tour walkthrough leaver clearance', run: async () => { await ensureView('offboarding'); startOffboardingTour(); } });
     actions.push({ label: 'Keyboard shortcuts', icon: I.keyboard, keywords: 'help keys', run: showShortcuts });
     actions.push({ label: 'Toggle sidebar', icon: I.bolt, keywords: 'collapse menu', run: () => toggleSidebar() });
     actions.push({ label: 'Log out', icon: I.exit, keywords: 'sign out', run: () => logout() });
@@ -254,6 +339,7 @@
           ${helpMenuOpen ? `
             <div class="wx-menu" role="menu" aria-label="Help">
               <button type="button" role="menuitem" onclick="WXA.startTour()">${I.replay} Replay the guided tour</button>
+              ${roleInfo().hr ? `<button type="button" role="menuitem" onclick="WXA.startOffboardingTour()">${I.exit} Offboarding guide</button>` : ''}
               <button type="button" role="menuitem" onclick="WXA.showShortcuts()">${I.keyboard} Keyboard shortcuts <kbd>?</kbd></button>
               <button type="button" role="menuitem" onclick="WXA.openPalette()">${I.search} Search or jump to <kbd>${WX.modLabel} K</kbd></button>
             </div>` : ''}
@@ -304,5 +390,5 @@
     'g o': () => { if (adminToken) setView('offboarding'); },
   });
 
-  window.WXA = { startTour: startAdminTour, maybeStartTour: maybeStartAdminTour, openPalette, showShortcuts, toggleHelp, renderTools, greeting, resetTourCheck: () => { tourChecked = false; } };
+  window.WXA = { startTour: startAdminTour, maybeStartTour: maybeStartAdminTour, startOffboardingTour, maybeStartOffboardingTour, openPalette, showShortcuts, toggleHelp, renderTools, greeting, resetTourCheck: () => { tourChecked = false; } };
 })();
