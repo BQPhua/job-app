@@ -883,6 +883,7 @@ async function setView(view){
   if(view==='adminAccess'){ adminMgmtInviteOpen = false; adminMgmtGrantFormFor = null; await loadAdminMgmtList(); }
   if(view==='offboarding'){ await obEnter(); lastRenderedView = null; }
   render();
+  if(view==='offboarding' && window.WXA) WXA.maybeStartOffboardingTour();
 }
 
 // ============================================================================
