@@ -223,7 +223,6 @@ function render(){
     case 'offboarding': root.innerHTML = tplMyOffboarding(); break;
     case 'my-application-detail': root.innerHTML = tplMyApplicationDetail(); break;
   }
-  if(window.WXC) WXC.afterRender(state.step);
 }
 
 // ---------------------------------------------------------------------------
@@ -307,7 +306,6 @@ function tplStart(){
       <div class="error-banner">This application link doesn't specify a valid business unit. Please use the link provided by HR for the specific business unit you're applying to (E&amp;C, Land, or Mall).</div>
     `}
     `}
-    ${window.WXC ? WXC.replayLinkHtml() : ''}
   `;
 }
 
