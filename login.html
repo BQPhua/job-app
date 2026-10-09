@@ -132,12 +132,33 @@
           <button type="button" role="tab" id="tabSignin" aria-selected="${tab === 'signin'}" tabindex="${tab === 'signin' ? 0 : -1}" onclick="setTab('signin')" onkeydown="tabKey(event)">Sign in</button>
           <button type="button" role="tab" id="tabRegister" aria-selected="${tab === 'register'}" tabindex="${tab === 'register' ? 0 : -1}" onclick="setTab('register')" onkeydown="tabKey(event)">Create account</button>
         </div>`;
-      const oauthButtons = (verb) => `
+      // TEMPORARY test sign-in (backend lib/testLogin.js). Shown only when the
+      // server has it switched on. Google/Microsoft need an https address, so
+      // on a plain-http address (the on-prem server today) those buttons are
+      // replaced by a short note.
+      let TEST = { enabled: false };
+      const testPanel = () => `
+        <div class="auth-alert info">${I.alert}<span><b>Temporary test sign-in.</b> Enter your email and the test passcode from HR. Google and Microsoft sign-in will return once this site has a secure (https) address.</span></div>
+        <form novalidate onsubmit="event.preventDefault();doTestLogin()">
+          ${field({ id: 'tlEmail', label: 'Email address', type: 'email', icon: I.mail, autocomplete: 'username email', extra: 'inputmode="email" placeholder="you@example.com" required' })}
+          ${field({ id: 'tlPass', label: 'Test passcode', type: 'password', icon: I.lock, autocomplete: 'off', eye: true, extra: 'required' })}
+          <button type="submit" class="auth-submit" id="tlSubmit">Sign in for testing</button>
+        </form>`;
+      const oauthButtons = (verb) => {
+        const secure = window.isSecureContext;
+        if (!secure) {
+          return TEST.enabled
+            ? `${testPanel()}<div class="auth-divider">or ${verb} with email and password</div>`
+            : `<div class="auth-alert info">${I.alert}<span>Google and Microsoft sign-in will be available once this site has a secure (https) address. Please ${verb} with your email for now.</span></div>`;
+        }
+        return `
         <div class="auth-oauth">
           <button type="button" class="auth-oauth-btn" id="btnGoogle" onclick="signInOAuth('google', this)">${GoogleIcon} Google</button>
           <button type="button" class="auth-oauth-btn" id="btnMicrosoft" onclick="signInOAuth('azure', this)">${MsIcon} Microsoft</button>
         </div>
+        ${TEST.enabled ? `<div class="auth-divider">or use the test sign-in</div>${testPanel()}` : ''}
         <div class="auth-divider">or ${verb} with email</div>`;
+      };
       const field = ({ id, label, type = 'text', icon, autocomplete, extra = '', eye = false, hint = '' }) => `
         <div class="auth-field">
           <label for="${id}">${label}${hint ? ` <span class="opt">${hint}</span>` : ''}</label>
@@ -298,6 +319,25 @@
         }
       }
 
+      async function doTestLogin() {
+        clearErrors();
+        const email = document.getElementById('tlEmail').value.trim();
+        const passcode = document.getElementById('tlPass').value;
+        if (!EMAIL_RE.test(email)) fieldError('tlEmail', email ? 'Enter a valid email address, like name@example.com.' : 'Enter your email address.');
+        if (!passcode) fieldError('tlPass', 'Enter the test passcode.');
+        if (root.querySelector('[aria-invalid="true"]')) return focusFirstInvalid();
+        const btn = document.getElementById('tlSubmit');
+        busy(btn, true, 'Signing in…');
+        const { data, error } = await apiTry(() => api.post('/auth/test-login', { email, passcode }));
+        if (error) {
+          busy(btn, false);
+          showMsg('error', error.data && error.data.error === 'blacklisted' ? BLACKLIST_MSG : error.message);
+          return;
+        }
+        api.setToken(data.token); api.setUser(data.user);
+        window.location.href = indexRedirectUrl('index.html');
+      }
+
       async function doSignIn() {
         clearErrors();
         const email = document.getElementById('siEmail').value.trim();
@@ -359,6 +399,16 @@
         const params = new URLSearchParams(window.location.search);
         if (params.get('signup') === '1') tab = 'register';
         render();
+        // Is the temporary test sign-in switched on for this server? If so,
+        // redraw the form with it (keeping any message already shown).
+        apiTry(() => api.get('/auth/test-login')).then(({ data }) => {
+          if (!data || !data.enabled) return;
+          TEST = data;
+          if (tab === 'forgot') return;
+          const msg = (document.getElementById('msg') || {}).innerHTML || '';
+          render();
+          if (msg) document.getElementById('msg').innerHTML = msg;
+        });
         if (params.get('blacklisted') === '1') {
           showMsg('error', BLACKLIST_MSG);
           window.history.replaceState({}, '', window.location.pathname);
