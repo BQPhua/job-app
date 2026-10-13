@@ -10,10 +10,9 @@
 //     header on every /api/admin/* call)
 // ============================================================================
 
-// Point this at the deployed backend. Defaults to localhost for local dev;
-// override by setting `window.API_BASE_URL` in a small inline <script> BEFORE
-// this file loads (e.g. in production HTML: <script>window.API_BASE_URL =
-// 'https://wct-job-app-api.azurewebsites.net/api';</script>).
+// Where the backend is. Each page sets `window.API_BASE_URL` in a small inline
+// <script> before this file loads (on the live server: <same address>/api);
+// local development falls back to localhost:3000.
 const API_BASE_URL = window.API_BASE_URL || 'http://localhost:3000/api';
 
 const TOKEN_KEY = 'wct_token';
