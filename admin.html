@@ -989,16 +989,16 @@ function loginView(){
   // Split layout shared with the candidate login (wct-theme.css, .auth-*):
   // brand panel with the WCT road motif + a calm sign-in panel.
   const brand = `
-    <aside class="auth-brand" aria-label="About the HR Admin Portal">
-      <div class="auth-road" aria-hidden="true"><div class="surface"><div class="edge l"></div><div class="edge r"></div><div class="lane"></div></div></div>
+    <aside class="auth-brand bright photo" aria-label="About the HR Admin Portal">
+      <div class="auth-photo" aria-hidden="true"><img src="wct-ascent.jpg" alt="" width="1500" height="892" fetchpriority="high" decoding="async"></div>
       <div class="auth-brand-top"><span class="auth-chip"><i></i>HR Admin Portal</span></div>
       <div class="auth-headline">
         <h1>Hiring to handover, <em>one console.</em></h1>
         <p>Review applications, onboard new hires and run offboarding clearance for your business unit.</p>
         <ul class="auth-points">
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span><b>Your business unit, at a glance.</b> Applications, tasks and analytics in one place.</span></li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span><b>Live updates.</b> Changes by your team appear instantly.</span></li>
-          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Secured with Microsoft.</b> Sign in with your WCT work account.</span></li>
+          <li tabindex="0"><span class="pt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><span><b>Your business unit, at a glance.</b> Applications, tasks and analytics in one place.</span></li>
+          <li tabindex="0"><span class="pt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span><span><b>Live updates.</b> Changes by your team appear instantly.</span></li>
+          <li tabindex="0"><span class="pt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg></span><span><b>Secured with Microsoft.</b> Sign in with your WCT work account.</span></li>
         </ul>
       </div>
       <div class="auth-brand-foot"><span>WCT <span aria-hidden="true">|</span> Building Values</span><span>Employment Portal</span></div>
@@ -1029,7 +1029,7 @@ function loginView(){
       <div class="auth-alert info" style="margin-top:4px">${infoIcon}<span>A Microsoft window will open. If nothing happens, allow pop-ups for this site.</span></div>
       ${foot}`;
   }
-  return `<main class="auth">${brand}<section class="auth-panel"><div class="auth-box">${body}</div></section></main>`;
+  return `<main class="auth fit">${brand}<section class="auth-panel"><div class="auth-box">${body}</div></section></main>`;
 }
 function adminMsClick(btn){
   btn.disabled = true; btn.setAttribute('aria-busy','true');
@@ -3178,249 +3178,121 @@ function closeOnboardingModal(){
   if(existing) existing.remove();
 }
 
-function obRow(k, v){ return `<div class="drow"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
-function obConfirmLine(confirmed, at){ return confirmed ? `Confirmed — ${new Date(at).toLocaleString()}` : 'Not yet confirmed'; }
-
-function adminObPage1Html(o){
-  return `
-      <div class="detail-section">
-        <h4>Statutory Details</h4>
-        ${obRow('EPF No.', o.epf_no)}
-        ${obRow('Income Tax No.', o.income_tax_no)}
-        ${obRow('Tax Branch', o.tax_branch)}
-        ${obRow('SOCSO No.', o.socso_no)}
-        ${obRow('Bank Account No.', o.bank_account_no)}
-        ${obRow('CIDB Green Card No.', o.cidb_green_card_no)}
-        ${obRow('CIDB Branch', o.cidb_branch)}
-      </div>
-
-      <div class="detail-section">
-        <h4>Spouse Information</h4>
-        ${obRow('Name', o.spouse_name)}
-        ${obRow('NRIC', o.spouse_nric)}
-        ${obRow('Date of Birth', o.spouse_date_of_birth)}
-        ${obRow('Working', o.spouse_working)}
-      </div>
-
-      <div class="detail-section">
-        <h4>Children Below 18</h4>
-        ${(o.children_below_18||[]).map(c=>obRow(c.name, `${c.gender||'—'} · NRIC: ${c.nric||'—'} · DOB: ${c.date_of_birth||'—'} · Education: ${c.course_name||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obRow('Children','None')}
-      </div>
-
-      <div class="detail-section">
-        <h4>Children 18–23 (Unmarried, Full-Time Student)</h4>
-        ${(o.children_18_to_23||[]).map(c=>obRow(c.name, `${c.gender||'—'} · NRIC: ${c.nric||'—'} · DOB: ${c.date_of_birth||'—'} · Education: ${c.course_name||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obRow('Children','None')}
-      </div>
-
-      <div class="detail-section">
-        <h4>Emergency Contacts</h4>
-        ${(o.emergency_contacts||[]).map(c=>obRow(c.name, `${c.relationship||'—'} · ${c.contact||'—'}`)).join('') || obRow('Contacts','None')}
-      </div>
-
-      <div class="detail-section">
-        <h4>Beneficiary (Next of Kin)</h4>
-        ${obRow('Name', o.beneficiary_name)}
-        ${obRow('Relationship', o.beneficiary_relationship)}
-        ${obRow('Contact', o.beneficiary_contact)}
-      </div>
-  `;
+// ---------------------------------------------------------------------------
+// Onboarding panel — same side-panel layout as the candidate profile
+// (header with key facts, jump-tabs, one card per section, pinned action
+// bar), opened on top of it. Redesigned 15 Oct 2026 for consistency.
+// ---------------------------------------------------------------------------
+const OB_TABS = [['ob-statutory','Statutory'],['ob-family','Family'],['ob-contacts','Contacts'],['ob-salary','Salary crediting'],['ob-confirm','Confirmations']];
+function obJump(id){
+  const body = document.getElementById('obDrawerBody'); const el = document.getElementById(id);
+  if(!body || !el) return;
+  const top = el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 12;
+  body.scrollTo({ top, behavior: (window.WX && WX.reduce && WX.reduce()) ? 'auto' : 'smooth' });
+  document.querySelectorAll('#onboardingModalRoot .dtabs a').forEach(x => x.classList.toggle('on', x.dataset.t === id));
 }
-
-function adminObPage2Html(o){
-  return `
-      <div class="detail-section">
-        <h4>Salary Crediting</h4>
-        ${obRow('Bank', o.salary_bank)}
-        ${obRow('Account No.', o.salary_account_no)}
-        ${obRow('IC/Passport Submitted', o.salary_ic_submitted)}
-      </div>
-
-      <div class="detail-section">
-        <h4>Confirmation Records</h4>
-        ${obRow('Personal Details Section', obConfirmLine(o.personal_details_confirmed, o.personal_details_confirmed_at))}
-        ${obRow('Salary Crediting Section', obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at))}
-      </div>
-  `;
+function obConfirmBadge(ok){ return ok ? '<span class="badge hired">Confirmed</span>' : '<span class="badge kiv">Pending</span>'; }
+function obSignRow(label, ok, name, at){
+  return `<div class="yn"><span><b>${label}</b><div class="muted" style="font-size:13.5px;margin-top:2px;">${ok
+    ? `Signed by <span class="ob-signed">${esc(name || onboardingAppInfo.name_nric || 'the employee')}</span> on ${esc(fmtDateTime(at))}`
+    : 'Waiting for the employee to review and sign this section.'}</div></span><span>${obConfirmBadge(ok)}</span></div>`;
 }
 
 function renderOnboardingModal(){
   const existing = document.getElementById('onboardingModalRoot');
-  if(existing) existing.remove();
   const o = onboardingData;
   if(!o){
+    if(existing) existing.remove();
     uiToast('No onboarding record found for this candidate yet — they may not have started it.');
     return;
   }
+  const a = onboardingAppInfo || {};
+  const done = o.status === 'completed';
+  const kids = [...(o.children_below_18||[]).map(c => ['Below 18', c]), ...(o.children_18_to_23||[]).map(c => ['18–23, student', c])];
+  const contacts = o.emergency_contacts || [];
+  const confirmed = [o.personal_details_confirmed, o.salary_crediting_confirmed].filter(Boolean).length;
+  const companyName = a.company_id ? (companyNameById[a.company_id] || '') : '';
 
   const div = document.createElement('div');
   div.id = 'onboardingModalRoot';
-  div.className = 'modal-overlay';
-  div.style.zIndex = '70';
+  div.className = 'drawer-overlay ob-layer' + (existing ? '' : ' open');
   div.onclick = (e)=>{ if(e.target===div) closeOnboardingModal(); };
   div.innerHTML = `
-    <div class="modal" style="max-width:760px;">
-      <button class="modal-close" onclick="closeOnboardingModal()" aria-label="Close">${ICON_CLOSE}</button>
-      <h2>Onboarding Details</h2>
-      <p style="color:var(--ink-soft);font-size:13px;margin-top:-6px;">Status: ${o.status==='completed' ? '<strong style="color:var(--ok);">Completed</strong>' : '<strong style="color:var(--warn);">In Progress</strong>'}</p>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="obDrawerTitle">
+      <header class="dh">
+        <div class="dh-top">
+          <div class="dh-photo">${a.profile_picture_url ? `<img src="${esc(WCT.fileUrl(a.profile_picture_url))}" alt="">` : WCT.photoSticker(80, 92)}</div>
+          <div class="dh-main">
+            <div class="dh-ref">${esc(a.reference_no || '')} · Onboarding</div>
+            <h2 id="obDrawerTitle">${esc(a.name_nric || 'Unnamed employee')}</h2>
+            <div class="dh-line">${[a.position_applying, buLabel(a.business_unit), companyName].filter(Boolean).map(esc).join('<span class="sep" aria-hidden="true"></span>')}</div>
+            <div class="dh-line"><span class="badge ${done ? 'hired' : 'kiv'}">${done ? 'Onboarding completed' : 'Onboarding in progress'}</span><span>${[a.email, a.mobile_phone].filter(Boolean).map(esc).join(' · ')}</span></div>
+          </div>
+          <button class="modal-close" id="obDrawerClose" onclick="closeOnboardingModal()" aria-label="Close onboarding details">${ICON_CLOSE}</button>
+        </div>
+        <div class="dh-facts">
+          <div><div class="k">Sections signed</div><div class="v">${confirmed} of 2</div></div>
+          <div><div class="k">Personal details</div><div class="v">${o.personal_details_confirmed ? esc(fmtDate(o.personal_details_confirmed_at)) : 'Pending'}</div></div>
+          <div><div class="k">Salary crediting</div><div class="v">${o.salary_crediting_confirmed ? esc(fmtDate(o.salary_crediting_confirmed_at)) : 'Pending'}</div></div>
+          <div><div class="k">Salary bank</div><div class="v">${esc(o.salary_bank || '—')}</div></div>
+        </div>
+        <nav class="dtabs" aria-label="Onboarding sections">${OB_TABS.map(([id, label], i) => `<a href="#${id}" data-t="${id}" class="${i===0?'on':''}" onclick="event.preventDefault();obJump('${id}')">${label}</a>`).join('')}</nav>
+      </header>
+      <div class="drawer-body" id="obDrawerBody">
+        ${done ? '' : `<div class="dnote remind">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <div style="flex:1;"><strong>${2 - confirmed} section${2 - confirmed === 1 ? '' : 's'} still to sign.</strong> The employee can finish from the link in their onboarding email.</div>
+          <button class="btn btn-outline btn-sm" onclick="sendOnboardingReminder('${a.id}')">Send reminder</button></div>`}
 
-      ${adminObPage1Html(o)}
-      ${adminObPage2Html(o)}
+        ${dcard('ob-statutory', 'docs', 'Statutory details', `<div class="kv">
+          ${kv('EPF no.', esc(o.epf_no))}${kv('SOCSO no.', esc(o.socso_no))}
+          ${kv('Income tax file no.', esc(o.income_tax_no))}${kv('Income tax branch', esc(o.tax_branch))}
+          ${kv('Bank account no.', esc(o.bank_account_no))}${kv('CIDB green card no. · branch', `${esc(o.cidb_green_card_no || '—')} · ${esc(o.cidb_branch || '—')}`)}
+        </div>`)}
 
-      <div class="status-actions">
-        <button class="btn btn-outline btn-sm" onclick="exportOnboardingPdf()">${ICON_PDF} Export to PDF</button>
+        ${dcard('ob-family', 'family', 'Family details', (o.spouse_name || kids.length) ? `${o.spouse_name ? `<div class="kv">
+          ${kv('Spouse', esc(o.spouse_name))}${kv('Spouse NRIC', esc(o.spouse_nric))}
+          ${kv('Spouse date of birth', esc(fmtDate(o.spouse_date_of_birth)))}${kv('Spouse working', esc(o.spouse_working))}
+        </div>` : ''}${kids.length ? `<table class="dtable"><thead><tr><th>Child</th><th>Age group</th><th>NRIC · DOB</th><th>Tax relief</th></tr></thead><tbody>
+          ${kids.map(([g, c]) => `<tr><td><b>${esc(c.name||'—')}</b><div class="muted">${esc([c.gender, c.course_name].filter(Boolean).join(' · '))}</div></td><td>${g}</td><td>${esc(c.nric||'—')}<div class="muted">${esc(fmtDate(c.date_of_birth))}</div></td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
+        </tbody></table>` : ''}` : '<div class="dcard-pad muted">No spouse or children declared.</div>', kids.length ? `${kids.length} child${kids.length===1?'':'ren'}` : '')}
+
+        ${dcard('ob-contacts', 'referees', 'Emergency contacts &amp; beneficiary', `<table class="dtable"><thead><tr><th>Emergency contact</th><th>Relationship</th><th>Phone</th></tr></thead><tbody>
+          ${contacts.map(c => `<tr><td><b>${esc(c.name||'—')}</b></td><td>${esc(c.relationship||'—')}</td><td>${esc(c.contact||'—')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">None provided</td></tr>'}
+        </tbody></table><div class="kv" style="border-top:1px solid var(--wct-slate-100);">
+          ${kv('Beneficiary (next of kin)', esc(o.beneficiary_name))}${kv('Relationship', esc(o.beneficiary_relationship))}
+          ${kv('Beneficiary contact', esc(o.beneficiary_contact), true)}
+        </div>`, `${contacts.length} contact${contacts.length===1?'':'s'}`)}
+
+        ${dcard('ob-salary', 'company', 'Salary crediting', `<div class="kv">
+          ${kv('Salary paid by', esc(o.salary_company), true)}
+          ${kv('Bank', esc(o.salary_bank))}${kv('Branch', esc(o.salary_branch))}
+          ${kv('Account no.', esc(o.salary_account_no))}${kv('IC / passport no. submitted', esc(o.salary_ic_submitted))}
+        </div>`)}
+
+        ${dcard('ob-confirm', 'consent', 'Confirmations', `
+          ${obSignRow('Personal details form', o.personal_details_confirmed, o.personal_details_signed_name, o.personal_details_confirmed_at)}
+          ${obSignRow('Salary crediting requisition form', o.salary_crediting_confirmed, o.salary_crediting_signed_name, o.salary_crediting_confirmed_at)}`, `${confirmed} of 2 signed`)}
       </div>
-    </div>
-  `;
-  document.body.appendChild(div);
+      <footer class="dfoot">
+        <span class="muted" style="font-size:13.5px;">${done ? 'All sections signed — ready for payroll.' : 'Waiting on the employee.'}</span>
+        <div class="dfoot-actions">
+          <button class="btn btn-accent btn-sm" onclick="exportOnboardingPdf()">${ICON_PDF} Export PDF</button>
+          <button class="btn btn-outline btn-sm" onclick="closeOnboardingModal()">Close</button>
+        </div>
+      </footer>
+    </aside>`;
+  if(existing) existing.replaceWith(div); else document.body.appendChild(div);
+  const closeBtn = document.getElementById('obDrawerClose');
+  if(closeBtn && !existing) closeBtn.focus({ preventScroll: true });
 }
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && document.getElementById('onboardingModalRoot')) { e.stopPropagation(); closeOnboardingModal(); }
+});
 
 function exportOnboardingPdf(){
   if(!onboardingData || !onboardingAppInfo){ uiToast('No onboarding data loaded.'); return; }
-  const html = buildOnboardingPdfHtml(onboardingAppInfo, onboardingData);
-  const win = window.open('', '_blank');
-  if(!win){ uiToast('Please allow pop-ups for this site to generate the PDF.'); return; }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => setTimeout(() => win.print(), 400);
-}
-
-function buildOnboardingPdfHtml(a, o){
-  const chk = (v) => v ? '☑' : '☐';
-  const box = (v, w) => `<span style="display:inline-block;border:1px solid #999;padding:2px 8px;min-width:${w||'90px'};font-size:10px;">${fmt(v)}</span>`;
-  const childRowsBelow18 = (o.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">Tiada</td></tr>`;
-  const childRows18to23 = (o.children_18_to_23||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">Tiada</td></tr>`;
-  const emergencyRows = (o.emergency_contacts||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.relationship)}</td><td>${fmt(c.contact)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>`;
-  // The company the salary is credited under (chosen by the employee from
-  // their business unit's companies, Business Unit Settings).
-  const companies = o.salary_company ? [o.salary_company] : [];
-
-  return `
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Onboarding Details — ${esc(a.reference_no)}</title>
-<style>
-  @page{ size:A4; margin:14mm; }
-  *{box-sizing:border-box;}
-  body{font-family:Arial,sans-serif;font-size:10px;color:#111;margin:0;line-height:1.45;}
-  .doc-page + .doc-page{ page-break-before: always; }
-
-  /* Form-box style, matching the official documents' bordered layout */
-  .form-title{font-size:14px;font-weight:bold;margin:0 0 2px;}
-  .form-sub{font-size:9px;color:#555;margin-bottom:10px;}
-  table.form-box{width:100%;border-collapse:collapse;margin-bottom:2px;}
-  table.form-box td{border:1px solid #333;padding:5px 8px;font-size:9.5px;vertical-align:top;}
-  table.form-box td.lbl{background:#F0F0EE;font-weight:bold;width:32%;}
-  table.form-box td.section-hdr{background:#333;color:#fff;font-weight:bold;text-transform:uppercase;font-size:9.5px;letter-spacing:.03em;}
-
-  h2.bahagian{font-size:10.5px;background:#000;color:#fff;padding:5px 10px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.03em;}
-  table.data-table{width:100%;border-collapse:collapse;margin-bottom:8px;}
-  table.data-table th,table.data-table td{border:1px solid #999;padding:4px 7px;font-size:9px;text-align:left;}
-  table.data-table th{background:#eee;}
-
-  /* TP3-specific: two-column HAD TAHUNAN / POTONGAN TERKUMPUL, like the original */
-  table.tp3-d{width:100%;border-collapse:collapse;margin-bottom:2px;}
-  table.tp3-d td{border:1px solid #333;padding:5px 7px;font-size:9px;vertical-align:top;}
-  table.tp3-d td.desc{width:58%;}
-  table.tp3-d td.had{width:16%;text-align:center;font-weight:bold;}
-  table.tp3-d td.terkumpul{width:26%;text-align:right;}
-  table.tp3-d tr.hdr td{background:#333;color:#fff;font-weight:bold;text-align:center;font-size:8.5px;text-transform:uppercase;}
-
-  .letterhead{display:flex;align-items:center;gap:14px;border-bottom:3px solid #000;padding-bottom:10px;margin-bottom:16px;}
-  .letterhead img.logo{height:56px;}
-  .letterhead .co-name{font-size:11px;font-weight:bold;letter-spacing:.05em;}
-  .letterhead .form-name{font-size:15px;font-weight:bold;margin-top:2px;}
-
-  .confirm-box{border:1px solid #999;padding:8px 10px;margin-top:10px;background:#FAFAF9;font-size:9px;}
-  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}
-  .print-bar button{font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
-  @media print{ .print-bar{display:none;} }
-</style>
-</head>
-<body>
-  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
-
-  <!-- ================= PAGE 1: EMPLOYEE PERSONAL DETAILS FORM ================= -->
-  <div class="doc-page">
-    <div class="form-title">EMPLOYEE PERSONAL DETAILS FORM</div>
-    <div class="form-sub">Reference: ${esc(a.reference_no)} · ${esc(a.name_nric)} — Statutory, Spouse, Children, Emergency Contact &amp; Beneficiary</div>
-
-    <table class="form-box">
-      <tr><td colspan="2" class="section-hdr">Statutory Details</td></tr>
-      <tr><td class="lbl">EPF No.</td><td>${fmt(o.epf_no)}</td></tr>
-      <tr><td class="lbl">Income Tax File No.</td><td>${fmt(o.income_tax_no)}</td></tr>
-      <tr><td class="lbl">Income Tax File Branch</td><td>${fmt(o.tax_branch)}</td></tr>
-      <tr><td class="lbl">SOCSO No.</td><td>${fmt(o.socso_no)}</td></tr>
-      <tr><td class="lbl">Bank Account No.</td><td>${fmt(o.bank_account_no)}</td></tr>
-      <tr><td class="lbl">CIDB Green Card No.</td><td>${fmt(o.cidb_green_card_no)} ${o.cidb_branch ? '(Branch: '+esc(o.cidb_branch)+')' : ''}</td></tr>
-    </table>
-
-    <table class="form-box">
-      <tr><td colspan="2" class="section-hdr">Spouse Information (if applicable)</td></tr>
-      <tr><td class="lbl">Name (as per NRIC)</td><td>${fmt(o.spouse_name)}</td></tr>
-      <tr><td class="lbl">NRIC No.</td><td>${fmt(o.spouse_nric)}</td></tr>
-      <tr><td class="lbl">Date of Birth</td><td>${fmtDate(o.spouse_date_of_birth)}</td></tr>
-      <tr><td class="lbl">Working</td><td>${chk(o.spouse_working==='Yes')} Yes &nbsp;&nbsp; ${chk(o.spouse_working==='No')} No</td></tr>
-    </table>
-
-    <h2 class="bahagian">Children Information (if applicable)</h2>
-    <p style="font-size:8.5px;color:#666;margin:-2px 0 4px;">Please tick the checkbox if claiming for Child Tax Relief</p>
-    <div style="font-size:9.5px;font-weight:bold;margin-bottom:3px;">Children Below 18 Years Old</div>
-    <table class="data-table"><thead><tr><th>Name (as per NRIC)</th><th>Gender</th><th>NRIC No.</th><th>Date of Birth</th><th>Education</th><th>Child Tax Relief</th></tr></thead><tbody>${childRowsBelow18}</tbody></table>
-
-    <div style="font-size:9.5px;font-weight:bold;margin-bottom:3px;">Children Above 18 Years Old Up To 23 (Unmarried &amp; Full-Time Student)</div>
-    <table class="data-table"><thead><tr><th>Name</th><th>Gender</th><th>NRIC No.</th><th>Date of Birth</th><th>Education</th><th>Tax Relief</th></tr></thead><tbody>${childRows18to23}</tbody></table>
-
-    <h2 class="bahagian">Emergency Contact Person(s)</h2>
-    <table class="data-table"><thead><tr><th>Name (as per NRIC)</th><th>Relationship</th><th>Home/Mobile Phone No.</th></tr></thead><tbody>${emergencyRows}</tbody></table>
-
-    <table class="form-box">
-      <tr><td colspan="2" class="section-hdr">Beneficiary (Next of Kin)</td></tr>
-      <tr><td class="lbl">Name</td><td>${fmt(o.beneficiary_name)}</td></tr>
-      <tr><td class="lbl">Relationship</td><td>${fmt(o.beneficiary_relationship)}</td></tr>
-      <tr><td class="lbl">Contact No.</td><td>${fmt(o.beneficiary_contact)}</td></tr>
-    </table>
-
-    <div class="confirm-box">
-      Signed digitally${o.personal_details_signed_name ? ` by <strong>${esc(o.personal_details_signed_name)}</strong>` : ''}: <strong>${obConfirmLine(o.personal_details_confirmed, o.personal_details_confirmed_at)}</strong>
-    </div>
-  </div>
-
-  <!-- ================= PAGE 2: SALARY CREDITING REQUISITION FORM ================= -->
-  <div class="doc-page">
-    <div class="letterhead">
-      <img class="logo" src="${WCT_LOGO_DATA_URI}">
-      <div>
-        <div class="co-name">GROUP OF COMPANIES</div>
-        <div class="form-name">SALARY CREDITING REQUISITION FORM</div>
-      </div>
-    </div>
-
-    <p style="font-size:10px;"><strong>To</strong> &nbsp; : Human Resources Department :-</p>
-    <div style="margin:6px 0 14px 24px;font-size:10px;">
-      ${companies.length ? companies.map(c=>`<div style="margin-bottom:4px;">${chk(true)} ${esc(c)}</div>`).join('') : '<div style="margin-bottom:4px;">— not selected —</div>'}
-    </div>
-
-    <p style="font-size:10px;">Please be informed that I, ${box(a.name_nric, '220px')} &nbsp; IC/Passport No.: ${box(o.salary_ic_submitted, '150px')}</p>
-    <p style="font-size:10px;">hereby agreed that my salary is to be paid through my bank account as follows:-</p>
-
-    <table class="form-box" style="margin-top:10px;">
-      <tr><td class="lbl">Bank</td><td>${fmt(o.salary_bank)}</td></tr>
-      <tr><td class="lbl">Branch</td><td>${fmt(o.salary_branch)}</td></tr>
-      <tr><td class="lbl">A/C No.</td><td>${fmt(o.salary_account_no)}</td></tr>
-      <tr><td class="lbl">I/C No. submitted during application</td><td>${fmt(o.salary_ic_submitted)}</td></tr>
-    </table>
-
-    <p style="font-size:9.5px;font-weight:bold;margin-top:14px;">I confirm that the information herein is correct and in order. Should there be any discrepancy in the information, of which, will lead to possible delay or inability to credit my salaries, it is my sole responsibility.</p>
-    <p style="font-size:9.5px;font-weight:bold;"><em>Saya mengesahkan maklumat tersebut diatas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</em></p>
-
-    <div class="confirm-box">
-      Signed digitally${o.salary_crediting_signed_name ? ` by <strong>${esc(o.salary_crediting_signed_name)}</strong>` : ''}: <strong>${obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at)}</strong>
-    </div>
-
-    <div style="font-size:8px;color:#888;margin-top:20px;font-style:italic;">Salary crediting RQ Form — WCT Group Employment Onboarding Portal</div>
-  </div>
-</body></html>
-  `;
+  WCT.openPrint(WCT.onboardingPdfHtml(onboardingAppInfo, onboardingData));
 }
 // ============================================================================
 // PDF EXPORT — formal, print-ready HTML replica, saved via the browser's
