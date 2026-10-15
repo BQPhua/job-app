@@ -99,8 +99,8 @@ function analyticsPageView() {
         ${isAll ? `<label class="an-filter"><span>Business unit</span>
           <select class="select-clean" onchange="anSetBu(this.value)" aria-label="Business unit">
             <option value="">All units</option>
-            ${['E&C', 'Land', 'Mall'].map((b) => `<option value="${esc(b)}" ${AN.bu === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
-          </select></label>` : `<span class="an-scope">${esc(adminScope)} only</span>`}
+            ${WCT.businessUnits().map((u) => `<option value="${esc(u.code)}" ${AN.bu === u.code ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}
+          </select></label>` : `<span class="an-scope">${esc(WCT.buName(adminScope))} only</span>`}
       </div>
       <div class="an-actions">
         <button class="btn btn-outline btn-sm" onclick="exportAnalyticsCsv()">${typeof OB_ICON !== 'undefined' ? OB_ICON.download : ''} Export CSV</button>
@@ -245,8 +245,9 @@ function anRenderRecruitment() {
   const assigned = rows.filter((r) => r.company_id).length;
   anDoughnut('chartAssignment', ['Assigned', 'Unassigned'], [assigned, rows.length - assigned], ['#1E7A46', AN_C.track]);
 
-  const units = ['E&C', 'Land', 'Mall'];
-  anBar('chartByUnit', units, [
+  // Units with at least one application (the list grows with Business Unit Settings).
+  const units = WCT.businessUnits().map((u) => u.code).filter((code) => rows.some((r) => r.business_unit === code));
+  anBar('chartByUnit', units.map((u) => WCT.buName(u)), [
     { label: 'Applications', data: units.map((u) => rows.filter((r) => r.business_unit === u).length), backgroundColor: AN_C.primary },
     { label: 'Hires', data: units.map((u) => rows.filter((r) => r.business_unit === u && r.status === 'hired').length), backgroundColor: AN_C.second },
   ], { legend: true });
@@ -321,7 +322,7 @@ function anRenderOffboarding() {
   anBar('chartObTenure', a.tenure.map((x) => x.bucket), [{ label: 'Leavers', data: a.tenure.map((x) => x.count), backgroundColor: AN_C.primary }]);
   anBar('chartObTopDept', a.top_departments.map((x) => x.name), [{ label: 'Leavers', data: a.top_departments.map((x) => x.count), backgroundColor: AN_C.primary }], { horizontal: true });
   anBar('chartObTopPos', a.top_positions.map((x) => x.name), [{ label: 'Leavers', data: a.top_positions.map((x) => x.count), backgroundColor: AN_C.primary }], { horizontal: true });
-  if (a.by_bu) anBar('chartObBu', a.by_bu.map((b) => b.business_unit), [{ label: 'Cases', data: a.by_bu.map((b) => b.count), backgroundColor: AN_C.primary }]);
+  if (a.by_bu) anBar('chartObBu', a.by_bu.map((b) => WCT.buName(b.business_unit)), [{ label: 'Cases', data: a.by_bu.map((b) => b.count), backgroundColor: AN_C.primary }]);
 }
 
 function renderAnalyticsCharts() {
