@@ -269,16 +269,7 @@ function obEmpFormHtml(b) {
     </div>
 
     <div class="section-title">Sign and submit</div>
-    <div class="field${inv('signature_name')}">
-      <label for="obEmpSig">Type your full name as your signature <span class="req-star">*</span></label>
-      <input type="text" id="obEmpSig" value="${obEmpAttr(d.signature_name)}" oninput="OB_EMP.draft.signature_name=this.value" autocomplete="name">
-      ${obEmpErr('signature_name')}
-    </div>
-    <label class="ob-emp-declare${OB_EMP.errors.declaration ? ' invalid' : ''}">
-      <input type="checkbox" id="obEmpDeclare" ${d.declaration ? 'checked' : ''} onchange="OB_EMP.draft.declaration=this.checked">
-      <span>I confirm the information above is true, and I understand that once submitted my Exit Interview can no longer be edited.</span>
-    </label>
-    ${obEmpErr('declaration')}
+    ${obEmpSignatureHtml('obEmpSig', 'I confirm the information above is true, and I understand that once submitted my Exit Interview can no longer be edited.')}
     <div id="obEmpFormErr"></div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="obEmpSaveDraft(true).then(ok=>ok&&obEmpBack())">Save &amp; exit</button>
@@ -380,7 +371,7 @@ async function obEmpSubmit() {
 }
 function obEmpFocusFirstError() {
   const order = ['notice_period_days', 'official_last_day', 'actual_last_day', 'reasons', 'signature_name', 'declaration'];
-  const ids = { notice_period_days: 'obEmpNotice', official_last_day: 'obEmpOfficial', actual_last_day: 'obEmpActual', reasons: 'obEmpOther', signature_name: 'obEmpSig', declaration: 'obEmpDeclare' };
+  const ids = { notice_period_days: 'obEmpNotice', official_last_day: 'obEmpOfficial', actual_last_day: 'obEmpActual', reasons: 'obEmpOther', signature_name: 'obEmpSigName', declaration: 'obEmpSigAgree' };
   const first = order.find((f) => OB_EMP.errors[f]);
   const el = first && document.getElementById(ids[first]);
   if (el) { el.scrollIntoView({ block: 'center' }); el.focus({ preventScroll: true }); }
@@ -411,21 +402,22 @@ function obEmpAckHtml(b) {
         <ul>${s.items.map((i) => `<li><span aria-hidden="true">${i.is_checked ? '☑' : '☐'}</span> ${esc(i.item_text)}${i.remarks ? ` <span class="meta">— ${esc(i.remarks)}</span>` : ''}</li>`).join('')}</ul>
       </details>`).join('')}
     <div class="section-title">Acknowledge</div>
-    <div class="field${OB_EMP.errors.signature_name ? ' invalid' : ''}">
-      <label for="obEmpAckSig">Type your full name as your signature <span class="req-star">*</span></label>
-      <input type="text" id="obEmpAckSig" value="${obEmpAttr(OB_EMP.draft.signature_name)}" oninput="OB_EMP.draft.signature_name=this.value" autocomplete="name">
-      ${obEmpErr('signature_name')}
-    </div>
-    <label class="ob-emp-declare${OB_EMP.errors.declaration ? ' invalid' : ''}">
-      <input type="checkbox" id="obEmpAckDeclare" ${OB_EMP.draft.declaration ? 'checked' : ''} onchange="OB_EMP.draft.declaration=this.checked">
-      <span>I acknowledge that I have returned all company property and settled all matters listed above.</span>
-    </label>
-    ${obEmpErr('declaration')}
+    ${obEmpSignatureHtml('obEmpAckSig', 'I acknowledge that I have returned all company property and settled all matters listed above.')}
     <div id="obEmpFormErr"></div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="obEmpBack()">← Back to home</button>
       <div class="right"><button class="btn btn-primary" onclick="obEmpAcknowledge()">Acknowledge &amp; sign →</button></div>
     </div>`;
+}
+// The shared type-to-sign block (wct-shared.js), kept in step with the draft.
+function obEmpSignatureHtml(id, agreeText) {
+  const d = OB_EMP.draft;
+  const errs = [OB_EMP.errors.signature_name, OB_EMP.errors.declaration].filter(Boolean);
+  return `${WCT.sigHtml({
+    id, title: 'Digital signature', name: d.signature_name, agreed: d.declaration, agreeText: esc(agreeText),
+    nameLabel: 'Type your full name as your signature', invalid: errs.length > 0,
+    onChange: (v) => { d.signature_name = v.name; d.declaration = v.agreed; },
+  })}${errs.length ? `<div class="error-banner" role="alert" style="margin-top:10px;">${errs.map(esc).join('<br>')}</div>` : ''}`;
 }
 async function obEmpAcknowledge() {
   const d = OB_EMP.draft;
@@ -433,7 +425,7 @@ async function obEmpAcknowledge() {
   if (!d.signature_name.trim()) errs.signature_name = 'Please type your full name to sign.';
   if (!d.declaration) errs.declaration = 'Please tick the acknowledgement box.';
   OB_EMP.errors = errs;
-  if (Object.keys(errs).length) { render(); const el = document.getElementById(errs.signature_name ? 'obEmpAckSig' : 'obEmpAckDeclare'); if (el) el.focus(); return; }
+  if (Object.keys(errs).length) { render(); const el = document.getElementById(errs.signature_name ? 'obEmpAckSigName' : 'obEmpAckSigAgree'); if (el) el.focus(); return; }
   showLoading('Submitting…');
   const { data, error } = await apiTry(() => api.post(`/offboarding/mine/${OB_EMP.caseId}/acknowledge`, { signature_name: d.signature_name.trim(), declaration: true }));
   hideLoading();
