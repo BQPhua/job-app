@@ -6,7 +6,7 @@
 <title>WCT Group — HR Admin Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Caveat:wght@600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="msal-browser.min.js"></script>
 <link rel="stylesheet" href="offboarding-admin.css">
@@ -469,6 +469,7 @@
 <script src="api.js"></script>
 <script src="oauth.js"></script>
 <script src="logo.js"></script>
+<script src="wct-shared.js"></script>
 <script src="offboarding-admin.js"></script>
 <script src="analytics.js"></script>
 <script src="live.js"></script>
@@ -481,7 +482,14 @@
 let adminToken = api.getAdminToken();
 let adminScope = sessionStorage.getItem('wct_admin_scope');
 // A real business unit (not ALL / GROUP payroll / SUPERIOR reviewer).
-function isBuScope(scope){ return ['E&C','Land','Mall'].includes(scope); }
+function isBuScope(scope){ return !!scope && !['ALL','GROUP','SUPERIOR'].includes(scope); }
+// Display name of a business unit code ("Land" -> "Property Development").
+function buLabel(code){ return WCT.buName(code); }
+// Business-unit <option>s from the managed list (Business Unit Settings).
+function buOptionsHtml(selected, { includeInactive = false } = {}){
+  return WCT.businessUnits().filter(u => includeInactive || u.is_active !== false || u.code === selected)
+    .map(u => `<option value="${esc(u.code)}" ${u.code===selected?'selected':''}>${esc(u.name)}</option>`).join('');
+}
 // The token lives in localStorage (survives new tabs) but the scope lived only
 // in sessionStorage, so a new tab showed "null Access" and a PIC-only menu.
 // Read the scope back out of the saved token, and drop tokens that have
@@ -502,7 +510,6 @@ function isBuScope(scope){ return ['E&C','Land','Mall'].includes(scope); }
 // Entra ID login flow state — see doMicrosoftLogin()/attemptAdminBootstrap()
 let loginStage = 'signin'; // 'signin' | 'choosing_bu' | 'error'
 let loginErrorMsg = '';
-let availableBuGrants = [];
 let applications = [];
 let totalCount = 0;
 let stats = { total: 0, by_status: {} };
@@ -588,16 +595,24 @@ function renderTopbarUser(){
   const sub = document.getElementById('pageSubtitle');
   if(sub && currentView === 'home' && window.WXA) sub.textContent = WXA.greeting();
   const initial = (currentUserProfile.name || '?').trim().charAt(0).toUpperCase();
+  const unit = currentUnitLabel();
+  const canSwitch = myUnits.length > 1;
   el.innerHTML = `
-    <div class="user-chip" onclick="toggleUserMenu()">
-      <div class="user-avatar">${esc(initial)}</div>
-      <div class="user-chip-name">${esc(currentUserProfile.name)}</div>
-    </div>
+    <button type="button" class="user-chip" aria-haspopup="true" aria-expanded="${userMenuOpen}" onclick="toggleUserMenu()">
+      <span class="unit-mini" style="background:${WCT.buColor(adminScope)}">${esc(WCT.buInitials(adminScope))}</span>
+      <span class="user-chip-name">${esc(unit)}<span class="sub">${esc(currentUserProfile.name)}</span></span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="${userMenuOpen ? 'm18 15-6-6-6 6' : 'm6 9 6 6 6-6'}"/></svg>
+    </button>
     ${userMenuOpen ? `
-      <div class="user-dropdown">
-        <div class="dd-name">${esc(currentUserProfile.name)}</div>
+      <div class="user-dropdown" role="menu">
+        <div class="dd-name">${esc(unit)}</div>
+        <div class="dd-email">${esc(rolesText(myUnits.find(u => u.code === adminScope)) || '')}</div>
+        <div class="dd-name" style="font-size:13.5px;margin-top:10px;">${esc(currentUserProfile.name)}</div>
         <div class="dd-email">${esc(currentUserProfile.email)}</div>
-        <button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;" onclick="logout()">Log out</button>
+        ${canSwitch ? `<button class="btn btn-outline btn-sm dd-switch" style="width:100%;justify-content:center;" onclick="openUnitSwitcher()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 16V4M7 4 3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg> Switch business unit</button>` : ''}
+        <hr style="border:0;border-top:1px solid var(--line);margin:10px 0;">
+        <button class="btn btn-link btn-sm" style="width:100%;justify-content:flex-start;" onclick="logout()">Sign out</button>
       </div>
     ` : ''}
   `;
@@ -624,10 +639,9 @@ const NAV_ICONS = {
 const PAGE_TITLES = {
   home: ['Dashboard', 'All candidate applications'],
   analytics: ['Analytics', 'Recruitment and offboarding trends'],
-  companies: ['Company Settings', 'Manage the company/entity list'],
-  permissions: ['Business Unit Settings', 'Cross-business-unit assignment access'],
-  settings: ['Manager Settings', 'Notification email routing'],
-  adminAccess: ['Admin Access', 'Manage who can sign in and what they can see'],
+  companies: ['Company Settings', 'Companies under each business unit'],
+  permissions: ['Business Unit Settings', 'Business units, candidate links and PIC emails'],
+  adminAccess: ['Group Admin Access', 'Who can open each business unit, and their roles'],
   aiInsights: ['AI Insights', 'AI-generated trends and Q&A over your applicant data'],
   offboarding: ['Offboarding', 'Exit interviews, department clearance and final pay']
 };
@@ -646,6 +660,7 @@ const ICON_OFFBOARD = '<svg width="14" height="14" viewBox="0 0 24 24" fill="non
 const ICON_CLOSE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
 const ICON_DELETE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>';
 const ICON_MAIL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 6 10 7 10-7"/></svg>';
+const ICON_BELL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
 const ICON_EDIT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const ICON_EYE_OPEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICON_EYE_CLOSED = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
@@ -694,8 +709,9 @@ function rowActionsHtml(a){
       <button class="btn btn-outline btn-icon" title="View details" onclick="openDetail('${a.id}')">${ICON_VIEW}</button>
       <button class="btn btn-outline btn-icon" title="Export PDF" onclick="exportCandidatePdf('${a.id}')">${ICON_PDF}</button>
       ${onboardOffboardBtnHtml(a)}
+      <button class="btn btn-outline btn-icon" title="${needsOnboardingReminder(a) ? 'Remind to complete onboarding' + (a.last_onboarding_reminder_at ? ' (last sent ' + new Date(a.last_onboarding_reminder_at).toLocaleDateString('en-GB') + ')' : '') : 'Onboarding reminder — for hired candidates who haven\'t finished'}" aria-label="Send onboarding reminder" ${needsOnboardingReminder(a) ? `onclick="sendOnboardingReminder('${a.id}')"` : 'disabled'}>${ICON_BELL}</button>
       <a class="btn btn-outline btn-icon" title="Email candidate" href="${mailtoHref}">${ICON_MAIL}</a>
-      <button class="btn btn-outline-danger btn-icon" title="Delete" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">${ICON_DELETE}</button>
+      <button class="btn btn-outline-danger btn-icon" title="Delete" onclick="confirmDelete('${a.id}')">${ICON_DELETE}</button>
     </div>
   `;
 }
@@ -723,7 +739,8 @@ function uiToast(msg, kind){
   host.appendChild(t);
   setTimeout(() => t.remove(), isErr ? 8000 : 4500);
 }
-function esc(v){ if(v===null||v===undefined) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// HTML-escape for text and attribute values (quotes included).
+function esc(v){ if(v===null||v===undefined) return ''; return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function showLoading(text){ document.getElementById('loadingText').innerText = text||'Working...'; document.getElementById('loadingOverlay').style.display='flex'; }
 function hideLoading(){ document.getElementById('loadingOverlay').style.display='none'; }
 
@@ -758,14 +775,7 @@ function renderSidebarNavOnly(){
       ${obLink}
       <a class="${currentView==='companies'?'active':''}" onclick="setView('companies')" title="Company Settings">${NAV_ICONS.companies}<span class="nav-label">Company Settings</span></a>
       ${adminScope==='ALL' ? `<a class="${currentView==='permissions'?'active':''}" onclick="setView('permissions')" title="Business Unit Settings">${NAV_ICONS.permissions}<span class="nav-label">Business Unit Settings</span></a>` : ''}
-      <!-- Manager Settings retired — notification recipients are now derived
-           live from Admin Access (admin_grants) instead of a manually-typed
-           email per business unit. See retire_manager_settings.sql. The
-           underlying settingsPageView()/rpc_admin_get_settings() are left in
-           place, unused, same "never drop, just stop using" pattern as
-           everything else orphaned in this project. -->
-      
-      ${adminScope==='ALL' ? `<a class="${currentView==='adminAccess'?'active':''}" onclick="setView('adminAccess')" title="Admin Access">${NAV_ICONS.adminAccess}<span class="nav-label">Admin Access</span></a>` : ''}
+      ${adminScope==='ALL' ? `<a class="${currentView==='adminAccess'?'active':''}" onclick="setView('adminAccess')" title="Group Admin Access">${NAV_ICONS.adminAccess}<span class="nav-label">Group Admin Access</span></a>` : ''}
     `;
   }
 }
@@ -773,10 +783,10 @@ function renderSidebarNavOnly(){
 function render(){
   const root = document.getElementById('root');
   const appShellEl = document.getElementById('appShell');
-  if(appShellEl) appShellEl.classList.toggle('pre-auth', !adminToken);
+  if(appShellEl) appShellEl.classList.toggle('pre-auth', !adminToken || unitPickerOpen);
   renderTopbarUser();
   const scopeEl = document.getElementById('sidebarScope');
-  if(scopeEl) scopeEl.textContent = adminToken && adminScope ? (adminScope==='ALL' ? 'All Units Access' : adminScope==='SUPERIOR' ? 'Reviewer Access' : adminScope==='GROUP' ? 'Group Payroll Access' : adminScope+' Access') : '';
+  if(scopeEl) scopeEl.textContent = adminToken && adminScope ? (adminScope==='ALL' ? 'All Units Access' : adminScope==='SUPERIOR' ? 'Reviewer Access' : adminScope==='GROUP' ? 'Group Payroll Access' : buLabel(adminScope)+' Access') : '';
 
   renderSidebarNavOnly();
   const titleEl = document.getElementById('pageTitle');
@@ -788,7 +798,8 @@ function render(){
   }
   renderSidebarChrome();
 
-  if(!adminToken){ root.innerHTML = loginView(); lastRenderedView = null; return; }
+  if(!adminToken){ root.innerHTML = loginStage === 'choosing_bu' ? unitPickerHtml(false) : loginView(); lastRenderedView = null; return; }
+  if(unitPickerOpen){ root.innerHTML = unitPickerHtml(true); lastRenderedView = null; return; }
 
   if(currentView === 'home'){
     if(lastRenderedView !== 'home' || !document.getElementById('dashResults')){
@@ -834,10 +845,7 @@ function render(){
       renderAdminMgmtResults();
     }
   } else {
-    let pageContent;
-    if(currentView==='settings') pageContent = settingsPageView();
-    else if(currentView==='permissions') pageContent = permissionsPageView();
-    root.innerHTML = `<div class="wrap">${pageContent}</div>`;
+    root.innerHTML = `<div class="wrap">${currentView==='permissions' ? buSettingsPageView() : ''}</div>`;
     lastRenderedView = currentView;
   }
   if(selectedApp) renderModal();
@@ -873,15 +881,105 @@ function wxAfterRender(){
 async function setView(view){
   currentView = view;
   closeMobileSidebar(); // tapping a nav item on mobile should dismiss the drawer, not leave it covering the new page
-  if(view==='settings'){ await loadSettingsForPage(); }
-  if(view==='permissions'){ await loadPermissionsForPage(); }
-  if(view==='companies'){ companyMgmtAddOpen = false; companyMgmtEditId = null; companyMgmtSearch = ''; await Promise.all([loadCompanyMgmtList(), loadEntityCategoryList()]); }
+  if(view==='permissions'){ buSettingsEdit = null; await loadBuSettings(); }
+  if(view==='companies'){ companyMgmtAddOpen = false; companyMgmtEditId = null; companyMgmtSearch = ''; await loadCompanyMgmtList(); }
   if(view==='analytics'){ await loadAnalyticsData(); }
   if(view==='aiInsights'){ aiChatOpen = true; aiReviewCandidate = null; aiReviewRoleDescription = ''; aiRecommendation = ''; aiQaMessages = []; aiDocResult = ''; aiDocConsent = false; await loadAnalyticsData(); }
-  if(view==='adminAccess'){ adminMgmtInviteOpen = false; adminMgmtGrantFormFor = null; await loadAdminMgmtList(); }
+  if(view==='adminAccess'){ adminMgmtInviteOpen = false; adminMgmtGrantFormFor = null; await Promise.all([loadAdminMgmtList(), loadBuSettings()]); }
   if(view==='offboarding'){ await obEnter(); lastRenderedView = null; }
   render();
   if(view==='offboarding' && window.WXA) WXA.maybeStartOffboardingTour();
+}
+
+// ============================================================================
+// BUSINESS UNIT PICKER ("Select a business unit" after sign-in, and
+// "Switch business unit" from the profile menu — like SEEK's account picker).
+// The server re-checks grants on every switch (POST /admin/auth/switch).
+// ============================================================================
+let myUnits = [];          // [{code, name, roles}] this person may open
+let unitPickerOpen = false; // signed in, choosing another unit
+function currentUnitLabel(){
+  if(adminScope === 'ALL') return 'All business units';
+  if(adminScope === 'GROUP') return 'All business units (Payroll)';
+  if(adminScope === 'SUPERIOR') return 'Clearance reviewer';
+  return buLabel(adminScope);
+}
+function rolesText(u){
+  if(!u || !u.roles) return '';
+  const r = u.roles; const out = [];
+  if(r.super_admin) out.push('Super Admin');
+  else {
+    if(r.bu_admin) out.push('HR Admin');
+    if(r.payroll_pic) out.push(r.payroll_all ? 'Payroll PIC (all units)' : 'Payroll PIC');
+    if((r.clearance_department_ids||[]).length) out.push('Clearance');
+  }
+  return out.join(' · ');
+}
+function roleTagsHtml(u){
+  const r = (u && u.roles) || {};
+  if(r.super_admin) return '<span class="role-tag sup">Super Admin</span>';
+  return [r.bu_admin ? '<span class="role-tag hr">HR Admin</span>' : '',
+    r.payroll_pic ? `<span class="role-tag pay">${r.payroll_all ? 'Payroll · all units' : 'Payroll PIC'}</span>` : '',
+    (r.clearance_department_ids||[]).length ? '<span class="role-tag">Clearance</span>' : ''].join('');
+}
+async function loadMyUnits(){
+  const { data } = await apiTry(() => api.get('/admin/auth/units', {admin: true}));
+  myUnits = (data && data.units) || [];
+}
+function unitPickerHtml(switching){
+  const list = switching ? myUnits : (pendingUnits || []);
+  return `
+  <div class="unit-picker-page">
+    <header class="unit-picker-top">
+      <div class="brand"><img src="${WCT_LOGO_DATA_URI}" alt="WCT"><span>WCT HR Portal</span></div>
+      ${switching ? `<button type="button" class="btn btn-ghost btn-sm" onclick="closeUnitSwitcher()">Cancel</button>` : `<button type="button" class="btn btn-ghost btn-sm" onclick="retryLogin()">Use a different account</button>`}
+    </header>
+    <main class="unit-picker">
+      <h1>Select a business unit</h1>
+      <p class="sub">${switching ? 'Choose the business unit to switch to. Your filters reset for the new unit.' : 'You have access to more than one business unit. Choose where to work now. You can switch at any time from your profile menu.'}</p>
+      <div class="unit-list" role="list">
+        ${list.map(u => `
+        <button type="button" role="listitem" class="unit-row${switching && u.code === adminScope ? ' current' : ''}" onclick="chooseUnit('${esc(u.code)}', ${switching})">
+          <span class="unit-badge" style="background:${WCT.buColor(u.code)}">${esc(WCT.buInitials(u.code) || u.code)}</span>
+          <span class="unit-text"><span class="unit-name">${esc(u.name)}</span><span class="unit-meta">${switching && u.code === adminScope ? 'Current business unit' : esc(rolesText(u))}</span></span>
+          <span class="unit-tags">${roleTagsHtml(u)}</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        </button>`).join('')}
+      </div>
+    </main>
+  </div>`;
+}
+let pendingUnits = [];
+async function chooseUnit(code, switching){
+  if(!switching){ attemptAdminBootstrap(null, code); return; }
+  if(code === adminScope){ closeUnitSwitcher(); return; }
+  showLoading('Switching business unit...');
+  const { data, error } = await apiTry(() => api.post('/admin/auth/switch', { business_unit: code }, {admin: true}));
+  hideLoading();
+  if(error){ uiToast('Could not switch: ' + error.message, 'err'); return; }
+  await applyNewSession(data.token, data.unit_scope);
+}
+async function openUnitSwitcher(){
+  userMenuOpen = false;
+  await loadMyUnits();
+  unitPickerOpen = true;
+  render();
+  window.scrollTo(0,0);
+}
+function closeUnitSwitcher(){ unitPickerOpen = false; lastRenderedView = null; render(); }
+// A fresh session (sign-in or switch): reset per-unit state, then start over.
+async function applyNewSession(token, scope){
+  liveStop();
+  adminToken = token; adminScope = scope;
+  api.setAdminToken(adminToken);
+  sessionStorage.setItem('wct_admin_scope', adminScope);
+  unitPickerOpen = false; userMenuOpen = false; lastRenderedView = null;
+  applications = []; selectedApp = null; selectedIds.clear(); currentPage = 1; searchTerm = ''; filterStatus = '';
+  filterBusinessUnit = isBuScope(adminScope) ? adminScope : '';
+  OB.meta = null; OB.data = null; OB.selected.clear(); OB.drawer = null; OB.tasks = { sections: [], payroll: [], count: 0 }; OB._filtersLoaded = false;
+  currentView = 'home';
+  await startSignedInSession();
+  loadCurrentUserProfile();
 }
 
 // ============================================================================
@@ -903,24 +1001,15 @@ function loginView(){
           <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Secured with Microsoft.</b> Sign in with your WCT work account.</span></li>
         </ul>
       </div>
-      <div class="auth-brand-foot"><span>WCT Group · Building Values</span><span>Employment Portal</span></div>
+      <div class="auth-brand-foot"><span>WCT <span aria-hidden="true">|</span> Building Values</span><span>Employment Portal</span></div>
     </aside>`;
   const logo = `<img class="wct-logo-img auth-logo" src="${WCT_LOGO_DATA_URI}" alt="WCT Group — Building Values">`;
   const msIcon = `<svg viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#F25022"/><rect x="11" y="1" width="9" height="9" fill="#7FBA00"/><rect x="1" y="11" width="9" height="9" fill="#00A4EF"/><rect x="11" y="11" width="9" height="9" fill="#FFB900"/></svg>`;
   const alertIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>`;
   const infoIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>`;
-  const foot = `<div class="auth-foot"><span>Applying for a job? <a href="login.html">Go to the Careers Portal →</a></span><span>Need access? Ask your Super Admin to add you under Admin Access.</span></div>`;
+  const foot = `<div class="auth-foot"><span>Applying for a job? <a href="login.html">Go to the Careers Portal →</a></span><span>Need access? Ask your Super Admin to add you under Group Admin Access.</span></div>`;
   let body;
-  if(loginStage === 'choosing_bu'){
-    body = `
-      ${logo}
-      <h2 class="auth-title">Choose a business unit</h2>
-      <p class="auth-sub">You have access to more than one. Pick where to work this session. You can sign in again later to switch.</p>
-      <div class="auth-bu" role="list">
-        ${availableBuGrants.map(bu=>`<button type="button" role="listitem" onclick="chooseBuAndContinue('${bu}')">${esc(bu)} <span>Continue →</span></button>`).join('')}
-      </div>
-      ${foot}`;
-  } else if(loginStage === 'error'){
+  if(loginStage === 'error'){
     body = `
       ${logo}
       <h2 class="auth-title">Sign-in didn’t work</h2>
@@ -993,8 +1082,8 @@ async function attemptAdminBootstrap(idToken, chosenBU){
       render();
       return;
     }
-    if(!g.is_super_admin && (g.bu_grants||[]).length > 1 && !chosenBU){
-      availableBuGrants = g.bu_grants;
+    if((g.units||[]).length > 1 && !chosenBU){
+      pendingUnits = g.units;
       pendingMsIdToken = tokenToUse;
       loginStage = 'choosing_bu';
       render();
@@ -1002,28 +1091,21 @@ async function attemptAdminBootstrap(idToken, chosenBU){
     }
     // Immediate superiors with no grant (g.superior) get a reviewer session
     // with no business unit — they only see checklists assigned to them.
-    const business_unit = (g.is_super_admin || g.superior) ? null : (chosenBU || (g.bu_grants||[])[0] || null);
+    const business_unit = g.superior ? null : (chosenBU || ((g.units||[])[0] || {}).code || null);
     const { data: sessionData, error: sessionErr } = await apiTry(() => api.post('/admin/auth/session', { id_token: tokenToUse, business_unit }));
     if(sessionErr) throw sessionErr;
-    adminToken = sessionData.token;
-    adminScope = sessionData.unit_scope;
-    api.setAdminToken(adminToken);
-    sessionStorage.setItem('wct_admin_scope', adminScope);
-    pendingMsIdToken = null;
+    pendingMsIdToken = null; pendingUnits = [];
     const claims = decodeJwtPayload(tokenToUse) || {};
     currentUserProfile = { name: claims.name || g.email || '', email: g.email || claims.preferred_username || '' };
-    if(isBuScope(adminScope)) filterBusinessUnit = adminScope;
     loginStage = 'signin';
-    await startSignedInSession();
-    loadCurrentUserProfile();
+    await applyNewSession(sessionData.token, sessionData.unit_scope);
   } catch(e){
     loginStage = 'error';
     loginErrorMsg = e.message || String(e);
     render();
   }
 }
-function chooseBuAndContinue(bu){ attemptAdminBootstrap(null, bu); }
-function retryLogin(){ loginStage = 'signin'; loginErrorMsg = ''; render(); }
+function retryLogin(){ loginStage = 'signin'; loginErrorMsg = ''; pendingUnits = []; pendingMsIdToken = null; render(); }
 
 function togglePasscodeVisibility(){
   const el = document.getElementById('passcodeInput');
@@ -1078,11 +1160,9 @@ function dashboardShellHtml(){
       ${adminScope === 'ALL' ? `
         <select onchange="setFilter('business_unit', this.value)">
           <option value="">All Business Units</option>
-          <option value="E&C" ${filterBusinessUnit==='E&C'?'selected':''}>E&amp;C</option>
-          <option value="Land" ${filterBusinessUnit==='Land'?'selected':''}>Land</option>
-          <option value="Mall" ${filterBusinessUnit==='Mall'?'selected':''}>Mall</option>
+          ${buOptionsHtml(filterBusinessUnit, { includeInactive: true })}
         </select>
-      ` : `<span class="badge" style="background:var(--navy);color:#fff;">${esc(adminScope)} ACCESS ONLY</span>`}
+      ` : `<span class="badge" style="background:var(--navy);color:#fff;">${esc(buLabel(adminScope))} only</span>`}
       <select id="statusFilterSelect" onchange="setFilter('status', this.value)">
         <option value="">All Statuses</option>
         <option value="submitted" ${filterStatus==='submitted'?'selected':''}>New</option>
@@ -1120,7 +1200,7 @@ function dashboardResultsHtml(){
       <td data-label="Reference" class="cell-ref">${esc(a.reference_no)}</td>
       <td class="cell-candidate">
         <div class="name-cell">
-          ${a.profile_picture_url ? `<img class="pfp" src="${a.profile_picture_url}">` : `<div class="pfp pfp-placeholder">${esc((a.name_nric||'?').trim().charAt(0).toUpperCase())}</div>`}
+          ${a.profile_picture_url ? `<img class="pfp" src="${esc(WCT.fileUrl(a.profile_picture_url))}" alt="">` : `<div class="pfp pfp-placeholder">${esc((a.name_nric||'?').trim().charAt(0).toUpperCase())}</div>`}
           <div>
             <div style="font-weight:600;">${esc(a.name_nric)}</div>
             <div style="font-size:11.5px;color:var(--ink-soft);">${esc(a.email)}</div>
@@ -1129,13 +1209,13 @@ function dashboardResultsHtml(){
       </td>
       <td data-label="Unit" style="position:relative;">
         ${adminScope==='ALL' ? `
-          <span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);cursor:pointer;" title="Click to transfer to another business unit" aria-haspopup="true" aria-expanded="${openTransferPanelId === a.id}" onclick="toggleTransferPanel('${a.id}')">${esc(a.business_unit)} ▾</span>
+          <span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);cursor:pointer;" title="Click to transfer to another business unit" aria-haspopup="true" aria-expanded="${openTransferPanelId === a.id}" onclick="toggleTransferPanel('${a.id}')">${esc(buLabel(a.business_unit))} ▾</span>
           ${openTransferPanelId === a.id ? `
             <div class="status-panel">
-              ${['E&C','Land','Mall'].map(u=>`<button class="status-panel-btn ${a.business_unit===u?'current':''}" onclick="quickTransferBusinessUnit('${a.id}', '${u}')">${u}${a.business_unit===u?' ✓':''}</button>`).join('')}
+              ${WCT.businessUnits().filter(u => u.is_active !== false).map(u=>`<button class="status-panel-btn ${a.business_unit===u.code?'current':''}" onclick="quickTransferBusinessUnit('${a.id}', '${esc(u.code)}')">${esc(u.name)}${a.business_unit===u.code?' ✓':''}</button>`).join('')}
             </div>
           ` : ''}
-        ` : esc(a.business_unit)}
+        ` : esc(buLabel(a.business_unit))}
       </td>
       <td data-label="Position">${esc(a.position_applying)||'<span style="color:var(--ink-soft);">—</span>'}</td>
       <td data-label="Company">${a.company_id ? esc(companyNameById[a.company_id] || '—') : '<span style="color:var(--ink-soft);">—</span>'}</td>
@@ -1162,6 +1242,7 @@ function dashboardResultsHtml(){
       </select>
       <button class="btn btn-accent btn-sm" onclick="applyBulkStatus()">Apply</button>
       <button class="btn btn-outline btn-sm" onclick="bulkExportCsv()">Export Selected</button>
+      ${applications.some(a => selectedIds.has(a.id) && needsOnboardingReminder(a)) ? `<button class="btn btn-outline btn-sm" onclick="bulkOnboardingReminder()">${ICON_BELL} Remind onboarding</button>` : ''}
       <button class="btn btn-danger btn-sm" onclick="bulkDelete()">Delete Selected</button>
       <button class="btn btn-outline btn-sm bulk-clear" onclick="clearSelection()">Clear</button>
     </div>
@@ -1445,7 +1526,11 @@ async function quickUpdateStatus(id, status){
   } catch(e){ uiToast('Error: '+e.message); loadApplications(); }
 }
 
-async function confirmDelete(id, name){
+// Only the id travels through the inline handler; the name is looked up here
+// (candidate-entered text must never be placed inside an onclick string).
+async function confirmDelete(id){
+  const row = applications.find(x => x.id === id) || (selectedApp && selectedApp.id === id ? selectedApp : {});
+  const name = row.name_nric || 'this candidate';
   if(!confirm(`Permanently delete ${name}'s application? This cannot be undone.`)) return;
   try{
     const { error } = await apiTry(() => api.del(`/admin/applications/${id}`, {admin: true}));
@@ -1472,13 +1557,14 @@ function downloadApplicationsCsv(data, filename){
       // -- Job Application: identity & status --
       'Reference No.','Status','Business Unit','Position Applying For','Submitted At','Created At','Updated At',
       // -- Personal Particulars --
-      'Name (per NRIC)','Alias','Permanent Address','Permanent Postcode','Correspondence Address','Correspondence Postcode',
+      'Name (per NRIC)','Alias','Permanent Address Line 1','Permanent Address Line 2','Permanent Postcode','Permanent City','Permanent State',
+      'Correspondence Address Line 1','Correspondence Address Line 2','Correspondence Postcode','Correspondence City','Correspondence State',
       'Tel Residence','Tel Office','Mobile Phone','Email','Place of Birth',
       'NRIC No.','Passport No.','Citizen','Marital Status','Date of Birth','Age','Bumiputra','Race',
       // -- Statutory Details (as collected on the application, if any) --
       'App EPF No.','App Income Tax No.','App Tax Branch','App SOCSO No.','App Bank Account No.','App CIDB Green Card No.','App CIDB Branch',
       // -- Language / Education / Experience (JSON) --
-      'Language Ability (JSON)','Education (JSON)','Working Experience (JSON)',
+      'Language Ability (JSON)','Education (JSON)','No Previous Working Experience','Working Experience (JSON)',
       // -- Employment Questions --
       'Resignation Notice Required','Notice Period','Date Available to Start','Expected Basic Salary',
       'Relatives in Company','Relatives Name','Relatives Relationship',
@@ -1488,15 +1574,15 @@ function downloadApplicationsCsv(data, filename){
       // -- Referees & Declarations --
       'Referee 1 (JSON)','Referee 2 (JSON)','Declaration - Lawsuit (B)','Declaration - Lawsuit Specify','Declaration - Other Matters (C)','Declaration - Other Matters Specify',
       // -- Attachments & Consent --
-      'Passport Size Photo URL','Attachments (JSON)','Consent Language',
+      'Photo URL','Attachments (JSON)','Consent Language',
       'JTS Agreed','JTS Agreed Name','JTS Agreed NRIC','JTS Agreed Mobile','JTS Agreed At',
       'PDPA Agreed','PDPA Agreed Name','PDPA Agreed NRIC','PDPA Agreed At',
       // -- Onboarding: Statutory Details --
       'Onboarding Status','Onboarding EPF No.','Onboarding Income Tax No.','Onboarding Tax Branch',
       'Onboarding SOCSO No.','Onboarding Bank Account No.','Onboarding CIDB Green Card No.','Onboarding CIDB Branch',
-      // -- Onboarding: Spouse & Children --
+      // -- Family (application; older records: onboarding) --
       'Spouse Name','Spouse NRIC','Spouse Date of Birth','Spouse Working',
-      'Children Below 18 (JSON)','Children 18-23 (JSON)',
+      'Children Below 18 (JSON)','Children 18 and Above (JSON)',
       // -- Onboarding: Emergency & Beneficiary --
       'Emergency Contacts (JSON)','Beneficiary Name','Beneficiary Relationship','Beneficiary Contact',
       // -- Onboarding: TP3 --
@@ -1510,12 +1596,13 @@ function downloadApplicationsCsv(data, filename){
     ];
 
     const rows = (data||[]).map(a=>[
-      a.reference_no, a.status, a.business_unit, a.position_applying, dt(a.submitted_at), dt(a.created_at), dt(a.updated_at),
-      a.name_nric, a.alias, a.permanent_address, a.permanent_postcode, a.correspondence_address, a.correspondence_postcode,
+      a.reference_no, a.status, buLabel(a.business_unit), a.position_applying, dt(a.submitted_at), dt(a.created_at), dt(a.updated_at),
+      a.name_nric, a.alias, a.permanent_address, a.permanent_address2, a.permanent_postcode, a.permanent_city, a.permanent_state,
+      a.correspondence_address, a.correspondence_address2, a.correspondence_postcode, a.correspondence_city, a.correspondence_state,
       a.tel_residence, a.tel_office, a.mobile_phone, a.email, a.place_of_birth,
       a.nric_new, a.passport_number, a.citizen, a.marital_status, a.date_of_birth, a.age, a.bumiputra, a.race,
       a.epf_no, a.income_tax_no, a.tax_branch, a.socso_no, a.bank_account_no, a.cidb_green_card_no, a.cidb_branch,
-      jsonCell(a.language_ability), jsonCell(a.education), jsonCell(a.working_experience),
+      jsonCell(a.language_ability), jsonCell(a.education), a.no_working_experience ? 'Yes' : 'No', jsonCell(a.working_experience),
       a.resignation_notice_required, a.notice_period, a.date_available_to_start, a.expected_basic_salary,
       a.relatives_in_company, a.relatives_name, a.relatives_relationship,
       a.referral_person, a.referral_name, a.referral_department,
@@ -1527,8 +1614,8 @@ function downloadApplicationsCsv(data, filename){
       a.pdpa_agreed, a.pdpa_agreed_name, a.pdpa_agreed_nric, dt(a.pdpa_agreed_at),
       a.ob_status, a.ob_epf_no, a.ob_income_tax_no, a.ob_tax_branch,
       a.ob_socso_no, a.ob_bank_account_no, a.ob_cidb_green_card_no, a.ob_cidb_branch,
-      a.ob_spouse_name, a.ob_spouse_nric, a.ob_spouse_date_of_birth, a.ob_spouse_working,
-      jsonCell(a.ob_children_below_18), jsonCell(a.ob_children_18_to_23),
+      a.spouse_name || a.ob_spouse_name, a.spouse_nric || a.ob_spouse_nric, a.spouse_date_of_birth || a.ob_spouse_date_of_birth, a.spouse_working || a.ob_spouse_working,
+      jsonCell((a.children_below_18||[]).length ? a.children_below_18 : a.ob_children_below_18), jsonCell((a.children_18_to_23||[]).length ? a.children_18_to_23 : a.ob_children_18_to_23),
       jsonCell(a.ob_emergency_contacts), a.ob_beneficiary_name, a.ob_beneficiary_relationship, a.ob_beneficiary_contact,
       jsonCell(a.ob_tp3_data),
       a.ob_salary_company, a.ob_salary_bank, a.ob_salary_branch, a.ob_salary_account_no, a.ob_salary_ic_submitted,
@@ -1538,7 +1625,8 @@ function downloadApplicationsCsv(data, filename){
     ]);
 
     const csv = [headers, ...rows].map(row =>
-      row.map(cell => `"${String(cell??'').replace(/"/g,'""')}"`).join(',')
+      // Neutralise spreadsheet formulas (=, +, -, @ at the start), then quote.
+      row.map(cell => { const v = String(cell??''); const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v; return `"${safe.replace(/"/g,'""')}"`; }).join(',')
     ).join('\n');
     const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
@@ -1554,6 +1642,8 @@ function downloadApplicationsCsv(data, filename){
 // ============================================================================
 let otherBuMatches = [];
 let assignableCompanies = [];
+let selectedOnboarding = null; // hired candidates: their onboarding record (or null)
+let drawerScrollTop = 0;       // keep the profile panel's scroll across live re-renders
 
 async function openDetail(id){
   try{
@@ -1571,12 +1661,17 @@ async function openDetail(id){
       const { data: compData } = await apiTry(() => api.get('/admin/companies', {admin: true}));
       assignableCompanies = compData || [];
     } catch(e){ assignableCompanies = []; }
-
+    selectedOnboarding = null;
+    if(data.status === 'hired'){
+      const { data: obRec } = await apiTry(() => api.get(`/admin/applications/${id}/onboarding`, {admin: true}));
+      selectedOnboarding = obRec || null;
+    }
+    drawerScrollTop = 0;
     render();
   } catch(e){ uiToast('Error: '+e.message); }
 }
 function closeDetail(){
-  selectedApp=null; editingApp=false;
+  selectedApp=null; editingApp=false; selectedOnboarding = null;
   otherBuMatches = []; assignableCompanies = [];
   const existing = document.getElementById('modalRoot');
   if(existing) existing.remove();
@@ -1596,244 +1691,110 @@ function fmtMoney(v){
 }
 
 // ============================================================================
-// JOB POSTINGS — full page, reached via the header nav
+// BUSINESS UNIT SETTINGS (Super Admin) — the managed list of business units
+// (business_units table). Each entity is now its own business unit; add more
+// as the group grows. A unit's short code is permanent once used (it is in
+// candidate links and every record); its name, reference prefix, PIC email
+// and order can change. Units with history can be deactivated, not deleted.
 // ============================================================================
-// ============================================================================
-// MANAGER SETTINGS — All Units admin access only. Stores config that
-// Power Automate (and future features) reads, instead of hardcoding
-// values inside SQL functions.
-// ============================================================================
-let settingsData = {};
+let buSettingsList = [];
+let buSettingsEdit = null; // code being edited, or '__new__'
 
-async function loadSettingsForPage(){
-  try{
-    const { data, error } = await apiTry(() => api.get('/admin/settings', {admin: true}));
-    if(error) throw error;
-    settingsData = data || {};
-  } catch(e){ uiToast('Error loading settings: '+e.message); settingsData = {}; }
+async function loadBuSettings(){
+  const [units, companies] = await Promise.all([
+    apiTry(() => api.get('/admin/business-units', {admin: true})),
+    apiTry(() => api.get('/admin/companies/manage', {admin: true})),
+  ]);
+  if(units.error){ uiToast('Error loading business units: '+units.error.message, 'err'); return; }
+  buSettingsList = units.data || [];
+  WCT.setBusinessUnits(buSettingsList);
+  companyMgmtList = companies.data || [];
 }
-
-function settingsPageView(){
-  if(adminScope !== 'ALL'){
-    return `<div class="empty-state">Manager Settings is only available to All Units admin access.</div>`;
-  }
+function candidateLink(code){ return `${location.origin}${location.pathname.replace(/admin\.html$/, '')}index.html?bu=${encodeURIComponent(code)}`; }
+async function copyCandidateLink(code){
+  const link = candidateLink(code);
+  try{ await navigator.clipboard.writeText(link); uiToast('Candidate link copied.'); }
+  catch(e){ window.prompt('Copy this candidate link:', link); }
+}
+function buSettingsPageView(){
+  const editingNew = buSettingsEdit === '__new__';
   return `
-    <div class="stat-row">
-      <div class="stat" style="flex:none;min-width:auto;">
-        <h2 style="font-size:20px;margin:0;">Manager Settings</h2>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Notification configuration for Power Automate. Changes here don't require editing any SQL.</div>
-      </div>
-    </div>
-
-    <div class="detail-section">
-      <h4>Manager Notification Emails (routed by business unit)</h4>
-      <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-6px;">Each business unit's manager only receives notifications for their own unit's applications.</p>
-      <div class="grid g3">
-        <div class="field"><label>E&amp;C Manager Email</label><input type="email" id="set_mgr_ec" value="${esc(settingsData.manager_email_ec)}" placeholder="ec.manager@wct.my"></div>
-        <div class="field"><label>Mall Manager Email</label><input type="email" id="set_mgr_mall" value="${esc(settingsData.manager_email_mall)}" placeholder="mall.manager@wct.my"></div>
-        <div class="field"><label>Land Manager Email</label><input type="email" id="set_mgr_land" value="${esc(settingsData.manager_email_land)}" placeholder="land.manager@wct.my"></div>
-      </div>
-    </div>
-
-    <div id="settingsErr"></div>
-    <button class="btn btn-primary btn-sm" onclick="saveSettings()">Save Settings</button>
-  `;
+    <div class="page-intro"><p>Every business unit candidates can apply to. Each unit has its own candidate link, reference prefix and designated PIC email (who is told about new applications, together with the unit's HR Admins). Manage who can open each unit under <strong>Group Admin Access</strong>, and its companies under <strong>Company Settings</strong>.</p></div>
+    <div class="toolbar"><div style="flex:1;"></div><button class="btn btn-primary btn-sm" onclick="buSettingsEdit=${editingNew ? 'null' : "'__new__'"};render();">${editingNew ? 'Cancel' : '+ Add business unit'}</button></div>
+    ${editingNew ? buFormHtml(null) : ''}
+    <div class="bu-cards">
+      ${buSettingsList.map(u => buSettingsEdit === u.code ? `<div class="bu-card editing">${buFormHtml(u)}</div>` : buCardHtml(u)).join('')}
+    </div>`;
 }
-
-async function saveSettings(){
-  const patch = {
-    manager_email_ec: document.getElementById('set_mgr_ec').value.trim(),
-    manager_email_mall: document.getElementById('set_mgr_mall').value.trim(),
-    manager_email_land: document.getElementById('set_mgr_land').value.trim()
+function buCardHtml(u){
+  const companies = companyMgmtList.filter(c => c.business_unit === u.code).sort((a,b)=>a.name.localeCompare(b.name));
+  return `
+    <div class="bu-card${u.is_active ? '' : ' inactive'}">
+      <div class="bu-card-h">
+        <span class="unit-badge" style="background:${WCT.buColor(u.code)}">${esc(WCT.buInitials(u.code))}</span>
+        <div style="min-width:0;"><b>${esc(u.name)}</b>${u.is_active ? '' : ' <span class="role-tag">Inactive</span>'}
+          <div class="muted" style="font-size:12.5px;">Code ${esc(u.code)} · Ref. WCT-${esc(u.ref_code)}-… · ${u.application_count} application${u.application_count===1?'':'s'}</div></div>
+      </div>
+      <div class="bu-pic"><span class="muted">PIC email</span> ${u.pic_email ? esc(u.pic_email) : '<span class="muted">not set — new applications go to the unit\'s HR Admins</span>'}</div>
+      <ul class="bu-companies">${companies.map(c => `<li>${esc(c.name)}</li>`).join('') || '<li class="muted">No companies yet</li>'}</ul>
+      <div class="bu-link"><span>${esc(candidateLink(u.code).replace(/^https?:\/\//, ''))}</span><button type="button" class="btn btn-link btn-sm" onclick="copyCandidateLink('${esc(u.code)}')">Copy link</button></div>
+      <div class="bu-actions">
+        <button class="btn btn-outline btn-sm" onclick="buSettingsEdit='${esc(u.code)}';render();">Edit</button>
+        <button class="btn btn-outline btn-sm" onclick="setView('companies')">Companies</button>
+        <button class="btn btn-outline btn-sm" onclick="toggleBuActive('${esc(u.code)}', ${!u.is_active})">${u.is_active ? 'Deactivate' : 'Activate'}</button>
+        ${u.application_count === 0 && u.company_count === 0 ? `<button class="btn btn-outline-danger btn-sm" onclick="deleteBu('${esc(u.code)}')">Delete</button>` : ''}
+      </div>
+    </div>`;
+}
+function buFormHtml(u){
+  const isNew = !u;
+  return `
+    <div class="ga-invite" ${isNew ? 'style="margin-bottom:16px;"' : ''}>
+      <h3>${isNew ? 'New business unit' : `Edit ${esc(u.name)}`}</h3>
+      <div class="ga-invite-grid">
+        <div class="field"><label for="buName">Name <span class="req">*</span></label><input type="text" id="buName" value="${esc(u ? u.name : '')}" placeholder="e.g. Logistics"></div>
+        <div class="field"><label for="buCode">Short code ${isNew ? '<span class="req">*</span>' : ''}</label><input type="text" id="buCode" value="${esc(u ? u.code : '')}" ${isNew ? '' : 'disabled'} placeholder="e.g. Logistics" maxlength="20">
+          <div class="hint">${isNew ? 'Letters, digits or &amp;. Used in the candidate link (?bu=…) and can\'t be changed later.' : 'Permanent (used in links and records).'}</div></div>
+        <div class="field"><label for="buRef">Reference prefix <span class="req">*</span></label><input type="text" id="buRef" value="${esc(u ? u.ref_code : '')}" placeholder="e.g. LOG" maxlength="8" style="text-transform:uppercase;">
+          <div class="hint">Reference numbers look like WCT-<b>PREFIX</b>-2026-000001.</div></div>
+        <div class="field"><label for="buPic">PIC email</label><input type="email" id="buPic" value="${esc(u ? (u.pic_email||'') : '')}" placeholder="hr.unit@wct.my">
+          <div class="hint">Told about every new application (plus the unit's HR Admins). Separate several with ;</div></div>
+        <div class="field"><label for="buOrder">Order in lists</label><input type="number" id="buOrder" value="${esc(u ? u.sort_order : '')}" placeholder="Last" min="0"></div>
+      </div>
+      <div id="buFormErr"></div>
+      <div style="display:flex;gap:8px;"><button class="btn btn-primary btn-sm" onclick="saveBu(${isNew ? 'null' : `'${esc(u.code)}'`})">${isNew ? 'Add business unit' : 'Save changes'}</button>
+        <button class="btn btn-outline btn-sm" onclick="buSettingsEdit=null;render();">Cancel</button></div>
+    </div>`;
+}
+async function saveBu(code){
+  const body = {
+    name: document.getElementById('buName').value.trim(),
+    ref_code: document.getElementById('buRef').value.trim().toUpperCase(),
+    pic_email: document.getElementById('buPic').value.trim(),
   };
-  try{
-    const { data, error } = await apiTry(() => apiRequest('/admin/settings', {method: 'PUT', body: patch, admin: true}));
-    if(error) throw error;
-    settingsData = data;
-    document.getElementById('settingsErr').innerHTML = `<div class="success-banner">Saved.</div>`;
-  } catch(e){ document.getElementById('settingsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
-}
-
-// ============================================================================
-// PERMISSION SETTINGS — All Units admin access only. Controls which of the
-// three core business-unit scopes (E&C, Land, Mall) may assign candidates
-// to companies in each entity category (E&C, Aviation, Hotel, Property,
-// F&B, Malls, REIT), per the WCT company listing.
-// ============================================================================
-let permissionMatrix = []; // [{category, unit_scope, granted}, ...]
-const PERMISSION_UNITS = ['E&C', 'Land', 'Mall'];
-let editingEntityCategory = null; // name currently in rename mode, or null
-
-async function loadPermissionsForPage(){
-  try{
-    // Also (re)load the full entity-category list, not just the permission
-    // matrix — see permissionsPageView() below for why: the matrix table
-    // only ever holds rows for categories someone has explicitly granted/
-    // revoked for at least one business unit, so a brand-new category (just
-    // inserted into entity_categories, with zero admin_unit_permissions rows
-    // yet) would otherwise be invisible on this page even though it was
-    // added successfully.
-    const [pmResult] = await Promise.all([
-      apiTry(() => api.get('/admin/permission-matrix', {admin: true})),
-      loadEntityCategoryList(),
-    ]);
-    const { data, error } = pmResult;
-    if(error) throw error;
-    permissionMatrix = data || [];
-  } catch(e){ uiToast('Error loading permissions: '+e.message); permissionMatrix = []; }
-}
-
-function permissionsPageView(){
-  if(adminScope !== 'ALL'){
-    return `<div class="empty-state">Business Unit Settings is only available to All Units admin access.</div>`;
-  }
-  // Union with entityCategoryList (not just permissionMatrix's own rows) so
-  // a freshly-added category with no granted/revoked rows yet still shows
-  // up in the table — see the comment in loadPermissionsForPage() above.
-  const categories = [...new Set([...entityCategoryList, ...permissionMatrix.map(r=>r.category)])];
-  const isGranted = (category, unit) => permissionMatrix.some(r=>r.category===category && r.unit_scope===unit && r.granted);
-
-  return `
-    <div class="stat-row">
-      <div class="stat" style="flex:none;min-width:auto;">
-        <h2 style="font-size:20px;margin:0;">Business Unit Settings</h2>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Controls which business unit's admin team can assign candidates to companies in each entity category.</div>
-      </div>
-    </div>
-
-    <div class="toolbar">
-      <input type="text" id="newEntityCategoryInput" placeholder="e.g. Data Centre" style="flex:1;min-width:220px;">
-      <button class="btn btn-primary btn-sm" onclick="submitAddEntityCategory()">+ Add Entity</button>
-    </div>
-    <div id="addEntityErr"></div>
-
-    <table>
-      <thead><tr>
-        <th>Entity Category</th>
-        ${PERMISSION_UNITS.map(u=>`<th style="text-align:center;">${u}</th>`).join('')}
-        <th style="width:1%;white-space:nowrap;">Actions</th>
-      </tr></thead>
-      <tbody>
-        ${categories.map(cat=>`
-          <tr class="data-row">
-            ${editingEntityCategory===cat ? `
-              <td><input type="text" id="renameEntityInput" value="${esc(cat)}" style="width:100%;"></td>
-              ${PERMISSION_UNITS.map(()=>`<td style="text-align:center;color:var(--ink-soft);">—</td>`).join('')}
-              <td>
-                <div class="row-actions">
-                  <button class="btn btn-primary btn-sm" onclick="submitRenameEntityCategory('${esc(cat)}')">Save</button>
-                  <button class="btn btn-outline btn-sm" onclick="cancelEditEntityCategory()">Cancel</button>
-                </div>
-              </td>
-            ` : `
-              <td><strong>${esc(cat)}</strong></td>
-              ${PERMISSION_UNITS.map(u=>`
-                <td style="text-align:center;">
-                  <input type="checkbox" class="row-check" data-cat="${esc(cat)}" data-unit="${esc(u)}" ${isGranted(cat,u)?'checked':''} onchange="togglePermissionCheckbox(this)">
-                </td>
-              `).join('')}
-              <td>
-                <div class="row-actions">
-                  <button class="btn btn-outline btn-sm" onclick="startEditEntityCategory('${esc(cat)}')">Edit</button>
-                  <button class="btn btn-outline btn-sm" onclick="deleteEntityCategory('${esc(cat)}')">Delete</button>
-                </div>
-              </td>
-            `}
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-
-    <div id="permissionsErr" style="margin-top:14px;"></div>
-    <button class="btn btn-primary btn-sm" style="margin-top:6px;" onclick="savePermissionChanges()">Save Changes</button>
-  `;
-}
-
-function startEditEntityCategory(cat){
-  editingEntityCategory = cat;
-  render();
-}
-function cancelEditEntityCategory(){
-  editingEntityCategory = null;
-  render();
-}
-
-// Renaming intentionally doubles as "merge": if the new name typed already
-// exists as another entity category (e.g. fixing "aviation" vs "Aviation" by
-// renaming one into the other), the backend merges companies and permission
-// grants into the surviving name rather than erroring — see PATCH
-// /admin/entity-categories/:name.
-async function submitRenameEntityCategory(oldName){
-  const input = document.getElementById('renameEntityInput');
-  const newName = input.value.trim();
-  if(!newName){ document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">Entity name is required.</div>`; return; }
+  const order = document.getElementById('buOrder').value.trim();
+  if(order !== '') body.sort_order = Number(order);
+  if(!code) body.code = document.getElementById('buCode').value.trim();
   showLoading('Saving...');
-  try{
-    const { error } = await apiTry(() => api.patch(`/admin/entity-categories/${encodeURIComponent(oldName)}`, { name: newName }, {admin: true}));
-    if(error) throw error;
-    editingEntityCategory = null;
-    await loadPermissionsForPage();
-    hideLoading();
-    render();
-  } catch(e){ hideLoading(); document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+  const { error } = await apiTry(() => code ? api.patch(`/admin/business-units/${encodeURIComponent(code)}`, body, {admin: true}) : api.post('/admin/business-units', body, {admin: true}));
+  hideLoading();
+  if(error){ document.getElementById('buFormErr').innerHTML = `<div class="error-banner">${esc(error.message)}</div>`; return; }
+  buSettingsEdit = null;
+  await loadBuSettings();
+  render();
+  uiToast(code ? 'Business unit updated.' : 'Business unit added. Add its companies and people next.');
 }
-
-async function deleteEntityCategory(cat){
-  if(!confirm(`Delete entity category "${cat}"? This only works if no companies currently use it — reassign them first if it fails.`)) return;
-  showLoading('Deleting...');
-  try{
-    const { error } = await apiTry(() => api.del(`/admin/entity-categories/${encodeURIComponent(cat)}`, {admin: true}));
-    if(error) throw error;
-    await loadPermissionsForPage();
-    hideLoading();
-    render();
-  } catch(e){ hideLoading(); document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+async function toggleBuActive(code, active){
+  if(!active && !confirm('Deactivate this business unit? Its candidate link stops accepting new applications. Existing records are kept.')) return;
+  const { error } = await apiTry(() => api.patch(`/admin/business-units/${encodeURIComponent(code)}`, { is_active: active }, {admin: true}));
+  if(error){ uiToast(error.message, 'err'); return; }
+  await loadBuSettings(); render();
 }
-
-async function submitAddEntityCategory(){
-  const input = document.getElementById('newEntityCategoryInput');
-  const name = input.value.trim();
-  if(!name){ document.getElementById('addEntityErr').innerHTML = `<div class="error-banner">Entity name is required.</div>`; return; }
-  showLoading('Adding entity...');
-  try{
-    const { error } = await apiTry(() => api.post('/admin/entity-categories', { category: name }, {admin: true}));
-    if(error) throw error;
-    input.value = '';
-    await loadPermissionsForPage();
-    hideLoading();
-    render();
-  } catch(e){ hideLoading(); document.getElementById('addEntityErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
-}
-
-let pendingPermissionChanges = {}; // unit_scope -> Set of categories, only populated once touched
-function togglePermissionCheckbox(el){
-  const unit = el.dataset.unit, cat = el.dataset.cat;
-  // Track full desired category set per unit the first time that column is touched
-  if(!pendingPermissionChanges[unit]){
-    pendingPermissionChanges[unit] = new Set(
-      permissionMatrix.filter(r=>r.unit_scope===unit && r.granted).map(r=>r.category)
-    );
-  }
-  if(el.checked) pendingPermissionChanges[unit].add(cat);
-  else pendingPermissionChanges[unit].delete(cat);
-}
-
-async function savePermissionChanges(){
-  const units = Object.keys(pendingPermissionChanges);
-  if(units.length === 0){ document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">No changes to save.</div>`; return; }
-  showLoading('Saving permissions...');
-  try{
-    for(const unit of units){
-      const categories = Array.from(pendingPermissionChanges[unit]);
-      const { error } = await apiTry(() => apiRequest('/admin/permission-matrix', {method: 'PUT', body: {unit_scope: unit, categories}, admin: true}));
-      if(error) throw error;
-    }
-    pendingPermissionChanges = {};
-    await loadPermissionsForPage();
-    hideLoading();
-    render();
-    document.getElementById('permissionsErr').innerHTML = `<div class="success-banner">Saved.</div>`;
-  } catch(e){ hideLoading(); document.getElementById('permissionsErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+async function deleteBu(code){
+  if(!confirm('Delete this business unit? This only works while nothing uses it.')) return;
+  const { error } = await apiTry(() => api.del(`/admin/business-units/${encodeURIComponent(code)}`, {admin: true}));
+  if(error){ uiToast(error.message, 'err'); return; }
+  await loadBuSettings(); render();
 }
 
 // ============================================================================
@@ -2043,7 +2004,7 @@ function aiReviewDropdownRowHtml(r){
   return `
     <button type="button" class="status-panel-btn" style="display:flex;justify-content:space-between;gap:10px;" onclick="selectAiReviewCandidate('${r.id}')">
       <span>${esc(r.reference_no)} — ${esc(r.name_nric || 'Unnamed')}</span>
-      <span style="color:var(--ink-soft);font-weight:400;">${esc(r.business_unit)} · ${STATUS_LABELS[r.status]||r.status}</span>
+      <span style="color:var(--ink-soft);font-weight:400;">${esc(buLabel(r.business_unit))} · ${STATUS_LABELS[r.status]||r.status}</span>
     </button>
   `;
 }
@@ -2293,7 +2254,7 @@ function aiReviewSectionInnerHtml(){
   const c = aiReviewCandidate;
   return `
     <div style="background:var(--cream);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;">
-      <strong>${esc(c.reference_no)}</strong> · ${esc(c.name_nric || 'Unnamed')} · ${esc(c.business_unit)} · current status: <span class="badge ${c.status}">${STATUS_LABELS[c.status]||c.status}</span>
+      <strong>${esc(c.reference_no)}</strong> · ${esc(c.name_nric || 'Unnamed')} · ${esc(buLabel(c.business_unit))} · current status: <span class="badge ${c.status}">${STATUS_LABELS[c.status]||c.status}</span>
     </div>
     ${!aiRecommendation && !aiRecommendLoading ? `
       <button class="btn btn-primary btn-sm" onclick="generateAiRecommendation()">Get AI Recommendation</button>
@@ -2360,6 +2321,10 @@ async function blobToBase64(blob){
   });
 }
 
+function analyzeAttachmentAt(i){
+  const f = ((aiReviewCandidate && aiReviewCandidate.attachments) || [])[i];
+  if(f) analyzeAttachment(WCT.fileUrl(f.url), f.name, f.type || '');
+}
 async function analyzeAttachment(url, name, mimeType){
   if(!aiDocConsent) return;
   aiDocLoading = true;
@@ -2406,10 +2371,10 @@ function aiDocSectionInnerHtml(){
       <p style="color:var(--ink-soft);font-size:13px;">This candidate has no uploaded attachments.</p>
     ` : `
       <div style="display:flex;flex-direction:column;gap:8px;">
-        ${attachments.map(f => `
+        ${attachments.map((f, i) => `
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;">
             <span style="font-size:13px;word-break:break-all;">${esc(f.name)}</span>
-            <button class="btn btn-outline btn-sm" ${!aiDocConsent?'disabled':''} onclick="analyzeAttachment('${f.url}', '${esc(f.name).replace(/'/g,"\\'")}', '${f.type||''}')">Analyze</button>
+            <button class="btn btn-outline btn-sm" ${!aiDocConsent?'disabled':''} onclick="analyzeAttachmentAt(${i})">Analyze</button>
           </div>
         `).join('')}
       </div>
@@ -2515,157 +2480,196 @@ async function loadAdminMgmtList(){
       }
       if(row.grant_id){ byId[row.admin_user_id].grants.push({ id: row.grant_id, role: row.role, business_unit: row.business_unit, department_id: row.department_id, department_name: row.department_name }); }
     });
-    adminMgmtList = Object.values(byId);
+    adminMgmtList = Object.values(byId).sort((a,b) => (a.display_name||a.email).localeCompare(b.display_name||b.email));
   } catch(e){ uiToast('Error loading admin list: '+e.message); adminMgmtList = []; }
 }
 
+// ============================================================================
+// GROUP ADMIN ACCESS (Super Admin only) — people grouped by business unit.
+// One person can belong to several groups; within a group they are HR Admin
+// and/or Payroll PIC. Payroll PIC can also cover "all business units".
+// Clearance PIC is no longer offered (HR clears the department sections);
+// older Clearance grants still show and can be removed.
+// ============================================================================
+let adminMgmtGroup = 'everyone';
+const ROLE_LABELS = { super_admin: 'Super Admin', bu_admin: 'HR Admin', payroll_pic: 'Payroll PIC', clearance_pic: 'Clearance PIC', entity_admin: 'Entity Admin (Phase 2)' };
+function grantLabel(g){
+  if(g.role==='super_admin') return 'Super Admin';
+  if(g.role==='bu_admin') return `HR Admin · ${buLabel(g.business_unit)}`;
+  if(g.role==='payroll_pic') return g.business_unit ? `Payroll PIC · ${buLabel(g.business_unit)}` : 'Payroll PIC · All business units';
+  if(g.role==='clearance_pic') return `${g.department_name || 'Clearance'} PIC · ${buLabel(g.business_unit)} (no longer used)`;
+  return ROLE_LABELS[g.role] || g.role;
+}
+function inGroup(a, group){
+  if(group === 'everyone') return true;
+  if(group === 'super') return a.grants.some(g => g.role === 'super_admin');
+  if(group === 'payroll_all') return a.grants.some(g => g.role === 'payroll_pic' && !g.business_unit);
+  return a.grants.some(g => g.business_unit === group);
+}
+function adminGroups(){
+  return [
+    { key: 'everyone', name: 'Everyone' },
+    { key: 'super', name: 'Super Admins' },
+    { key: 'payroll_all', name: 'Payroll · all units' },
+    ...WCT.businessUnits().map(u => ({ key: u.code, name: u.name, bu: true, inactive: u.is_active === false })),
+  ];
+}
 function renderAdminAccessShell(){
   const root = document.getElementById('root');
   root.innerHTML = `<div class="wrap">${adminAccessPageView()}</div>`;
   lastRenderedView = 'adminAccess';
 }
-
-function toggleInviteAdminForm(){
-  adminMgmtInviteOpen = !adminMgmtInviteOpen;
-  renderAdminAccessShell();
-}
+function setAdminGroup(key){ adminMgmtGroup = key; adminMgmtGrantFormFor = null; adminMgmtInviteOpen = false; renderAdminAccessShell(); }
+function toggleInviteAdminForm(){ adminMgmtInviteOpen = !adminMgmtInviteOpen; renderAdminAccessShell(); }
 
 function adminAccessPageView(){
+  const groups = adminGroups();
+  const current = groups.find(g => g.key === adminMgmtGroup) || groups[0];
   return `
-    <div class="stat-row">
-      <div class="stat" style="flex:none;min-width:auto;">
-        <h2 style="font-size:20px;margin:0;">Admin Access</h2>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Invite staff by their work email, then grant access: Business Unit Admin (HR), Super Admin, or the offboarding-only roles — Payroll PIC (covers every business unit) and Clearance PIC (per business unit and department). A person can hold several grants.</div>
-      </div>
-    </div>
-
-    <div class="toolbar">
-      <div style="flex:1;"></div>
-      <button class="btn btn-primary btn-sm" onclick="toggleInviteAdminForm()">${adminMgmtInviteOpen ? 'Cancel' : '+ Invite Admin'}</button>
-    </div>
-
-    ${adminMgmtInviteOpen ? `
-      <div class="detail-section" style="background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow-sm);">
-        <h4 style="border-top:none;padding-top:0;">Invite Admin</h4>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
-          <div class="field"><label>Email <span style="color:var(--danger);">*</span></label><input type="email" id="newAdminEmail" placeholder="name@company.com"></div>
-          <div class="field"><label>Display Name</label><input type="text" id="newAdminName" placeholder="Optional"></div>
+    <div class="ga">
+      <nav class="ga-side" aria-label="Groups">
+        <div class="ga-side-h">Groups</div>
+        ${groups.map(g => `<button type="button" class="${g.key===current.key?'on':''}" aria-current="${g.key===current.key}" onclick="setAdminGroup('${esc(g.key)}')">
+          <span>${esc(g.name)}${g.inactive ? ' <em class="muted">(inactive)</em>' : ''}</span><small>${adminMgmtList.filter(a => inGroup(a, g.key)).length}</small></button>`).join('')}
+      </nav>
+      <section class="ga-main">
+        <div class="ga-head">
+          <div><h2>${esc(current.name)}</h2>
+            <p class="muted">${current.bu ? `People who can open <strong>${esc(current.name)}</strong>. HR Admins manage its applications, onboarding and offboarding; Payroll PICs complete its final pay.`
+              : current.key === 'super' ? 'Super Admins see every business unit and manage settings and access.'
+              : current.key === 'payroll_all' ? 'Payroll PICs who cover every business unit.'
+              : 'Everyone who has been invited. A person can belong to several groups.'}</p></div>
+          <button class="btn btn-primary btn-sm" onclick="toggleInviteAdminForm()">${adminMgmtInviteOpen ? 'Cancel' : (current.bu ? '+ Add person to this group' : '+ Invite person')}</button>
         </div>
-        <div class="hint" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 12px;">They'll appear below as "not yet signed in" until they complete their first Microsoft sign-in — grant their access now, it takes effect the moment they do.</div>
-        <div id="adminMgmtErr"></div>
-        <button class="btn btn-primary btn-sm" onclick="submitInviteAdmin()">Send Invite</button>
+        ${adminMgmtInviteOpen ? inviteFormHtml(current) : ''}
+        <div id="adminMgmtResults">${adminMgmtResultsHtml()}</div>
+      </section>
+    </div>`;
+}
+function inviteFormHtml(group){
+  const units = WCT.businessUnits().filter(u => u.is_active !== false);
+  const existing = adminMgmtList.filter(a => !inGroup(a, group.key));
+  return `
+    <div class="ga-invite">
+      <h3>${group.bu ? `Add a person to ${esc(group.name)}` : 'Invite a person'}</h3>
+      ${group.bu && existing.length ? `<div class="field"><label for="inviteExisting">Someone already invited</label>
+        <select id="inviteExisting" class="select-clean" onchange="document.getElementById('inviteNew').hidden = !!this.value;">
+          <option value="">— New person (enter email below) —</option>
+          ${existing.map(a => `<option value="${a.id}">${esc(a.display_name || a.email)} · ${esc(a.email)}</option>`).join('')}
+        </select></div>` : ''}
+      <div id="inviteNew" class="ga-invite-grid">
+        <div class="field"><label for="newAdminEmail">Work email <span class="req">*</span></label><input type="email" id="newAdminEmail" placeholder="name@wct.my"></div>
+        <div class="field"><label for="newAdminName">Display name</label><input type="text" id="newAdminName" placeholder="Optional"></div>
       </div>
-    ` : ''}
-
-    <div id="adminMgmtResults">${adminMgmtResultsHtml()}</div>
-  `;
+      <div class="ga-pick">
+        <div class="ga-pick-h"><span>Business unit</span><span>HR Admin</span><span>Payroll PIC</span></div>
+        ${units.map(u => `<div class="ga-pick-row"><span>${esc(u.name)}</span>
+          <label><input type="checkbox" data-bu="${esc(u.code)}" data-role="bu_admin" ${group.key===u.code?'checked':''}><span class="sr-only">HR Admin for ${esc(u.name)}</span></label>
+          <label><input type="checkbox" data-bu="${esc(u.code)}" data-role="payroll_pic"><span class="sr-only">Payroll PIC for ${esc(u.name)}</span></label></div>`).join('')}
+        ${group.bu ? '' : `<label class="ga-extra"><input type="checkbox" id="inviteSuper" ${group.key==='super'?'checked':''}> Super Admin (every business unit, settings and access)</label>
+        <label class="ga-extra"><input type="checkbox" id="invitePayAll" ${group.key==='payroll_all'?'checked':''}> Payroll PIC for all business units</label>`}
+      </div>
+      <div id="adminMgmtErr"></div>
+      <p class="hint">They sign in with Microsoft using this email. Access starts at their next sign-in.</p>
+      <button class="btn btn-primary btn-sm" onclick="submitInviteAdmin()">${group.bu ? 'Add to group' : 'Send invite'}</button>
+    </div>`;
 }
 
 function adminMgmtResultsHtml(){
-  if(adminMgmtList.length === 0){
-    return `<div class="empty-state">No admins yet. Use "+ Invite Admin" above — don't forget to also seed your own Super Admin row directly in the database first (see the migration file), or you won't be able to sign in at all.</div>`;
-  }
-  return adminMgmtList.map(a => adminMgmtCardHtml(a)).join('');
+  const list = adminMgmtList.filter(a => inGroup(a, adminMgmtGroup));
+  if(list.length === 0) return `<div class="empty-state">Nobody in this group yet.</div>`;
+  return list.map(a => adminPersonHtml(a)).join('');
 }
-
-const ROLE_LABELS = { super_admin: 'Super Admin', bu_admin: 'Business Unit Admin (HR)', payroll_pic: 'Payroll PIC', clearance_pic: 'Clearance PIC', entity_admin: 'Entity Admin (Phase 2)' };
-// No Reporting Unit here: the employee's immediate superior (the superior
-// email HR enters when inviting) is the Reporting Unit, so it needs no PIC.
-const CLEARANCE_DEPARTMENTS = [[2,'IT'],[3,'Administration'],[4,'Finance'],[5,'Purchasing'],[6,'Human Resources']];
-function grantLabel(g){
-  if(g.role==='super_admin') return 'Super Admin';
-  if(g.role==='bu_admin') return `${g.business_unit} Admin`;
-  if(g.role==='payroll_pic') return 'Payroll PIC · All business units';
-  if(g.role==='clearance_pic') return `${g.department_name || 'Clearance'} PIC · ${g.business_unit}`;
-  return ROLE_LABELS[g.role] || g.role;
-}
-
-function adminMgmtCardHtml(a){
-  const existingRoleEl = document.getElementById('newGrantRole_'+a.id);
-  const grantRoleSel = existingRoleEl ? existingRoleEl.value : 'bu_admin';
+function adminPersonHtml(a){
+  const g = adminMgmtGroup;
+  const here = a.grants.filter(x => g === 'everyone' || (g === 'super' ? x.role === 'super_admin' : g === 'payroll_all' ? (x.role === 'payroll_pic' && !x.business_unit) : x.business_unit === g));
+  const elsewhereUnits = [...new Set(a.grants.filter(x => x.business_unit && x.business_unit !== g).map(x => buLabel(x.business_unit)))];
+  const initials = (a.display_name || a.email).split(/[\s.@]+/).filter(Boolean).slice(0,2).map(w => w[0].toUpperCase()).join('');
+  const open = adminMgmtGrantFormFor === a.id;
   return `
-    <div class="detail-section" style="background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px 20px;margin-bottom:12px;box-shadow:var(--shadow-sm);">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
-        <div>
-          <div style="font-weight:700;font-size:14.5px;">${esc(a.display_name || a.email)}</div>
-          <div style="font-size:12.5px;color:var(--ink-soft);">${esc(a.email)} · ${a.linked ? 'Signed in before' : 'Not yet signed in'}</div>
+    <div class="person${a.is_active ? '' : ' inactive'}">
+      <div class="av" aria-hidden="true">${esc(initials)}</div>
+      <div class="pmain">
+        <div><b>${esc(a.display_name || a.email)}</b> <span class="muted">${esc(a.email)}</span></div>
+        <div class="groups">
+          ${!a.is_active ? '<span class="role-tag" style="background:var(--danger-tint);color:var(--danger);">Deactivated</span>' : ''}
+          ${!a.linked ? '<span class="role-tag">Not signed in yet</span>' : ''}
+          ${here.map(x => `<span class="role-tag ${x.role==='super_admin'?'sup':x.role==='payroll_pic'?'pay':'hr'}">${esc(g === 'everyone' ? grantLabel(x) : (ROLE_LABELS[x.role] || x.role))}</span>`).join('') || (a.grants.length ? '' : '<span class="muted" style="font-size:13px;">No access yet</span>')}
+          ${g !== 'everyone' && elsewhereUnits.length ? `<span class="gchip">Also in: ${esc(elsewhereUnits.join(' · '))}</span>` : ''}
         </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          <span class="badge" style="background:${a.is_active?'var(--ok-tint)':'var(--danger-tint)'};color:${a.is_active?'var(--ok)':'var(--danger)'};">${a.is_active?'Active':'Deactivated'}</span>
-          <button class="btn btn-outline btn-sm" onclick="toggleAdminActive('${a.id}', ${!a.is_active})">${a.is_active?'Deactivate':'Reactivate'}</button>
-        </div>
+        ${open ? personManageHtml(a) : ''}
       </div>
-
-      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;">
-        ${a.grants.length === 0 ? `<span style="color:var(--ink-soft);font-size:12.5px;">No grants yet — this person cannot sign in until granted something below.</span>` : a.grants.map(g => `
-          <span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);">
-            ${esc(grantLabel(g))}
-            <button type="button" class="grant-x" title="Revoke" aria-label="Revoke ${esc(grantLabel(g))}" onclick="revokeGrant('${g.id}')">${ICON_CLOSE}</button>
-          </span>
-        `).join('')}
-      </div>
-
-      ${adminMgmtGrantFormFor === a.id ? `
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-          <select id="newGrantRole_${a.id}" class="select-clean" onchange="renderAdminMgmtResults()" aria-label="Role">
-            <option value="bu_admin" ${grantRoleSel==='bu_admin'?'selected':''}>Business Unit Admin (HR)</option>
-            <option value="payroll_pic" ${grantRoleSel==='payroll_pic'?'selected':''}>Payroll PIC (all business units)</option>
-            <option value="clearance_pic" ${grantRoleSel==='clearance_pic'?'selected':''}>Clearance PIC (offboarding)</option>
-            <option value="super_admin" ${grantRoleSel==='super_admin'?'selected':''}>Super Admin</option>
-          </select>
-          ${grantRoleSel==='clearance_pic' ? `<select id="newGrantDept_${a.id}" class="select-clean" aria-label="Department">${CLEARANCE_DEPARTMENTS.map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('')}</select>` : ''}
-          ${(grantRoleSel==='super_admin' || grantRoleSel==='payroll_pic') ? `
-          <select id="newGrantBu_${a.id}" class="select-clean" aria-label="Business unit" disabled aria-describedby="grantBuNote_${a.id}">
-            <option value="">All business units</option>
-          </select>
-          <span id="grantBuNote_${a.id}" class="grant-bu-note">${grantRoleSel==='payroll_pic' ? 'Payroll covers every business unit' : 'Super Admin covers every business unit'}</span>` : `
-          <select id="newGrantBu_${a.id}" class="select-clean" aria-label="Business unit">
-            <option value="E&C">E&amp;C</option>
-            <option value="Land">Land</option>
-            <option value="Mall">Mall</option>
-          </select>`}
-          <button class="btn btn-primary btn-sm" onclick="submitAddGrant('${a.id}')">Add Grant</button>
-          <button class="btn btn-outline btn-sm" onclick="adminMgmtGrantFormFor=null;renderAdminMgmtResults();">Cancel</button>
-        </div>
-      ` : `
-        <button class="btn btn-outline btn-sm" style="margin-top:12px;" onclick="adminMgmtGrantFormFor='${a.id}';renderAdminMgmtResults();">+ Add Grant</button>
-      `}
-    </div>
-  `;
+      <button class="btn btn-outline btn-sm" aria-expanded="${open}" onclick="adminMgmtGrantFormFor=${open ? 'null' : `'${a.id}'`};renderAdminMgmtResults();">${open ? 'Done' : 'Manage'}</button>
+    </div>`;
 }
-
+function personManageHtml(a){
+  const units = WCT.businessUnits().filter(u => u.is_active !== false);
+  const def = isBuScope(adminMgmtGroup) ? adminMgmtGroup : '';
+  return `
+    <div class="pmanage">
+      <div class="pm-h">Access</div>
+      ${a.grants.length ? a.grants.map(g => `<div class="pm-grant"><span>${esc(grantLabel(g))}</span><button type="button" class="btn btn-link btn-sm" style="color:var(--danger);" onclick="revokeGrant('${g.id}')">Remove</button></div>`).join('') : '<div class="muted">No access yet.</div>'}
+      <div class="pm-add">
+        <label class="sr-only" for="newGrantRole_${a.id}">Role</label>
+        <select id="newGrantRole_${a.id}" class="select-clean" onchange="document.getElementById('newGrantBu_${a.id}').disabled = this.value==='super_admin';">
+          <option value="bu_admin">HR Admin</option><option value="payroll_pic">Payroll PIC</option><option value="super_admin">Super Admin</option>
+        </select>
+        <label class="sr-only" for="newGrantBu_${a.id}">Business unit</label>
+        <select id="newGrantBu_${a.id}" class="select-clean">
+          ${units.map(u => `<option value="${esc(u.code)}" ${u.code===def?'selected':''}>${esc(u.name)}</option>`).join('')}
+          <option value="">All business units (Payroll PIC only)</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="submitAddGrant('${a.id}')">Add</button>
+      </div>
+      <div class="pm-foot"><button class="btn btn-outline btn-sm" onclick="toggleAdminActive('${a.id}', ${!a.is_active})">${a.is_active ? 'Deactivate account' : 'Reactivate account'}</button></div>
+    </div>`;
+}
 function renderAdminMgmtResults(){
-  const el = document.getElementById('adminMgmtResults');
-  if(el) el.innerHTML = adminMgmtResultsHtml();
+  // Group counts in the sidebar can change too, so redraw the whole page.
+  renderAdminAccessShell();
 }
 
 async function submitInviteAdmin(){
-  const email = document.getElementById('newAdminEmail').value.trim();
-  const name = document.getElementById('newAdminName').value.trim();
-  if(!email){ document.getElementById('adminMgmtErr').innerHTML = `<div class="error-banner">Email is required.</div>`; return; }
-  showLoading('Inviting...');
+  const errEl = document.getElementById('adminMgmtErr');
+  const existingEl = document.getElementById('inviteExisting');
+  const existingId = existingEl ? existingEl.value : '';
+  const email = (document.getElementById('newAdminEmail') || {}).value?.trim() || '';
+  const name = (document.getElementById('newAdminName') || {}).value?.trim() || '';
+  const picks = [...document.querySelectorAll('.ga-pick input[data-bu]:checked')].map(el => ({ role: el.dataset.role, business_unit: el.dataset.bu }));
+  if((document.getElementById('inviteSuper') || {}).checked) picks.push({ role: 'super_admin' });
+  if((document.getElementById('invitePayAll') || {}).checked) picks.push({ role: 'payroll_pic' });
+  if(!existingId && !email){ errEl.innerHTML = `<div class="error-banner">Please enter their work email.</div>`; return; }
+  if(!picks.length){ errEl.innerHTML = `<div class="error-banner">Tick at least one role (HR Admin or Payroll PIC) for a business unit.</div>`; return; }
+  showLoading('Saving...');
   try{
-    const { error } = await apiTry(() => api.post('/admin/admins', { email, display_name: name }, {admin: true}));
-    if(error) throw error;
+    let id = existingId;
+    if(!id){
+      const { data, error } = await apiTry(() => api.post('/admin/admins', { email, display_name: name }, {admin: true}));
+      if(error) throw error;
+      id = data.id;
+    }
+    const failed = [];
+    for(const pk of picks){
+      const { error } = await apiTry(() => api.post(`/admin/admins/${id}/grants`, pk, {admin: true}));
+      if(error && error.status !== 409) failed.push(error.message);
+    }
     adminMgmtInviteOpen = false;
     await loadAdminMgmtList();
     hideLoading();
     renderAdminAccessShell();
-  } catch(e){ hideLoading(); document.getElementById('adminMgmtErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+    uiToast(failed.length ? `Saved, but some roles failed: ${failed.join('; ')}` : 'Access saved.', failed.length ? 'err' : undefined);
+  } catch(e){ hideLoading(); errEl.innerHTML = `<div class="error-banner">${esc(e.message)}</div>`; }
 }
 
 async function submitAddGrant(adminUserId){
   const role = document.getElementById('newGrantRole_'+adminUserId).value;
-  const buEl = document.getElementById('newGrantBu_'+adminUserId);
-  // Super Admin and Payroll PIC cover every business unit.
-  const businessUnit = (role === 'super_admin' || role === 'payroll_pic') ? null : buEl.value;
-  const deptEl = document.getElementById('newGrantDept_'+adminUserId);
-  const department_id = role === 'clearance_pic' && deptEl ? Number(deptEl.value) : undefined;
-  showLoading('Adding grant...');
+  const bu = document.getElementById('newGrantBu_'+adminUserId).value;
+  if(role === 'bu_admin' && !bu){ uiToast('Choose a business unit for an HR Admin.', 'err'); return; }
+  const businessUnit = role === 'super_admin' ? null : (bu || null);
+  showLoading('Adding access...');
   try{
-    const { error } = await apiTry(() => api.post(`/admin/admins/${adminUserId}/grants`, { role, business_unit: businessUnit, department_id }, {admin: true}));
+    const { error } = await apiTry(() => api.post(`/admin/admins/${adminUserId}/grants`, { role, business_unit: businessUnit }, {admin: true}));
     if(error) throw error;
-    adminMgmtGrantFormFor = null;
     await loadAdminMgmtList();
     hideLoading();
     renderAdminMgmtResults();
@@ -2673,8 +2677,8 @@ async function submitAddGrant(adminUserId){
 }
 
 async function revokeGrant(grantId){
-  if(!confirm('Revoke this grant? The admin will lose that access immediately.')) return;
-  showLoading('Revoking...');
+  if(!confirm('Remove this access? It takes effect at their next sign-in.')) return;
+  showLoading('Removing...');
   try{
     const { error } = await apiTry(() => api.del(`/admin/grants/${grantId}`, {admin: true}));
     if(error) throw error;
@@ -2685,7 +2689,7 @@ async function revokeGrant(grantId){
 }
 
 async function toggleAdminActive(adminUserId, newActive){
-  if(!newActive && !confirm('Deactivate this admin? They will be signed out and unable to sign in again until reactivated.')) return;
+  if(!newActive && !confirm('Deactivate this person? They will not be able to sign in again until reactivated.')) return;
   showLoading('Updating...');
   try{
     const { error } = await apiTry(() => api.patch(`/admin/admins/${adminUserId}/active`, { is_active: newActive }, {admin: true}));
@@ -2697,29 +2701,14 @@ async function toggleAdminActive(adminUserId, newActive){
 }
 
 // ============================================================================
-// COMPANY SETTINGS — available to every admin scope (unlike Permission/
-// Manager Settings, which are All Units only). A business-unit-scoped admin
-// (E&C/Land/Mall) can add, edit, and delete companies belonging ONLY to
-// their own business_unit; an All Units admin can manage every company
-// across all three units. This is a straight ownership check on
-// companies.business_unit — separate from, and simpler than, the
-// category-based admin_unit_permissions grants used for candidate
-// assignment (Permission Settings), which stays untouched by this feature.
+// COMPANY SETTINGS — every HR admin. A business-unit admin manages the
+// companies of their own unit; an All Units admin manages every unit's
+// companies and can move a company to another unit.
 // ============================================================================
 let companyMgmtList = [];
 let companyMgmtSearch = '';
 let companyMgmtAddOpen = false;
 let companyMgmtEditId = null;
-let entityCategoryList = []; // options for the Entity dropdown — from rpc_admin_list_entity_categories
-let showNewEntityInput = false; // toggles the "+ Add new entity" free-text fallback on the Add form
-
-async function loadEntityCategoryList(){
-  try{
-    const { data, error } = await apiTry(() => api.get('/admin/entity-categories', {admin: true}));
-    if(error) throw error;
-    entityCategoryList = data || [];
-  } catch(e){ entityCategoryList = []; }
-}
 
 async function loadCompanyMgmtList(){
   try{
@@ -2728,235 +2717,127 @@ async function loadCompanyMgmtList(){
     companyMgmtList = data || [];
   } catch(e){ uiToast('Error loading companies: '+e.message); companyMgmtList = []; }
 }
-
-function filterCompanyMgmtList(v){
-  companyMgmtSearch = v;
-  renderCompanyMgmtResults();
-}
-
+function filterCompanyMgmtList(v){ companyMgmtSearch = v; renderCompanyMgmtResults(); }
 function filteredCompanyMgmtList(){
   const q = companyMgmtSearch.trim().toLowerCase();
   if(!q) return companyMgmtList;
-  return companyMgmtList.filter(c =>
-    (c.name||'').toLowerCase().includes(q) ||
-    (c.category||'').toLowerCase().includes(q) ||
-    (c.business_unit||'').toLowerCase().includes(q)
-  );
+  return companyMgmtList.filter(c => (c.name||'').toLowerCase().includes(q) || buLabel(c.business_unit).toLowerCase().includes(q));
 }
-
 function companySettingsPageView(){
   const isAll = adminScope === 'ALL';
   return `
-    <div class="stat-row">
-      <div class="stat" style="flex:none;min-width:auto;">
-        <h2 style="font-size:20px;margin:0;">Company Settings</h2>
-        <div style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">
-          ${isAll
-            ? 'Add, edit, or remove companies/entities across all business units. This list feeds the Company/Entity dropdown on each application.'
-            : `Add, edit, or remove companies/entities under <strong>${esc(adminScope)}</strong>. This list feeds the Company/Entity dropdown on each application.`}
-        </div>
-      </div>
+    <div class="page-intro">
+      <p>${isAll ? 'Companies under each business unit. This list feeds the Company dropdown on each application and the salary-crediting company in onboarding.'
+        : `Companies under <strong>${esc(buLabel(adminScope))}</strong>. This list feeds the Company dropdown on each application and the salary-crediting company in onboarding.`}</p>
     </div>
-
     <div class="toolbar">
-      <input type="text" id="companyMgmtSearchInput" placeholder="Search companies by name or category..." value="${esc(companyMgmtSearch)}" oninput="filterCompanyMgmtList(this.value)">
+      <input type="search" id="companyMgmtSearchInput" aria-label="Search companies" placeholder="Search companies or business units..." value="${esc(companyMgmtSearch)}" oninput="filterCompanyMgmtList(this.value)">
       <button class="btn btn-primary btn-sm" onclick="toggleAddCompanyForm()">${companyMgmtAddOpen ? 'Cancel' : '+ Add Company'}</button>
     </div>
-
     ${companyMgmtAddOpen ? addCompanyFormHtml() : ''}
-
     <div id="companyMgmtErr"></div>
     <div id="companyMgmtResults">${companyMgmtResultsHtml()}</div>
   `;
 }
-
 function addCompanyFormHtml(){
   const isAll = adminScope === 'ALL';
   return `
-    <div class="detail-section" style="background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow-sm);">
-      <h4 style="border-top:none;padding-top:0;">New Company / Entity</h4>
-      <div class="grid g3" style="display:grid;grid-template-columns:${isAll?'1fr 1fr 1fr':'1fr 1fr'};gap:14px;">
-        <div class="field"><label>Name <span style="color:var(--danger);">*</span></label>
-          <input type="text" id="newCompanyName" placeholder="e.g. WCT Berhad">
-        </div>
-        <div class="field"><label>Entity <span style="color:var(--danger);">*</span></label>
-          ${!showNewEntityInput ? `
-            <select id="newCompanyCategory" class="select-clean" onchange="if(this.value==='__new__'){ showNewEntityInput=true; renderCompanySettingsShell(); }">
-              ${entityCategoryList.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}
-              <option value="__new__">+ Add new entity...</option>
-            </select>
-          ` : `
-            <div style="display:flex;gap:6px;">
-              <input type="text" id="newCompanyCategory" placeholder="e.g. Aviation" style="flex:1;">
-              <button type="button" class="btn btn-outline btn-sm btn-icon" title="Choose an existing entity instead" aria-label="Choose an existing entity instead" onclick="showNewEntityInput=false; renderCompanySettingsShell();">${ICON_CLOSE}</button>
-            </div>
-            <div class="hint" style="font-size:11.5px;color:var(--ink-soft);margin-top:2px;">This creates a brand-new entity type — it'll also appear in Business Unit Settings automatically so an All Units admin can grant assignment permission for it.</div>
-          `}
-        </div>
-        ${isAll ? `
-        <div class="field"><label>Business Unit <span style="color:var(--danger);">*</span></label>
-          <select id="newCompanyBu" class="select-clean">
-            <option value="E&C">E&amp;C</option>
-            <option value="Land">Land</option>
-            <option value="Mall">Mall</option>
-          </select>
-        </div>` : ''}
+    <div class="ga-invite" style="margin-bottom:16px;">
+      <h3>New company</h3>
+      <div class="ga-invite-grid">
+        <div class="field"><label for="newCompanyName">Company name <span class="req">*</span></label><input type="text" id="newCompanyName" placeholder="e.g. WCT Properties Sdn Bhd"></div>
+        ${isAll ? `<div class="field"><label for="newCompanyBu">Business unit <span class="req">*</span></label><select id="newCompanyBu" class="select-clean">${buOptionsHtml('')}</select></div>`
+          : `<div class="field"><label>Business unit</label><div style="padding:10px 0;font-weight:600;">${esc(buLabel(adminScope))}</div></div>`}
       </div>
-      ${!isAll ? `<div class="hint" style="font-size:12px;color:var(--ink-soft);margin:-6px 0 12px;">Will be added under your own business unit: <strong>${esc(adminScope)}</strong>.</div>` : ''}
-      <button class="btn btn-primary btn-sm" onclick="submitAddCompany()">Save Company</button>
-    </div>
-  `;
+      <button class="btn btn-primary btn-sm" onclick="submitAddCompany()">Save company</button>
+    </div>`;
 }
-
 function renderCompanySettingsShell(){
-  // Toggling the Add-Company form (and closing it after a successful save)
-  // changes the SHELL — the toolbar/button/form live outside
-  // #companyMgmtResults — so the lighter renderCompanyMgmtResults() can't
-  // pick it up. This forces a full shell rebuild for those cases, while
-  // renderCompanyMgmtResults() stays the right tool for search/edit/refresh
-  // (row-only changes that shouldn't touch the search input's focus).
   const root = document.getElementById('root');
   root.innerHTML = `<div class="wrap">${companySettingsPageView()}</div>`;
   lastRenderedView = 'companies';
 }
-
-function toggleAddCompanyForm(){
-  companyMgmtAddOpen = !companyMgmtAddOpen;
-  showNewEntityInput = false;
-  renderCompanySettingsShell();
-}
-
+function toggleAddCompanyForm(){ companyMgmtAddOpen = !companyMgmtAddOpen; renderCompanySettingsShell(); }
 async function submitAddCompany(){
   const name = document.getElementById('newCompanyName').value.trim();
-  const category = document.getElementById('newCompanyCategory').value.trim();
   const buEl = document.getElementById('newCompanyBu');
   const business_unit = buEl ? buEl.value : adminScope;
-  if(!name || !category || category === '__new__'){
-    document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">Name and entity are both required.</div>`;
-    return;
-  }
+  if(!name){ document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">Company name is required.</div>`; return; }
   showLoading('Adding company...');
   try{
-    const { error } = await apiTry(() => api.post('/admin/companies', { name, category, business_unit }, {admin: true}));
+    const { error } = await apiTry(() => api.post('/admin/companies', { name, business_unit }, {admin: true}));
     if(error) throw error;
     companyMgmtAddOpen = false;
-    showNewEntityInput = false;
-    await Promise.all([loadCompanyMgmtList(), loadEntityCategoryList(), loadCompanyLookup()]);
+    await Promise.all([loadCompanyMgmtList(), loadCompanyLookup()]);
     hideLoading();
     renderCompanySettingsShell();
-  } catch(e){ hideLoading(); document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
+  } catch(e){ hideLoading(); document.getElementById('companyMgmtErr').innerHTML = `<div class="error-banner">${esc(e.message)}</div>`; }
 }
-
-
 function companyMgmtResultsHtml(){
   const isAll = adminScope === 'ALL';
   const list = filteredCompanyMgmtList();
-  if(companyMgmtList.length === 0){
-    return `<div class="empty-state">No companies yet${isAll ? '' : ` under ${esc(adminScope)}`}. Use "+ Add Company" above to create one.</div>`;
-  }
-  if(list.length === 0){
-    return `<div class="empty-state">No companies match "${esc(companyMgmtSearch)}".</div>`;
-  }
-  return `
-    <table>
-      <thead><tr>
-        <th>Name</th>
-        <th>Entity</th>
-        ${isAll ? '<th>Business Unit</th>' : ''}
-        <th style="width:1%;white-space:nowrap;">Actions</th>
-      </tr></thead>
-      <tbody>
-        ${list.map(c => companyMgmtRowHtml(c, isAll)).join('')}
-      </tbody>
-    </table>
-  `;
+  if(companyMgmtList.length === 0) return `<div class="empty-state">No companies yet${isAll ? '' : ` under ${esc(buLabel(adminScope))}`}. Use "+ Add Company" above.</div>`;
+  if(list.length === 0) return `<div class="empty-state">No companies match "${esc(companyMgmtSearch)}".</div>`;
+  const groups = {};
+  list.forEach(c => { (groups[c.business_unit] = groups[c.business_unit] || []).push(c); });
+  const order = WCT.businessUnits().map(u => u.code).filter(code => groups[code]).concat(Object.keys(groups).filter(k => !WCT.businessUnits().some(u => u.code === k)));
+  return order.map(code => `
+    <div class="co-group">
+      <h3><span class="unit-mini" style="background:${WCT.buColor(code)}">${esc(WCT.buInitials(code))}</span>${esc(buLabel(code))} <span class="muted">${groups[code].length}</span></h3>
+      <table><tbody>${groups[code].sort((a,b)=>a.name.localeCompare(b.name)).map(c => companyMgmtRowHtml(c, isAll)).join('')}</tbody></table>
+    </div>`).join('');
 }
-
 function companyMgmtRowHtml(c, isAll){
   if(companyMgmtEditId === c.id){
     return `
       <tr class="data-row">
-        <td><input type="text" id="editCompanyName_${c.id}" value="${esc(c.name)}" style="width:100%;"></td>
-        <td>
-          <select id="editCompanyCategory_${c.id}" class="select-clean" style="width:100%;">
-            ${[...new Set([c.category, ...entityCategoryList])].map(cat=>`<option value="${esc(cat)}" ${cat===c.category?'selected':''}>${esc(cat)}</option>`).join('')}
-          </select>
-        </td>
-        ${isAll ? `<td><span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);">${esc(c.business_unit)}</span></td>` : ''}
-        <td>
-          <div class="row-actions">
-            <button class="btn btn-primary btn-sm" onclick="submitEditCompany('${c.id}')">Save</button>
-            <button class="btn btn-outline btn-sm" onclick="cancelEditCompany()">Cancel</button>
-          </div>
-          <div id="editCompanyErr_${c.id}"></div>
-        </td>
-      </tr>
-    `;
+        <td><label class="sr-only" for="editCompanyName_${c.id}">Company name</label><input type="text" id="editCompanyName_${c.id}" value="${esc(c.name)}" style="width:100%;"></td>
+        ${isAll ? `<td style="width:240px;"><label class="sr-only" for="editCompanyBu_${c.id}">Business unit</label><select id="editCompanyBu_${c.id}" class="select-clean">${buOptionsHtml(c.business_unit)}</select></td>` : ''}
+        <td style="width:1%;white-space:nowrap;"><div class="row-actions">
+          <button class="btn btn-primary btn-sm" onclick="submitEditCompany('${c.id}')">Save</button>
+          <button class="btn btn-outline btn-sm" onclick="cancelEditCompany()">Cancel</button></div>
+          <div id="editCompanyErr_${c.id}"></div></td>
+      </tr>`;
   }
   return `
     <tr class="data-row">
       <td>${esc(c.name)}</td>
-      <td>${esc(c.category)}</td>
-      ${isAll ? `<td><span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);">${esc(c.business_unit)}</span></td>` : ''}
-      <td>
-        <div class="row-actions">
-          <button class="btn btn-outline btn-sm" onclick="startEditCompany('${c.id}')">Edit</button>
-          <button class="btn btn-outline-danger btn-sm" onclick="deleteCompanyRow('${c.id}', '${esc(c.name).replace(/'/g,"\\'")}')">Delete</button>
-        </div>
-      </td>
-    </tr>
-  `;
+      ${isAll ? '<td></td>' : ''}
+      <td style="width:1%;white-space:nowrap;"><div class="row-actions">
+        <button class="btn btn-outline btn-sm" onclick="startEditCompany('${c.id}')">Edit</button>
+        <button class="btn btn-outline-danger btn-sm" onclick="deleteCompanyRow('${c.id}')">Delete</button></div></td>
+    </tr>`;
 }
-
-function renderCompanyMgmtResults(){
-  const el = document.getElementById('companyMgmtResults');
-  if(el) el.innerHTML = companyMgmtResultsHtml();
-}
-
-function startEditCompany(id){
-  companyMgmtEditId = id;
-  renderCompanyMgmtResults();
-}
-function cancelEditCompany(){
-  companyMgmtEditId = null;
-  renderCompanyMgmtResults();
-}
-
+function renderCompanyMgmtResults(){ const el = document.getElementById('companyMgmtResults'); if(el) el.innerHTML = companyMgmtResultsHtml(); }
+function startEditCompany(id){ companyMgmtEditId = id; renderCompanyMgmtResults(); }
+function cancelEditCompany(){ companyMgmtEditId = null; renderCompanyMgmtResults(); }
 async function submitEditCompany(id){
   const nameEl = document.getElementById('editCompanyName_'+id);
-  const categoryEl = document.getElementById('editCompanyCategory_'+id);
+  const buEl = document.getElementById('editCompanyBu_'+id);
   const errEl = document.getElementById('editCompanyErr_'+id);
   const name = nameEl.value.trim();
-  const category = categoryEl.value.trim();
-  nameEl.classList.remove('invalid'); categoryEl.classList.remove('invalid');
-  if(!name || !category){
-    if(!name) nameEl.classList.add('invalid');
-    if(!category) categoryEl.classList.add('invalid');
-    if(errEl) errEl.innerHTML = `<div class="inline-error">Name and category are both required.</div>`;
-    (!name ? nameEl : categoryEl).focus();
-    return;
-  }
-  if(errEl) errEl.innerHTML = '';
+  if(!name){ nameEl.classList.add('invalid'); if(errEl) errEl.innerHTML = `<div class="inline-error">Company name is required.</div>`; nameEl.focus(); return; }
+  const patch = { name };
+  const current = companyMgmtList.find(c => c.id === id) || {};
+  if(buEl && buEl.value !== current.business_unit) patch.business_unit = buEl.value;
   showLoading('Saving...');
   try{
-    const { error } = await apiTry(() => api.patch(`/admin/companies/${id}`, { name, category }, {admin: true}));
+    const { error } = await apiTry(() => api.patch(`/admin/companies/${id}`, patch, {admin: true}));
     if(error) throw error;
     companyMgmtEditId = null;
-    await loadCompanyMgmtList();
-    await loadCompanyLookup();
+    await Promise.all([loadCompanyMgmtList(), loadCompanyLookup()]);
     hideLoading();
     render();
   } catch(e){ hideLoading(); uiToast('Error saving: '+e.message); }
 }
-
-async function deleteCompanyRow(id, name){
+async function deleteCompanyRow(id){
+  const name = (companyMgmtList.find(c => c.id === id) || {}).name || 'this company';
   if(!confirm(`Delete "${name}" from the company list? This cannot be undone, and will fail if any applications are currently assigned to it.`)) return;
   showLoading('Deleting...');
   try{
     const { error } = await apiTry(() => api.del(`/admin/companies/${id}`, {admin: true}));
     if(error) throw error;
-    await loadCompanyMgmtList();
-    await loadCompanyLookup();
+    await Promise.all([loadCompanyMgmtList(), loadCompanyLookup()]);
     hideLoading();
     render();
   } catch(e){ hideLoading(); uiToast('Error deleting: '+e.message); }
@@ -2976,168 +2857,223 @@ async function saveCompanyAssignment(id){
   } catch(e){ document.getElementById('assignCompanyErr').innerHTML = `<div class="error-banner">${e.message}</div>`; }
 }
 
+// ---------------------------------------------------------------------------
+// Manual onboarding reminder (hired candidates who haven't finished)
+// ---------------------------------------------------------------------------
+const needsOnboardingReminder = (a) => a && a.status === 'hired' && a.onboarding_status !== 'completed';
+async function sendOnboardingReminder(id){
+  const row = applications.find(x => x.id === id) || selectedApp || {};
+  const ok = window.confirm(`Send an onboarding reminder email to ${row.name_nric || 'this candidate'}${row.email ? ` (${row.email})` : ''}?`);
+  if(!ok) return;
+  showLoading('Sending reminder...');
+  const { data, error } = await apiTry(() => api.post(`/admin/applications/${id}/onboarding-reminder`, {}, {admin: true}));
+  hideLoading();
+  if(error){ uiToast(error.message, 'err'); return; }
+  const r = applications.find(x => x.id === id);
+  if(r) Object.assign(r, data);
+  if(selectedApp && selectedApp.id === id) Object.assign(selectedApp, data);
+  uiToast('Reminder sent to the candidate.');
+  render();
+}
+async function bulkOnboardingReminder(){
+  const ids = applications.filter(a => selectedIds.has(a.id) && needsOnboardingReminder(a)).map(a => a.id);
+  if(!ids.length){ uiToast('None of the selected candidates have onboarding to complete.', 'err'); return; }
+  if(!window.confirm(`Send an onboarding reminder to ${ids.length} hired candidate${ids.length===1?'':'s'}?`)) return;
+  showLoading('Sending reminders...');
+  const { data, error } = await apiTry(() => api.post('/admin/onboarding-reminders', { application_ids: ids }, {admin: true}));
+  hideLoading();
+  if(error){ uiToast(error.message, 'err'); return; }
+  uiToast(`${data.sent} reminder${data.sent===1?'':'s'} sent.${data.skipped.length ? ` ${data.skipped.length} skipped (${[...new Set(data.skipped.map(x=>x.reason))].join('; ')}).` : ''}`);
+  await loadApplications();
+}
+
+// ---------------------------------------------------------------------------
+// Candidate profile panel (eye icon) — redesigned 2026-10-14: a wide side
+// panel with a header (photo, name, reference, status, key facts), jump-tabs,
+// one card per section and a pinned action bar.
+// ---------------------------------------------------------------------------
+const DRAWER_TABS = [['sec-profile','Profile'],['sec-lang','Languages'],['sec-edu','Education & work'],['sec-family','Family'],
+  ['sec-questions','Questions'],['sec-referees','Referees'],['sec-docs','Documents'],['sec-consent','Consent']];
+function drawerJump(id){
+  const body = document.getElementById('drawerBody'); const el = document.getElementById(id);
+  if(!body || !el) return;
+  const top = el.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 12;
+  body.scrollTo({ top, behavior: (window.WX && WX.reduce && WX.reduce()) ? 'auto' : 'smooth' });
+  document.querySelectorAll('.dtabs a').forEach(x => x.classList.toggle('on', x.dataset.t === id));
+}
 function renderModal(){
   const a = selectedApp;
   const existing = document.getElementById('modalRoot');
+  const prevBody = document.getElementById('drawerBody');
+  if(prevBody) drawerScrollTop = prevBody.scrollTop;
   if(existing) existing.remove();
   const div = document.createElement('div');
   div.id = 'modalRoot';
-  div.className = 'modal-overlay' + (existing ? '' : ' wx-pop');
+  div.className = 'drawer-overlay' + (existing ? '' : ' open');
   div.onclick = (e)=>{ if(e.target===div) closeDetail(); };
-
+  const age = a.age ? `${a.age}` : '—';
+  const notice = a.resignation_notice_required === 'Yes' ? (a.notice_period || 'Yes') : (a.resignation_notice_required === 'No' ? 'None' : '—');
+  const companyName = a.company_id ? (companyNameById[a.company_id] || (assignableCompanies.find(c => c.id === a.company_id) || {}).name || '') : '';
   div.innerHTML = `
-    <div class="modal">
-      <button class="modal-close" onclick="closeDetail()" aria-label="Close">${ICON_CLOSE}</button>
-      <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">
-        ${a.profile_picture_url?`<img class="pfp" style="width:64px;height:64px;" src="${a.profile_picture_url}">`:''}
-        <div>
-          <h2 style="margin-bottom:2px;">${esc(a.name_nric)}</h2>
-          <div style="color:var(--ink-soft);font-size:13px;">${esc(a.reference_no)} · ${esc(a.business_unit)}${a.position_applying ? ' · '+esc(a.position_applying) : ''}</div>
-          <div style="color:var(--ink-soft);font-size:11.5px;margin-top:2px;">Submitted ${a.submitted_at ? fmtDateTime(a.submitted_at) : 'not yet submitted'}</div>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <header class="dh">
+        <div class="dh-top">
+          <div class="dh-photo">${a.profile_picture_url ? `<img src="${esc(WCT.fileUrl(a.profile_picture_url))}" alt="">` : WCT.photoSticker(80, 92)}</div>
+          <div class="dh-main">
+            <div class="dh-ref">${esc(a.reference_no)} · ${a.submitted_at ? 'Submitted '+fmtDateTime(a.submitted_at) : 'Not yet submitted'}</div>
+            <h2 id="drawerTitle">${esc(a.name_nric || 'Unnamed candidate')}</h2>
+            <div class="dh-line">${[a.position_applying, buLabel(a.business_unit), companyName].filter(Boolean).map(esc).join('<span class="sep" aria-hidden="true"></span>')}</div>
+            <div class="dh-line"><span class="badge ${esc(a.status)}">${esc(STATUS_LABELS[a.status]||a.status)}</span><span>${[a.email, a.mobile_phone].filter(Boolean).map(esc).join(' · ')}</span></div>
+          </div>
+          <button class="modal-close" onclick="closeDetail()" aria-label="Close">${ICON_CLOSE}</button>
         </div>
-      </div>
-      <span class="badge ${a.status}" style="margin-bottom:16px;display:inline-block;">${STATUS_LABELS[a.status]||a.status}</span>
-
-      ${editingApp ? editFormHtml(a) : viewDetailHtml(a)}
-    </div>
-  `;
+        <div class="dh-facts">
+          <div><div class="k">Expected salary</div><div class="v">${esc(fmtMoney(a.expected_basic_salary))}</div></div>
+          <div><div class="k">Available from</div><div class="v">${esc(fmtDate(a.date_available_to_start))}</div></div>
+          <div><div class="k">Notice period</div><div class="v">${esc(notice)}</div></div>
+          <div><div class="k">Age · Citizen</div><div class="v">${esc(age)} · ${esc(a.citizen || '—')}</div></div>
+        </div>
+        ${editingApp ? '' : `<nav class="dtabs" aria-label="Sections">${DRAWER_TABS.map(([id, label], i) => `<a href="#${id}" data-t="${id}" class="${i===0?'on':''}" onclick="event.preventDefault();drawerJump('${id}')">${label}</a>`).join('')}</nav>`}
+      </header>
+      <div class="drawer-body" id="drawerBody">${editingApp ? editFormHtml(a) : viewDetailHtml(a)}</div>
+      ${editingApp ? '' : drawerFooterHtml(a)}
+    </aside>`;
   document.body.appendChild(div);
+  const body = document.getElementById('drawerBody');
+  if(body && drawerScrollTop) body.scrollTop = drawerScrollTop;
+}
+function drawerFooterHtml(a){
+  const mailto = `mailto:${encodeURIComponent(a.email||'')}?subject=${encodeURIComponent('Regarding your application '+a.reference_no)}&body=${encodeURIComponent('Dear '+(a.name_nric||'Candidate')+',\n\n')}`;
+  return `
+    <footer class="dfoot">
+      <div class="seg" role="group" aria-label="Set status">
+        ${STATUS_OPTIONS.map(st => `<button type="button" class="${a.status===st?'on '+st:''}" aria-pressed="${a.status===st}" onclick="updateStatus('${st}')">${STATUS_LABELS[st]}</button>`).join('')}
+      </div>
+      <div class="dfoot-actions">
+        ${a.status==='hired' ? `<button class="btn btn-accent btn-sm" onclick="openOnboardingView('${a.id}')">${ICON_ONBOARD} Onboarding</button>
+          <button class="btn btn-outline btn-sm" onclick="obStartInviteFromApplication('${a.id}')">${ICON_OFFBOARD} Offboard</button>` : ''}
+        <button class="btn btn-outline btn-sm" onclick="startEdit()">${ICON_EDIT} Edit</button>
+        <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf(selectedApp.id)">${ICON_PDF} PDF</button>
+        <a class="btn btn-outline btn-sm" style="text-decoration:none;" href="${mailto}">${ICON_MAIL} Email</a>
+        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}')" aria-label="Delete application">${ICON_DELETE}</button>
+      </div>
+    </footer>`;
 }
 
+const CARD_ICONS = {
+  profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/>',
+  company: '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/>',
+  lang: '<path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/>',
+  edu: '<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>',
+  family: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  questions: '<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
+  referees: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/>',
+  docs: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6"/>',
+  consent: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+};
+function dcard(id, icon, title, inner, extra){
+  return `<section class="dcard" ${id ? `id="${id}"` : ''}><div class="dcard-h"><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true">${CARD_ICONS[icon]}</svg></span><h3>${title}</h3>${extra ? `<span class="count">${extra}</span>` : ''}</div>${inner}</section>`;
+}
+function kv(k, v, full){ return `<div class="${full ? 'full' : ''}"><div class="k">${k}</div><div class="v">${v === '' || v === null || v === undefined ? '—' : v}</div></div>`; }
+function ratingHtml(v){
+  const n = { Good: 3, Fair: 2, Slight: 1 }[v] || 0;
+  return `<span class="rate" aria-label="${esc(v || 'Not rated')}">${[1,2,3].map(i => `<i class="${i<=n?'f':''}"></i>`).join('')} ${esc(v || '—')}</span>`;
+}
+function ynPill(v, spec){
+  if(v === 'Yes') return `<span class="pill-yes">Yes</span>${spec ? `<div class="yn-spec">${esc(spec)}</div>` : ''}`;
+  if(v === 'No') return '<span class="pill-no">No</span>';
+  return '<span class="pill-no">—</span>';
+}
+function docLinkHtml(f){
+  const url = WCT.fileUrl(f.url);
+  return `<div class="doc"><span class="th">${WCT.isImage(f) ? `<img src="${esc(url)}" alt="">` : esc(WCT.fileBadge(f))}</span><a href="${esc(url)}" target="_blank" rel="noopener">${esc(f.name)}</a></div>`;
+}
 function viewDetailHtml(a){
+  const ob = selectedOnboarding || {};
+  const fam = (k) => { const v = a[k]; const empty = v == null || v === '' || (Array.isArray(v) && !v.length); return empty ? ob[k] : v; };
+  const langs = (a.language_ability||[]).filter(l => (l.language||'').trim() && !/^Others \(please state\)$/i.test(l.language));
+  const exp = (a.working_experience||[]).filter(w => (w.employer||'').trim() || (w.position||'').trim());
+  const docs = WCT.docsByCategory(a.attachments);
+  const kids = [...(fam('children_below_18')||[]).map(c => ['Below 18', c]), ...(fam('children_18_to_23')||[]).map(c => ['18 and above', c])];
+  const listRow = applications.find(x => x.id === a.id) || {};
+  const remind = a.status === 'hired' && (!selectedOnboarding || selectedOnboarding.status !== 'completed');
+  const lastReminder = listRow.last_onboarding_reminder_at || a.last_onboarding_reminder_at;
+  const companiesByBu = assignableCompanies.reduce((acc,c)=>{ const k = buLabel(c.business_unit) || 'Other'; (acc[k]=acc[k]||[]).push(c); return acc; },{});
   return `
-      ${otherBuMatches.length ? `
-      <div class="error-banner" style="background:#FDF3E3;border-color:#E2D3AC;color:#9C7A0E;">
-        <strong>Also applied elsewhere:</strong> this candidate has ${otherBuMatches.length===1?'an application':otherBuMatches.length+' applications'} under a different business unit —
-        ${otherBuMatches.map(m=>`${esc(m.reference_no)} (${esc(m.business_unit)}, ${STATUS_LABELS[m.status]||esc(m.status)})`).join('; ')}.
-      </div>
-      ` : ''}
+    ${otherBuMatches.length ? `<div class="dnote warn"><strong>Also applied elsewhere:</strong> ${otherBuMatches.map(m=>`${esc(m.reference_no)} (${esc(buLabel(m.business_unit))}, ${esc(STATUS_LABELS[m.status]||m.status)})`).join('; ')}</div>` : ''}
+    ${remind ? `<div class="dnote remind">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      <div style="flex:1;"><strong>Onboarding ${selectedOnboarding ? 'in progress' : 'not started'}.</strong> ${lastReminder ? `Last reminder sent ${esc(fmtDateTime(lastReminder))}.` : 'No reminder sent yet.'}</div>
+      <button class="btn btn-outline btn-sm" onclick="sendOnboardingReminder('${a.id}')">Send reminder</button></div>` : ''}
 
-      <div class="detail-section">
-        <h4>Company / Entity</h4>
+    ${dcard('sec-profile', 'company', 'Company assignment', `
+      <div class="dcard-pad">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <label for="assignCompanySelect" class="sr-only">Company</label>
           <select id="assignCompanySelect" class="select-clean" style="flex:1;min-width:220px;">
             <option value="">— Not assigned —</option>
-            ${Object.entries(assignableCompanies.reduce((acc,c)=>{ const k=c.category||'Uncategorized'; (acc[k]=acc[k]||[]).push(c); return acc; },{})).map(([cat,list])=>`
-              <optgroup label="${esc(cat)}">
-                ${list.map(c=>`<option value="${c.id}" ${a.company_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}
-              </optgroup>
-            `).join('')}
+            ${Object.entries(companiesByBu).map(([bu, list]) => `<optgroup label="${esc(bu)}">${list.map(c=>`<option value="${c.id}" ${a.company_id===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</optgroup>`).join('')}
           </select>
           <button class="btn btn-outline btn-sm" onclick="saveCompanyAssignment('${a.id}')">Save</button>
         </div>
-        ${assignableCompanies.length===0 ? `<div class="hint">No companies available to assign — an All Units admin needs to grant your business unit permission via Business Unit Settings.</div>` : ''}
+        ${assignableCompanies.length===0 ? `<div class="hint">No companies set up for this business unit yet — add them under Company Settings.</div>` : ''}
         <div id="assignCompanyErr"></div>
-      </div>
+      </div>`)}
 
-      <div class="detail-section">
-        <h4>Contact &amp; Personal Particulars</h4>
-        ${drow('Position Applying For', a.position_applying)}
-        ${drow('Mobile', a.mobile_phone)}
-        ${drow('Email', a.email)}
-        ${drow('NRIC', a.nric_new)}
-        ${drow('Address', (a.permanent_address||'')+' '+(a.permanent_postcode||''))}
-        ${drow('Date of Birth / Age', `${a.date_of_birth||'—'} / ${a.age||'—'}`)}
-        ${drow('Citizen / Marital Status', `${a.citizen||'—'} / ${a.marital_status||'—'}`)}
-        ${drow('Bumiputra / Race', `${a.bumiputra||'—'} / ${a.race||'—'}`)}
-      </div>
+    ${dcard('', 'profile', 'Personal particulars', `<div class="kv">
+      ${kv('NRIC / Passport', esc(a.nric_new || a.passport_number))}${kv('Date of birth', esc(fmtDate(a.date_of_birth)))}
+      ${kv('Place of birth', esc(a.place_of_birth))}${kv('Marital status', esc(a.marital_status))}
+      ${kv('Bumiputra · Race', `${esc(a.bumiputra||'—')} · ${esc(a.race||'—')}`)}${kv('Alias', esc(a.alias))}
+      ${kv('Tel. residence / office', `${esc(a.tel_residence||'—')} / ${esc(a.tel_office||'—')}`, true)}
+      ${kv('Permanent address', WCT.addressLines(a, 'permanent').map(esc).join('<br>'), true)}
+      ${kv('Correspondence address', WCT.sameAddress(a) ? 'Same as permanent address' : WCT.addressLines(a, 'correspondence').map(esc).join('<br>'), true)}
+    </div>`)}
 
-      <div class="detail-section">
-        <h4>Language Ability</h4>
-        ${(a.language_ability||[]).map(l=>drow(l.language, `Spoken: ${l.spoken||'—'} · Written: ${l.written||'—'}`)).join('') || drow('Language Ability','None provided')}
-      </div>
+    ${dcard('sec-lang', 'lang', 'Language ability', `<table class="dtable"><thead><tr><th>Language</th><th>Spoken</th><th>Written</th></tr></thead><tbody>
+      ${langs.map(l => `<tr><td><b>${esc(l.language)}</b></td><td>${ratingHtml(l.spoken)}</td><td>${ratingHtml(l.written)}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">None provided</td></tr>'}
+    </tbody></table>`, `${langs.length} language${langs.length===1?'':'s'}`)}
 
-      <div class="detail-section">
-        <h4>Education</h4>
-        ${(a.education||[]).map(e=>drow(e.type, `${e.name} (${e.from_year}–${e.to_year}) — ${e.qualification}${e.course_name?' — '+e.course_name:''}`)).join('') || drow('Education','None provided')}
-      </div>
+    ${dcard('sec-edu', 'edu', 'Education &amp; working experience', `<div class="tl">
+      ${(a.education||[]).map(e => `<div class="tl-item"><span class="pt"></span><div><div class="t">${esc(e.qualification || e.type)}${e.course_name ? ', '+esc(e.course_name) : ''}</div><div class="s">${esc(e.name)} · ${esc(e.type)}</div></div><span class="yr">${esc(e.from_year||'')}${e.to_year ? ' – '+esc(e.to_year) : ''}</span></div>`).join('')}
+      ${a.no_working_experience && !exp.length ? `<div class="tl-item"><span class="pt grey"></span><div><div class="t muted">No previous working experience</div><div class="s">Declared by the candidate</div></div><span></span></div>`
+        : exp.map(w => `<div class="tl-item"><span class="pt work"></span><div><div class="t">${esc(w.position || 'Position')}</div><div class="s">${esc(w.employer)}${w.remuneration ? ` · Last drawn ${esc(fmtMoney(w.remuneration))}` : ''}</div>${w.responsibilities ? `<div class="s" style="margin-top:2px;">${esc(w.responsibilities)}</div>` : ''}</div><span class="yr">${esc(w.from||'')} – ${w.is_current ? 'Present' : esc(w.to||'')}</span></div>`).join('') || '<div class="tl-item"><span class="pt grey"></span><div><div class="t muted">No working experience entered</div></div><span></span></div>'}
+    </div>`)}
 
-      <div class="detail-section">
-        <h4>Working Experience</h4>
-        ${(a.working_experience||[]).map(e=>drow(e.position||'Position', `${e.employer} (${e.from}–${e.is_current?'Present':e.to}) — RM${e.remuneration||'—'}/month`)).join('') || drow('Experience','None provided')}
-      </div>
+    ${dcard('sec-family', 'family', 'Family details', (fam('spouse_name') || kids.length) ? `<div class="kv">
+      ${kv('Spouse', esc(fam('spouse_name')))}${kv('Spouse NRIC', esc(fam('spouse_nric')))}
+      ${kv('Spouse date of birth', esc(fmtDate(fam('spouse_date_of_birth'))))}${kv('Spouse working', esc(fam('spouse_working')))}
+    </div>${kids.length ? `<table class="dtable"><thead><tr><th>Child</th><th>Age group</th><th>NRIC</th><th>Tax relief</th></tr></thead><tbody>
+      ${kids.map(([g, c]) => `<tr><td><b>${esc(c.name||'—')}</b><div class="muted">${esc([c.gender, c.course_name].filter(Boolean).join(' · '))}</div></td><td>${g}</td><td>${esc(c.nric||'—')}</td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
+    </tbody></table>` : ''}` : '<div class="dcard-pad muted">Not provided (optional section).</div>')}
 
-      <div class="detail-section">
-        <h4>Employment Details</h4>
-        ${drow('Resignation Notice Required', a.resignation_notice_required)}
-        ${drow('Notice Period', a.notice_period)}
-        ${drow('Expected Salary', fmtMoney(a.expected_basic_salary))}
-        ${drow('Available From', fmtDate(a.date_available_to_start))}
-        ${drow('Own Transport (Car/Bike)', `${a.own_transport_motorcar||'—'} / ${a.own_transport_motorcycle||'—'}`)}
-        ${drow('Willing Outside Klang Valley', a.willing_based_outside_klang_valley)}
-      </div>
+    ${dcard('sec-questions', 'questions', 'Employment details &amp; questions', `
+      <div class="yn"><span>Resignation notice required</span><span>${ynPill(a.resignation_notice_required, a.notice_period)}</span></div>
+      <div class="yn"><span>Own transport — car / motorcycle</span><span>${ynPill(a.own_transport_motorcar)} ${ynPill(a.own_transport_motorcycle)}</span></div>
+      <div class="yn"><span>Willing to be based outside Klang Valley</span><span>${ynPill(a.willing_based_outside_klang_valley)}</span></div>
+      <div class="yn"><span>Relatives or friends in the company</span><span>${ynPill(a.relatives_in_company, a.relatives_in_company==='Yes' ? `${a.relatives_name||''} (${a.relatives_relationship||''})` : '')}</span></div>
+      <div class="yn"><span>Referred by anyone</span><span>${ynPill(a.referral_person, a.referral_person==='Yes' ? `${a.referral_name||''}, ${a.referral_department||''}` : '')}</span></div>
+      <div class="yn"><span>Physical defects or disabilities</span><span>${ynPill(a.physical_defects, a.physical_defects_specify)}</span></div>
+      <div class="yn"><span>Ever arrested or convicted</span><span>${ynPill(a.arrested_convicted, a.arrested_convicted_specify)}</span></div>
+      <div class="yn"><span>(B) Lawsuits / proceedings</span><span>${ynPill(a.declaration_lawsuit, a.declaration_lawsuit_specify)}</span></div>
+      <div class="yn"><span>(C) Matters affecting standing</span><span>${ynPill(a.declaration_other_matters, a.declaration_other_matters_specify)}</span></div>`)}
 
-      <div class="detail-section">
-        <h4>Additional Questions</h4>
-        ${drow('Relatives/Friends in Company', a.relatives_in_company)}
-        ${a.relatives_in_company==='Yes' ? drow('Relative Name / Relationship', `${a.relatives_name||'—'} / ${a.relatives_relationship||'—'}`) : ''}
-        ${drow('Referred by Anyone', a.referral_person)}
-        ${a.referral_person==='Yes' ? drow('Referral Name / Department', `${a.referral_name||'—'} / ${a.referral_department||'—'}`) : ''}
-        ${drow('Physical Defects/Disabilities', a.physical_defects)}
-        ${a.physical_defects==='Yes' ? drow('Please Specify', a.physical_defects_specify) : ''}
-        ${drow('Arrested/Convicted', a.arrested_convicted)}
-        ${a.arrested_convicted==='Yes' ? drow('Please Specify', a.arrested_convicted_specify) : ''}
-      </div>
+    ${dcard('sec-referees', 'referees', 'Referees', `<div class="kv">
+      ${[a.referee1, a.referee2].map((r, i) => kv(`Referee ${i+1}`, r && r.name ? `<b>${esc(r.name)}</b> · ${esc(r.designation||'—')}${r.company ? `<br>${esc(r.company)}` : ''}<br><span class="muted">${esc(r.relationship||'—')} · ${esc(r.contact||'—')}</span>` : '—')).join('')}
+    </div>`)}
 
-      <div class="detail-section">
-        <h4>Referees</h4>
-        ${a.referee1?.name ? drow('Referee 1', `${a.referee1.name} — ${a.referee1.designation||''} · ${a.referee1.relationship||''} · ${a.referee1.contact||''}`) : ''}
-        ${a.referee2?.name ? drow('Referee 2', `${a.referee2.name} — ${a.referee2.designation||''} · ${a.referee2.relationship||''} · ${a.referee2.contact||''}`) : ''}
-        ${(!a.referee1?.name && !a.referee2?.name) ? drow('Referees','None provided') : ''}
-      </div>
+    ${dcard('sec-docs', 'docs', 'Documents', `<div class="docs">
+      <div class="doc-grp wide"><h4>IC copy <span class="muted">front &amp; back</span></h4>
+        <div class="ic-pair">${[['ic_front','Front'],['ic_back','Back']].map(([k, label]) => { const f = docs[k][0];
+          return f ? `<a class="ic-card" href="${esc(WCT.fileUrl(f.url))}" target="_blank" rel="noopener">${WCT.isImage(f) ? `<img src="${esc(WCT.fileUrl(f.url))}" alt="IC ${label.toLowerCase()}">` : `<span>${esc(f.name)}</span>`}<span class="lbl">${label}</span></a>` : `<div class="ic-card empty"><span class="lbl">${label}</span>Not uploaded</div>`; }).join('')}</div></div>
+      ${[['resume','Resume / CV'],['academic','Academic certificates'],['payslip','Payslip'],['other','Other documents']].map(([k, label]) =>
+        `<div class="doc-grp"><h4>${label}</h4>${docs[k].length ? docs[k].map(docLinkHtml).join('') : '<div class="muted">None uploaded</div>'}</div>`).join('')}
+    </div>`, `${(a.attachments||[]).length} file${(a.attachments||[]).length===1?'':'s'}`)}
 
-      <div class="detail-section">
-        <h4>Declarations</h4>
-        ${drow('Declaration (B) — Lawsuits/Proceedings', a.declaration_lawsuit==='Yes' ? `Yes — ${a.declaration_lawsuit_specify}` : a.declaration_lawsuit)}
-        ${drow('Declaration (C) — Other Matters', a.declaration_other_matters==='Yes' ? `Yes — ${a.declaration_other_matters_specify}` : a.declaration_other_matters)}
-      </div>
-
-      <div class="detail-section">
-        <h4>Attachments</h4>
-        ${a.attachments && a.attachments.length ? a.attachments.map(f=>{
-          const isImg = f.type && f.type.startsWith('image/');
-          return `<div class="drow" style="align-items:center;">
-            <div class="k" style="width:auto;"></div>
-            <div class="v" style="display:flex;align-items:center;gap:10px;">
-              <span style="width:40px;height:40px;border-radius:6px;background:#EFEEEA;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;overflow:hidden;">
-                ${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;">` : ICON_PDF}
-              </span>
-              <a href="${f.url}" target="_blank">${esc(f.name)}</a>
-            </div>
-          </div>`;
-        }).join('') : drow('Documents','None')}
-      </div>
-
-      <div class="detail-section">
-        <h4>Consent Records</h4>
-        ${drow('Consent Language', a.language_choice==='BM' ? 'Bahasa Melayu' : 'English')}
-        ${drow('PDPA Consent Agreed', a.pdpa_agreed ? `Yes — ${new Date(a.pdpa_agreed_at).toLocaleString()}` : 'No')}
-      </div>
-
-      <div class="detail-section">
-        <h4>Submission Record</h4>
-        ${drow('Submitted', a.submitted_at ? new Date(a.submitted_at).toLocaleString() : 'Not yet submitted')}
-      </div>
-
-      <div class="status-actions">
-        <button class="btn btn-outline btn-sm" onclick="startEdit()">${ICON_EDIT} Edit</button>
-        <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf(selectedApp.id)">${ICON_PDF} Export Full PDF</button>
-        <a class="btn btn-outline btn-sm" style="text-decoration:none;" href="mailto:${encodeURIComponent(a.email||'')}?subject=${encodeURIComponent('Regarding your application '+a.reference_no)}&body=${encodeURIComponent('Dear '+(a.name_nric||'Candidate')+',\n\n')}">${ICON_MAIL} Email</a>
-        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete('${a.id}', '${esc(a.name_nric)}')">${ICON_DELETE} Delete</button>
-      </div>
-      ${a.status==='hired' ? `
-      <div class="status-actions">
-        <button class="btn btn-accent btn-sm" onclick="openOnboardingView('${a.id}')">${ICON_ONBOARD} Onboarding Details</button>
-        <button class="btn btn-outline btn-sm" onclick="obStartInviteFromApplication('${a.id}')">${ICON_OFFBOARD} Start Offboarding</button>
-      </div>
-      ` : ''}
-      <div class="status-actions">
-        ${STATUS_OPTIONS.map(s => {
-          const styleMap = { hired:'btn-success', shortlisted:'btn-shortlist', rejected:'btn-danger', blacklisted:'btn-blacklist' };
-          const cls = styleMap[s] || 'btn-outline';
-          return `<button class="btn ${cls} btn-sm" onclick="updateStatus('${s}')">${STATUS_LABELS[s]}</button>`;
-        }).join('')}
-      </div>
+    ${dcard('sec-consent', 'consent', 'Consent &amp; signature', `
+      <div class="sig-rec">
+        <div class="sig-mini">${esc(a.pdpa_agreed_name || '')}</div>
+        <div>${a.pdpa_agreed ? `PDPA consent (${a.language_choice==='BM' ? 'Bahasa Melayu' : 'English'}) signed digitally<br><span class="muted">${esc(fmtDateTime(a.pdpa_agreed_at))} · ${esc(a.pdpa_agreed_nric || '')}</span>` : '<span class="muted">PDPA consent not recorded</span>'}</div>
+      </div>`)}
   `;
 }
 
@@ -3152,7 +3088,7 @@ function editFormHtml(a){
       <div class="field"><label>Mobile Phone</label><input type="text" id="editMobile" value="${esc(a.mobile_phone)}"></div>
       <div class="field"><label>Business Unit</label>
         <select id="editBusinessUnit">
-          ${['E&C','Land','Mall'].map(o=>`<option value="${o}" ${a.business_unit===o?'selected':''}>${o}</option>`).join('')}
+          ${buOptionsHtml(a.business_unit)}
         </select>
         <div class="hint">Changing this transfers the application to another business unit's admin team.</div>
       </div>
@@ -3221,8 +3157,17 @@ async function openOnboardingView(applicationId){
     ]);
     if(obRes.error) throw obRes.error;
     if(appRes.error) throw appRes.error;
-    onboardingData = obRes.data;
-    onboardingAppInfo = appRes.data;
+    // Spouse/children now live on the application (2026-10-14); older
+    // onboarding records keep their own copy, used when the application has none.
+    const app = appRes.data || {};
+    onboardingData = obRes.data ? { ...obRes.data } : null;
+    if(onboardingData){
+      ['spouse_name','spouse_nric','spouse_date_of_birth','spouse_working','children_below_18','children_18_to_23'].forEach(k => {
+        const v = app[k];
+        if(v != null && v !== '' && !(Array.isArray(v) && !v.length)) onboardingData[k] = v;
+      });
+    }
+    onboardingAppInfo = app;
     renderOnboardingModal();
   } catch(e){ uiToast('Error loading onboarding details: '+e.message); }
 }
@@ -3346,7 +3291,9 @@ function buildOnboardingPdfHtml(a, o){
   const childRowsBelow18 = (o.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">Tiada</td></tr>`;
   const childRows18to23 = (o.children_18_to_23||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">Tiada</td></tr>`;
   const emergencyRows = (o.emergency_contacts||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.relationship)}</td><td>${fmt(c.contact)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>`;
-  const companies = ['WCT Berhad', 'WCT Construction Sdn Bhd', 'WCT Machinery Sdn Bhd', 'Intraxis Engineering Sdn Bhd'];
+  // The company the salary is credited under (chosen by the employee from
+  // their business unit's companies, Business Unit Settings).
+  const companies = o.salary_company ? [o.salary_company] : [];
 
   return `
 <!DOCTYPE html>
@@ -3434,7 +3381,7 @@ function buildOnboardingPdfHtml(a, o){
     </table>
 
     <div class="confirm-box">
-      Confirmed digitally (checkbox recorded, no wet signature): <strong>${obConfirmLine(o.personal_details_confirmed, o.personal_details_confirmed_at)}</strong>
+      Signed digitally${o.personal_details_signed_name ? ` by <strong>${esc(o.personal_details_signed_name)}</strong>` : ''}: <strong>${obConfirmLine(o.personal_details_confirmed, o.personal_details_confirmed_at)}</strong>
     </div>
   </div>
 
@@ -3450,7 +3397,7 @@ function buildOnboardingPdfHtml(a, o){
 
     <p style="font-size:10px;"><strong>To</strong> &nbsp; : Human Resources Department :-</p>
     <div style="margin:6px 0 14px 24px;font-size:10px;">
-      ${companies.map(c=>`<div style="margin-bottom:4px;">${chk(o.salary_company===c)} ${c}</div>`).join('')}
+      ${companies.length ? companies.map(c=>`<div style="margin-bottom:4px;">${chk(true)} ${esc(c)}</div>`).join('') : '<div style="margin-bottom:4px;">— not selected —</div>'}
     </div>
 
     <p style="font-size:10px;">Please be informed that I, ${box(a.name_nric, '220px')} &nbsp; IC/Passport No.: ${box(o.salary_ic_submitted, '150px')}</p>
@@ -3467,7 +3414,7 @@ function buildOnboardingPdfHtml(a, o){
     <p style="font-size:9.5px;font-weight:bold;"><em>Saya mengesahkan maklumat tersebut diatas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</em></p>
 
     <div class="confirm-box">
-      Confirmed digitally (checkbox recorded, no wet signature): <strong>${obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at)}</strong>
+      Signed digitally${o.salary_crediting_signed_name ? ` by <strong>${esc(o.salary_crediting_signed_name)}</strong>` : ''}: <strong>${obConfirmLine(o.salary_crediting_confirmed, o.salary_crediting_confirmed_at)}</strong>
     </div>
 
     <div style="font-size:8px;color:#888;margin-top:20px;font-style:italic;">Salary crediting RQ Form — WCT Group Employment Onboarding Portal</div>
@@ -3494,227 +3441,15 @@ async function exportCandidatePdf(id){
       a = data;
     } catch(e){ uiToast('Could not load record for export: '+e.message); return; }
   }
-  const html = buildFormalPdfHtml(a);
-  const win = window.open('', '_blank');
-  if(!win){ uiToast('Please allow pop-ups for this site to generate the PDF.'); return; }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => setTimeout(() => win.print(), 400);
+  // Family details on older records live in the onboarding record.
+  let onboarding = null;
+  if(a.status === 'hired'){
+    const { data: obRec } = await apiTry(() => api.get(`/admin/applications/${a.id}/onboarding`, {admin: true}));
+    onboarding = obRec || null;
+  }
+  WCT.openPrint(WCT.applicationPdfHtml(a, { statusLabel: STATUS_LABELS[a.status], onboarding }));
 }
 
-// ---------------------------------------------------------------------------
-// Shared print styles, used by all three merged pages
-// ---------------------------------------------------------------------------
-function pdfSharedStyles(){
-  return `
-  @page{ size:A4; margin:18mm 16mm; }
-  *{box-sizing:border-box;}
-  body{font-family:'Georgia',serif;font-size:11.5px;color:#1a1a1a;margin:0;line-height:1.55;}
-  .doc-page{ }
-  .doc-page + .doc-page{ page-break-before: always; }
-  .letterhead{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #000;padding-bottom:12px;margin-bottom:20px;}
-  .letterhead .brand-row{display:flex;align-items:center;gap:14px;}
-  .letterhead img.logo{height:52px;}
-  .letterhead h1{font-size:19px;margin:0 0 2px;letter-spacing:.02em;}
-  .letterhead .tagline{font-size:10px;color:#666;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.07em;}
-  .letterhead .ref-box{text-align:right;font-family:Arial,sans-serif;}
-  .letterhead .ref-box .big{font-size:14px;font-weight:bold;}
-  .letterhead .ref-box .status{display:inline-block;margin-top:4px;padding:3px 10px;border-radius:12px;background:#eee;font-size:9px;font-weight:bold;text-transform:uppercase;font-family:Arial,sans-serif;}
-  h2.section{font-family:Arial,sans-serif;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#000;padding:5px 10px;margin:20px 0 10px;}
-  h2.section:first-of-type{margin-top:0;}
-  table{width:100%;border-collapse:collapse;margin-bottom:6px;}
-  th{font-family:Arial,sans-serif;font-size:9px;text-transform:uppercase;color:#666;text-align:left;padding:4px 8px;border-bottom:1px solid #ccc;}
-  td{padding:5px 8px;font-size:10.5px;vertical-align:top;}
-  .kv{display:flex;flex-wrap:wrap;gap:0 24px;}
-  .kv .item{width:calc(50% - 12px);padding:3px 0;font-size:11px;}
-  .kv .item.full{width:100%;}
-  .kv .lbl{font-family:Arial,sans-serif;font-size:8.5px;text-transform:uppercase;color:#888;letter-spacing:.04em;display:block;}
-  .photo{width:80px;height:80px;object-fit:cover;border:1px solid #ccc;margin-left:14px;}
-  .footer{margin-top:24px;border-top:1px solid #ccc;padding-top:8px;font-family:Arial,sans-serif;font-size:8.5px;color:#888;display:flex;justify-content:space-between;}
-  .legal-title{font-family:Arial,sans-serif;font-size:15px;font-weight:bold;text-align:center;margin:10px 0 16px;text-decoration:underline;}
-  .legal-body p{margin:0 0 10px;font-size:10.8px;text-align:justify;}
-  .legal-fill{border-bottom:1px solid #666;padding:0 4px;font-weight:bold;}
-  .legal-header{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:16px;}
-  .legal-header .company-name{font-size:15px;font-weight:bold;}
-  .legal-header .company-sub{font-size:9px;color:#555;font-family:Arial,sans-serif;}
-  .confirm-box{border:1px solid #999;padding:12px 14px;margin-top:16px;background:#FAFAF9;}
-  .confirm-box .lbl{font-family:Arial,sans-serif;font-size:8.5px;text-transform:uppercase;color:#888;}
-  .small-print{font-size:7.5px;color:#777;font-family:Arial,sans-serif;line-height:1.5;margin-top:14px;}
-  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;}
-  .print-bar button{font-family:Arial,sans-serif;font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
-  @media print{ .print-bar{display:none;} }
-  `;
-}
-
-// ---------------------------------------------------------------------------
-// Page 1: Job Application
-// ---------------------------------------------------------------------------
-function buildJobApplicationPageHtml(a){
-  const edu = (a.education||[]).map(e=>`<tr><td>${fmt(e.type)}</td><td>${fmt(e.name)}</td><td>${fmt(e.from_year)}–${fmt(e.to_year)}</td><td>${fmt(e.qualification)}</td><td>${fmt(e.course_name)}</td></tr>`).join('')
-    || `<tr><td colspan="5" style="text-align:center;color:#999;">No entries provided</td></tr>`;
-  const exp = (a.working_experience||[]).map(w=>`
-    <tr><td>${fmt(w.employer)}</td><td>${fmt(w.position)}</td><td>${fmt(w.from)}–${w.is_current?'Present':fmt(w.to)}</td><td>${fmt(w.remuneration)}</td></tr>
-    ${w.responsibilities ? `<tr><td colspan="4" style="color:#555;font-style:italic;padding-top:0;">${fmt(w.responsibilities)}</td></tr>` : ''}
-  `).join('') || `<tr><td colspan="4" style="text-align:center;color:#999;">No entries provided</td></tr>`;
-  const lang = (a.language_ability||[]).map(l=>`<tr><td>${fmt(l.language)}</td><td>${fmt(l.spoken)}</td><td>${fmt(l.written)}</td></tr>`).join('')
-    || `<tr><td colspan="3" style="text-align:center;color:#999;">No entries provided</td></tr>`;
-  const refs = [a.referee1, a.referee2].filter(r => r && r.name);
-
-  return `
-  <div class="doc-page">
-    <div class="letterhead">
-      <div class="brand-row">
-        <img class="logo" src="${WCT_LOGO_DATA_URI}">
-        <div>
-          <h1>WCT Group of Companies</h1>
-          <div class="tagline">Employment Application — Candidate Record</div>
-        </div>
-      </div>
-      <div style="display:flex;align-items:flex-end;">
-        <div class="ref-box">
-          <div class="big">${esc(a.reference_no||'')}</div>
-          <div style="font-size:10px;color:#666;">${fmt(a.business_unit)}</div>
-          <div style="font-size:9px;color:#888;">Submitted ${a.submitted_at ? fmtDateTime(a.submitted_at) : '—'}</div>
-          <div class="status">${STATUS_LABELS[a.status]||a.status}</div>
-        </div>
-        ${a.profile_picture_url ? `<img class="photo" src="${a.profile_picture_url}">` : ''}
-      </div>
-    </div>
-
-    <h2 class="section">Personal Particulars</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">Position Applying For</span>${fmt(a.position_applying)}</div>
-      <div class="item"><span class="lbl">Name (per NRIC)</span>${fmt(a.name_nric)}</div>
-      <div class="item"><span class="lbl">NRIC</span>${fmt(a.nric_new)}</div>
-      <div class="item"><span class="lbl">Date of Birth / Age</span>${fmtDate(a.date_of_birth)} / ${fmt(a.age)}</div>
-      <div class="item"><span class="lbl">Citizenship / Marital Status</span>${fmt(a.citizen)} / ${fmt(a.marital_status)}</div>
-      <div class="item"><span class="lbl">Bumiputra / Race</span>${fmt(a.bumiputra)} / ${fmt(a.race)}</div>
-      <div class="item"><span class="lbl">Mobile</span>${fmt(a.mobile_phone)}</div>
-      <div class="item"><span class="lbl">Email</span>${fmt(a.email)}</div>
-      <div class="item full"><span class="lbl">Permanent Address</span>${fmt(a.permanent_address)} ${fmt(a.permanent_postcode)}</div>
-    </div>
-
-    <h2 class="section">Language Ability</h2>
-    <table><thead><tr><th>Language</th><th>Spoken</th><th>Written</th></tr></thead><tbody>${lang}</tbody></table>
-
-    <h2 class="section">Education</h2>
-    <table><thead><tr><th>Type</th><th>Institution</th><th>Period</th><th>Qualification</th><th>Course Name</th></tr></thead><tbody>${edu}</tbody></table>
-
-    <h2 class="section">Working Experience</h2>
-    <table><thead><tr><th>Employer</th><th>Position</th><th>Period</th><th>Last Drawn</th></tr></thead><tbody>${exp}</tbody></table>
-
-    <h2 class="section">Employment Details</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">Resignation Notice Required</span>${fmt(a.resignation_notice_required)}</div>
-      <div class="item"><span class="lbl">Notice Period</span>${fmt(a.notice_period)}</div>
-      <div class="item"><span class="lbl">Expected Basic Salary</span>${fmtMoney(a.expected_basic_salary)}</div>
-      <div class="item"><span class="lbl">Available to Start</span>${fmtDate(a.date_available_to_start)}</div>
-      <div class="item"><span class="lbl">Own Transport (Car/Bike)</span>${fmt(a.own_transport_motorcar)} / ${fmt(a.own_transport_motorcycle)}</div>
-      <div class="item"><span class="lbl">Willing Outside Klang Valley</span>${fmt(a.willing_based_outside_klang_valley)}</div>
-    </div>
-
-    <h2 class="section">Additional Questions</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">Relatives/Friends in Company</span>${fmt(a.relatives_in_company)}</div>
-      ${a.relatives_in_company==='Yes' ? `<div class="item"><span class="lbl">Relative Name / Relationship</span>${fmt(a.relatives_name)} / ${fmt(a.relatives_relationship)}</div>` : ''}
-      <div class="item"><span class="lbl">Referred by Anyone</span>${fmt(a.referral_person)}</div>
-      ${a.referral_person==='Yes' ? `<div class="item"><span class="lbl">Referral Name / Department</span>${fmt(a.referral_name)} / ${fmt(a.referral_department)}</div>` : ''}
-      <div class="item"><span class="lbl">Physical Defects/Disabilities</span>${fmt(a.physical_defects)}</div>
-      ${a.physical_defects==='Yes' ? `<div class="item full"><span class="lbl">Please Specify</span>${fmt(a.physical_defects_specify)}</div>` : ''}
-      <div class="item"><span class="lbl">Arrested/Convicted</span>${fmt(a.arrested_convicted)}</div>
-      ${a.arrested_convicted==='Yes' ? `<div class="item full"><span class="lbl">Please Specify</span>${fmt(a.arrested_convicted_specify)}</div>` : ''}
-    </div>
-
-    ${refs.length ? `
-    <h2 class="section">Referees</h2>
-    <div class="kv">
-      ${refs.map((r,i)=>`<div class="item"><span class="lbl">Referee ${i+1}</span>${fmt(r.name)} — ${fmt(r.designation)}<br>${fmt(r.relationship)} · ${fmt(r.contact)}</div>`).join('')}
-    </div>` : ''}
-
-    <h2 class="section">Declarations</h2>
-    <div class="kv">
-      <div class="item full"><span class="lbl">Declaration (B) — Lawsuits/Proceedings</span>${a.declaration_lawsuit==='Yes' ? `Yes — ${fmt(a.declaration_lawsuit_specify)}` : fmt(a.declaration_lawsuit)}</div>
-      <div class="item full"><span class="lbl">Declaration (C) — Other Matters</span>${a.declaration_other_matters==='Yes' ? `Yes — ${fmt(a.declaration_other_matters_specify)}` : fmt(a.declaration_other_matters)}</div>
-    </div>
-
-    <h2 class="section">Consent &amp; Submission Record</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">Consent Language</span>${a.language_choice==='BM' ? 'Bahasa Melayu' : 'English'}</div>
-      <div class="item"><span class="lbl">Submitted</span>${fmtDateTime(a.submitted_at)}</div>
-    </div>
-
-    <div class="footer">
-      <span>Reference ${esc(a.reference_no||'')} — Generated ${fmtDateTime(new Date().toISOString())}</span>
-      <span>WCT Group Employment Application Portal</span>
-    </div>
-  </div>
-  `;
-}
-
-// ---------------------------------------------------------------------------
-// Page 3: PDPA Notice — wording matches the original WCT PDPA document,
-// filled with the recorded consent details instead of a blank signature.
-// ---------------------------------------------------------------------------
-function buildPdpaPageHtml(a){
-  const bm = a.language_choice === 'BM';
-  const title = bm ? 'Mengizinkan Proses Data Peribadi dan Notis Perlindungan Data Peribadi' : 'Consent to Process Personal Data And Personal Data Protection Notice';
-  const body = bm ? `
-    <p>Notis ini dikeluarkan kepada anda oleh dan/atau bagi pihak WCT Holdings Berhad, syarikat-syarikat yang berkaitan*, ahli-ahli gabungan dan entiti-entiti lain dalam kumpulan syarikat WCT (selepas ini dirujuk sebagai "Kumpulan WCT") selaras dengan Akta Perlindungan Data Peribadi 2010. Dalam notis ini "kami" merujuk kepada mana-mana syarikat dalam Kumpulan WCT.</p>
-    <p><strong>Sumber dan Deskripsi Data Peribadi.</strong> Kami telah mengumpul dan/atau akan mengumpul data peribadi seperti yang dizahirkan oleh/dikumpul daripada anda yang, bergantung kepada maksud yang mana anda menzahirkan data tersebut, mungkin termasuk butir-butir peribadi anda (seperti: nama, tarikh lahir, jantina, bangsa, nombor kad pengenalan/pasport, status perkahwinan, kewarganegaraan), butir-butir hubungan anda serta maklumat pendidikan, profesional, pekerjaan, kewangan, keluarga, perubatan, data biometrik anda dan/atau apa-apa maklumat lain yang anda maklumkan kepada kami.</p>
-    <p><strong>Maksud dan Penzahiran.</strong> Data anda sedang atau akan diproses untuk maksud-maksud yang mana ia telah dizahirkan oleh anda, seperti membolehkan kami membuat pertimbangan untuk memasuki kontrak dengan anda, untuk memenuhi obligasi-obligasi kontrak kami kepada anda dan/atau untuk menawarkan atau membekalkan produk dan/atau perkhidmatan kami kepada anda. Data anda mungkin akan dizahirkan kepada syarikat lain di dalam Kumpulan WCT atau ejen-ejen, wakil-wakil, penasihat-penasihat profesional dan/atau perunding-perunding kami, pemberi perkhidmatan pihak ketiga dan/atau pembekal utiliti, kontraktor, pembekal dan/atau penjual dan juga kepada pihak-pihak berkuasa kerajaan, tempatan, pengawal yang berkaitan.</p>
-    <p><strong>Akses, Pembetulan, Siasatan dan/atau Aduan.</strong> Anda berhak untuk meminta akses kepada Data anda dan untuk meminta untuk mengemaskini atau membetulkan Data anda. Sila hubungi Pengurus Hal Ehwal Korporat di 03-7806688 atau menghantar e-mel kepada pdpa@wct.my.</p>
-    <p><strong>Persetujuan dan Pilihan anda.</strong> Kecuali untuk Data yang perlu bagi kami melaksanakan kontrak antara kami, anda boleh memilih sama ada untuk memberi atau enggan memberi Data anda. Jika anda ingin menarik balik atau menghadkan kebenaran anda, sila melengkapkan Borang Penarikan Balik di laman web kami di www.wct.com.my/pdpa.</p>
-    <p><strong>Pemindahan data peribadi ke tempat di luar Malaysia.</strong> Kami boleh memindahkan Data anda ke tempat di luar Malaysia dan dengan ini anda telahpun bersetuju terhadap pemindahan tersebut.</p>
-  ` : `
-    <p>This Notice is issued to you by and/or on behalf of WCT Holdings Berhad, its related companies*, affiliates and other entities within the WCT group of companies (hereinafter referred to as "WCT Group") pursuant to the Personal Data Protection Act 2010. In this notice "we", "our" and "us" refer to any of the companies within the WCT Group.</p>
-    <p><strong>Source and Description of Personal Data.</strong> We have collected and/or will be collecting personal data as disclosed by / collected from you which, depending on the purpose for which you disclosed the data, may include your personal details (e.g. name, date of birth, gender, race, NRIC / passport no., marital status, nationality), your contact information as well as your educational, professional, occupational, financial, familial, medical details, biometric data and/or any other information which you may provide to us.</p>
-    <p><strong>Purpose and Disclosure.</strong> Your Data is being or will be processed for the purposes for which it was disclosed by you, such as to enable us to consider entering into a contract with you, to fulfil our contractual obligations to you and/or to offer or to deliver products and/or services to you. Your Data may be disclosed to another company within the WCT Group or to our agents, representatives, professional advisors and/or consultants, third party service and/or utility providers, contractors, suppliers and/or vendors as well as to relevant governmental, municipal and/or regulatory authorities.</p>
-    <p><strong>Access, Correction, Inquiry and/or Complaint.</strong> You have the right to request for access to your Data and to request to update or correct the same. Please contact the Corporate Affairs Manager at 03-78066688 or email us at pdpa@wct.my.</p>
-    <p><strong>Consent and Choice.</strong> Save for Data necessary for the performance of contracts between us, you may choose whether or not to provide your Data. If you wish to withdraw or limit your consent, please complete the Withdrawal Form on our website at www.wct.com.my/pdpa.</p>
-    <p><strong>Transfer of personal data to places outside Malaysia.</strong> We may transfer your Data to a place outside Malaysia and you hereby consent to the transfer.</p>
-  `;
-
-  return `
-  <div class="doc-page">
-    <div class="letterhead">
-      <div class="brand-row">
-        <img class="logo" src="${WCT_LOGO_DATA_URI}">
-        <div>
-          <h1 style="font-size:15px;">${title}</h1>
-        </div>
-      </div>
-    </div>
-
-    <div class="legal-body">${body}</div>
-
-    <div class="confirm-box">
-      <div class="lbl">${bm?'PENGESAHAN DAN PERSETUJUAN':'CONFIRMATION AND CONSENT'} — ${bm?'direkodkan secara digital (tiada tandatangan fizikal dikumpul)':'recorded digitally (no wet signature collected)'}</div>
-      <div class="kv" style="margin-top:6px;">
-        <div class="item"><span class="lbl">${bm?'Nama':'Name'}</span>${fmt(a.pdpa_agreed_name)}</div>
-        <div class="item"><span class="lbl">${bm?'No. K/P':'NRIC No.'}</span>${fmt(a.pdpa_agreed_nric)}</div>
-        <div class="item full"><span class="lbl">${bm?'Tarikh Persetujuan':'Date of Consent'}</span>${fmtDateTime(a.pdpa_agreed_at)}</div>
-      </div>
-    </div>
-
-    <div class="small-print">*WCT Holdings Berhad, WCT Berhad, WCT Equity Sdn Bhd, KKKBWCT Joint Venture Sdn Bhd, WCT Overseas Sdn Bhd, WCT Group Sdn Bhd, WCT TSR Sdn Bhd, WCT Construction Sdn Bhd, WCT International Sdn Bhd, Intraxis Engineering Sdn Bhd, WCT Machinery Sdn Bhd, WCT Products Sdn Bhd, W Facade Sdn Bhd, WCT Land Sdn Bhd, WCT Assets Sdn Bhd, WCT Acres Sdn Bhd, Gabungan Efektif Sdn Bhd, WCT Properties Sdn Bhd, Gemilang Waras Sdn Bhd, and other related WCT Group entities.</div>
-  </div>
-  `;
-}
-
-function buildFormalPdfHtml(a){
-  return `
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>${esc(a.reference_no||'Application')} — WCT Group</title>
-<style>${pdfSharedStyles()}</style>
-</head>
-<body>
-  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF". Includes the Job Application and PDPA Notice (2 pages).</span><button onclick="window.print()">Print / Save as PDF</button></div>
-  ${buildJobApplicationPageHtml(a)}
-  ${buildPdpaPageHtml(a)}
-</body></html>
-  `;
-}
 
 // ============================================================================
 // BOOT
@@ -3743,6 +3478,7 @@ async function openDeepLinkedAppIfAny(){
 // Payroll PIC / Clearance PIC / superior sessions go straight to
 // Offboarding, since every job-application endpoint refuses them.
 async function startSignedInSession(){
+  await Promise.all([WCT.loadBusinessUnits(), loadMyUnits()]);
   await obLoadMeta();
   liveStart();
   if(!obIsHr() || deepLinkOffboardingId){
