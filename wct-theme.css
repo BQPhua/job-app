@@ -373,6 +373,83 @@ tbody tr:hover td{background:#FBFCFE;}
   .tagline-ctrl{margin-bottom:6px;}
 }
 
+/* ---- Ascent photo brand panel + one-screen fit (feedback 15 Oct 2026) ----
+   The real WCT tower (The Ascent) fills the top of the brand panel and fades
+   into the bright blush below, where the tagline and points sit. The form
+   panel is top-anchored with auto margins ("safe" centring), so on short
+   screens the logo can never be pushed above the top edge. */
+.auth-brand.photo{background:linear-gradient(180deg,#F4F8FC 0%,#FFF7F7 58%,#FDECEC 100%);padding:32px 48px 28px;}
+.auth-brand.photo::after{display:none;}
+.auth-brand.photo .auth-skyline,.auth-brand.photo .auth-road{display:none;}
+.auth-photo{position:absolute;inset:0 0 auto 0;height:62%;z-index:-1;overflow:hidden;pointer-events:none;}
+.auth-photo img{display:block;width:100%;height:100%;object-fit:cover;object-position:58% 22%;transform-origin:62% 30%;}
+.auth-photo::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(255,247,247,0) 38%,rgba(255,247,247,.82) 80%,#FFF7F7 100%),
+             linear-gradient(90deg,rgba(244,248,252,.7) 0%,rgba(244,248,252,0) 42%);}
+@media (prefers-reduced-motion: no-preference){
+  .auth-photo img{animation:ascent-settle 2.4s cubic-bezier(.16,1,.3,1) both;}
+}
+@keyframes ascent-settle{from{transform:scale(1.07);filter:saturate(.85) brightness(1.06);}to{transform:none;filter:none;}}
+.auth-brand.photo .auth-chip{background:rgba(255,255,255,.94);}
+.auth-brand.photo .auth-headline{margin:auto 0 0;max-width:520px;}
+.auth-brand.photo .auth-headline h1{min-height:2.24em;margin-bottom:10px;text-shadow:0 1px 0 rgba(255,255,255,.6);}
+.auth-brand.photo .tagline-ctrl{margin:0 0 12px;}
+.auth-brand.photo .auth-headline p{font-size:16px;max-width:460px;}
+/* the three points: one quiet list, rows light up on hover/focus */
+.auth-brand.photo .auth-points{margin-top:18px;gap:0;background:rgba(255,255,255,.9);border:1px solid #F7D4D4;border-radius:16px;
+  box-shadow:0 10px 30px -18px rgba(127,29,29,.35);overflow:hidden;max-width:500px;}
+.auth-brand.photo .auth-points li{background:transparent;border:0;border-radius:0;box-shadow:none;padding:11px 16px;position:relative;
+  transition:background-color .2s ease;}
+.auth-brand.photo .auth-points li + li{border-top:1px solid #FBE3E3;}
+.auth-brand.photo .auth-points li::after{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--wct-red);
+  transform:scaleY(0);transition:transform .25s cubic-bezier(.16,1,.3,1);}
+.auth-brand.photo .auth-points li:hover,.auth-brand.photo .auth-points li:focus-visible{transform:none;box-shadow:none;background:#FFF5F5;outline:none;}
+.auth-brand.photo .auth-points li:hover::after,.auth-brand.photo .auth-points li:focus-visible::after{transform:scaleY(1);}
+.auth-brand.photo .auth-points li:hover .pt-ic,.auth-brand.photo .auth-points li:focus-visible .pt-ic{background:var(--wct-red);color:#fff;}
+.auth-brand.photo .pt-ic{width:36px;height:36px;transition:background-color .2s ease,color .2s ease;}
+.auth-brand.photo .auth-brand-foot{margin-top:18px;color:var(--wct-slate-600);}
+@media (prefers-reduced-motion: reduce){ .auth-brand.photo .auth-points li::after,.auth-brand.photo .pt-ic{transition:none;} }
+
+.auth.fit .auth-panel{align-items:flex-start;}
+.auth.fit .auth-box{margin:auto 0;}
+::selection{background:#FECACA;color:var(--wct-navy);}
+
+/* laptops at 125% zoom and other short screens: tighten so it all fits */
+@media (min-width: 961px) and (max-height: 820px){
+  .auth-brand.photo{padding:24px 40px 20px;}
+  .auth-brand.photo .auth-headline h1{font-size:clamp(28px,2.9vw,38px);}
+  .auth-brand.photo .auth-headline p{font-size:15px;line-height:1.5;}
+  .auth-brand.photo .auth-points li{padding:8px 14px;font-size:14px;}
+  .auth-brand.photo .pt-ic{width:32px;height:32px;}
+  .auth-brand.photo .auth-brand-foot{margin-top:12px;}
+  .auth.fit .auth-panel{padding-top:20px;padding-bottom:20px;}
+  .auth.fit .auth-logo{height:54px;margin-bottom:12px;}
+  .auth.fit .auth-title{font-size:25px;}
+  .auth.fit .auth-sub{margin-bottom:16px;}
+  .auth.fit .auth-tabs{margin-bottom:16px;}
+  .auth.fit .auth-divider{margin:14px 0;}
+  .auth.fit .auth-field{margin-bottom:12px;}
+  .auth.fit .auth-input input{min-height:44px;}
+  .auth.fit .auth-oauth-btn{min-height:44px;}
+  .auth.fit .auth-submit{min-height:46px;}
+  .auth.fit .auth-foot{margin-top:16px;padding-top:14px;gap:6px;}
+}
+@media (min-width: 961px) and (max-height: 700px){
+  .auth-brand.photo .auth-headline p{display:none;}
+  .auth-brand.photo .auth-points{margin-top:12px;}
+  .auth.fit .auth-logo{height:46px;margin-bottom:8px;}
+  .auth.fit .auth-sub{margin-bottom:12px;}
+}
+@media (max-width: 960px){
+  .auth-brand.photo{padding:20px 20px 22px;min-height:236px;justify-content:flex-start;}
+  .auth-photo{height:100%;}
+  .auth-photo::after{background:linear-gradient(180deg,rgba(255,247,247,.1) 0%,rgba(255,247,247,.55) 45%,rgba(255,247,247,.96) 82%),
+    linear-gradient(90deg,rgba(255,255,255,.75) 0%,rgba(255,255,255,0) 70%);}
+  .auth-brand.photo .auth-headline{margin-top:auto;}
+  .auth-brand.photo .auth-headline h1{font-size:25px;}
+  .auth-brand.photo .auth-headline p{display:none;}
+}
+
 /* ---- admin: business unit picker + switcher (SEEK-style) ---- */
 .unit-picker-page{min-height:100vh;min-height:100dvh;background:#fff;}
 .unit-picker-top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 28px;border-bottom:1px solid var(--wct-slate-200);}
@@ -480,6 +557,10 @@ tbody tr:hover td{background:#FBFCFE;}
 .dnote.remind{background:#FFFBEB;border:1px solid #FDE68A;color:#78350F;}
 .dfoot{flex:none;background:#fff;border-top:1px solid var(--wct-slate-200);padding:10px 20px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;}
 .dfoot-actions{display:flex;gap:6px;flex-wrap:wrap;}
+/* onboarding panel: opens over the candidate profile panel */
+.drawer-overlay.ob-layer{z-index:70;background:rgba(2,6,23,.32);}
+.drawer-overlay.ob-layer .drawer{width:min(780px,100%);}
+.ob-signed{font-family:var(--font-head);font-weight:600;color:var(--wct-navy);font-style:italic;}
 .seg{display:inline-flex;border:1px solid var(--wct-slate-300);border-radius:10px;overflow:hidden;}
 .seg button{border:0;background:#fff;font:inherit;font-weight:600;font-size:13px;padding:8px 10px;cursor:pointer;border-right:1px solid var(--wct-slate-200);color:var(--wct-navy);min-height:38px;}
 .seg button:last-child{border-right:0;}
