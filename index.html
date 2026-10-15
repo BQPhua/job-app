@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WCT Group — Employment Application</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=Caveat:wght@600&display=swap" rel="stylesheet">
 <style>
   :root{
     --navy:#101B2D;
@@ -101,6 +101,14 @@
   fieldset.invalid>legend{color:var(--danger);}
   input.invalid,select.invalid,textarea.invalid{border-color:var(--danger) !important;background:#FFF6F5;}
   .upload-box.invalid{border-color:var(--danger);background:#FFF6F5;}
+  td.invalid input,td.invalid select{border-color:var(--danger) !important;background:#FFF6F5;}
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .table-scroll > table{min-width:760px;}
+  .lang-fixed{font-weight:700;padding:10px 12px;background:var(--cream);border:1px solid var(--line);border-radius:7px;white-space:nowrap;}
+  .lang-table td:first-child{width:42%;}
+  .no-exp{display:flex;gap:12px;align-items:flex-start;border:1px solid #BAE6FD;background:#F0F9FF;border-radius:12px;padding:14px 16px;margin:0 0 18px;font-size:15px;line-height:1.5;cursor:pointer;}
+  .no-exp input{width:22px;height:22px;margin-top:1px;accent-color:var(--navy);flex:none;}
+  .decl-text{font-size:13.5px;line-height:1.6;font-weight:700;color:var(--ink);}
   /* Small, inline, non-blocking message under an upload box or field — used
      instead of a native alert() popup so it can't cover or shift other
      controls on the page. */
@@ -129,7 +137,8 @@
   .status-badge{display:inline-block;padding:4px 11px;border-radius:20px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap;}
   .status-badge.submitted{background:#EAF0FB;color:#2E5AAC;}
   .status-badge.under_review{background:#FDF3E3;color:#B9770E;}
-  .status-badge.shortlisted{background:#E7F5EC;color:#1E7A46;}
+  .status-badge.shortlisted{background:#FEF9C3;color:#854D0E;}
+  .status-badge.kiv{background:#FFEDD5;color:#9A3412;}
   .status-badge.interview_scheduled{background:#EEE8FB;color:#6A3FC0;}
   .status-badge.offer_sent{background:#FCEFE0;color:#B9660E;}
   .status-badge.rejected{background:#FBEAE8;color:#C0392B;}
@@ -240,7 +249,7 @@
   <div class="brand">
     <img class="wct-mark-img" alt="WCT Group">
     <div class="brand-text">
-      <div class="name" style="font-size:15px;font-weight:700;color:#fff;letter-spacing:.01em;">WCT Group</div>
+      <div class="name" style="font-size:15px;font-weight:700;color:#fff;letter-spacing:.01em;">WCT <span style="color:#FCA5A5;font-weight:400;">|</span> Building Values</div>
       <div class="sub" style="font-size:12.5px;font-weight:500;color:#B9C4D0;">Employment Application Portal</div>
     </div>
   </div>
@@ -252,7 +261,7 @@
   <div class="card" id="cardRoot">
     <!-- rendered by JS -->
   </div>
-  <div class="footer-note">Your data is processed in accordance with the WCT Group Personal Data Protection Notice. Questions? Contact your HR representative.</div>
+  <div class="footer-note">Your data is processed in accordance with the WCT Group Personal Data Protection Notice. For enquiries, please contact your HR Representative.</div>
 </div>
 
 <div id="loadingOverlay" class="loading-overlay" style="display:none;">
@@ -275,6 +284,7 @@
 <script src="api.js"></script>
 <script src="logo.js"></script>
 <script>document.querySelectorAll('.wct-logo-img').forEach(el=>el.src=WCT_LOGO_DATA_URI);document.querySelectorAll('.wct-mark-img').forEach(el=>el.src=WCT_MARK_DATA_URI);</script>
+<script src="wct-shared.js"></script>
 <script src="consent-text.js"></script>
 <script src="offboarding-employee.js"></script>
 <script src="app.js"></script>
