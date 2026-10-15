@@ -304,7 +304,7 @@ function obToolbarHtml() {
         <label class="ob-sr" for="obBu">Business unit</label>
         <select id="obBu" onchange="obSetFilter('business_unit', this.value)">
           <option value="">All business units</option>
-          ${['E&C', 'Land', 'Mall'].map((b) => `<option value="${obAttr(b)}" ${f.business_unit === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
+          ${WCT.businessUnits().map((u) => `<option value="${obAttr(u.code)}" ${f.business_unit === u.code ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}
         </select>` : ''}
       <label class="ob-sr" for="obDept">Waiting on department</label>
       <select id="obDept" onchange="obSetFilter('clearance_department_id', this.value)">
@@ -440,7 +440,7 @@ function obResultsHtml() {
             ${hr ? `<td onclick="event.stopPropagation()"><input type="checkbox" class="row-check" aria-label="Select ${obAttr(r.employee_name)}" ${OB.selected.has(r.id) ? 'checked' : ''} onchange="obSelectRow('${r.id}', this.checked)"></td>` : ''}
             <td class="ob-ref">${esc(r.ref_no)}</td>
             <td class="ob-emp"><div class="nm">${esc(r.employee_name)}</div><div class="em">${esc(r.employee_email)}</div></td>
-            ${obAllUnits() ? `<td>${esc(r.business_unit)}</td>` : ''}
+            ${obAllUnits() ? `<td>${esc(WCT.buName(r.business_unit))}</td>` : ''}
             <td><div>${esc(r.department || '—')}</div><div class="ob-sub">${esc(r.position || '')}</div></td>
             <td class="ob-date">${obDate(r.effective_last_day)}<br>${obDueHtml(r)}</td>
             <td>${obBadge(r.status)}</td>
@@ -526,7 +526,7 @@ function obTasksHtml() {
             <div class="ico">${OB_ICON.clipboard}</div>
             <div class="main">
               <div class="t">${esc(s.department_name)} — ${esc(s.employee_name)}</div>
-              <div class="s">${esc(s.ref_no)} · ${esc(s.position || '')} · ${esc(s.business_unit)} · Last day ${obDate(s.last_day)} ${obDaysBadge(s.days_left)}</div>
+              <div class="s">${esc(s.ref_no)} · ${esc(s.position || '')} · ${esc(WCT.buName(s.business_unit))} · Last day ${obDate(s.last_day)} ${obDaysBadge(s.days_left)}</div>
             </div>
             <button class="btn btn-primary btn-sm" onclick="obOpenCase('${s.case_id}', 'clearance', ${Number(s.department_id)})">Open checklist</button>
           </div>`).join('')}
@@ -539,7 +539,7 @@ function obTasksHtml() {
             <div class="ico" style="background:#E3F1F6;color:#1D6A85;">${OB_ICON.wallet}</div>
             <div class="main">
               <div class="t">${esc(c.employee_name)}</div>
-              <div class="s">${esc(c.ref_no)} · ${esc(c.position || '')} · ${esc(c.business_unit)} · Acknowledged ${obDateTime(c.acknowledged_at)}</div>
+              <div class="s">${esc(c.ref_no)} · ${esc(c.position || '')} · ${esc(WCT.buName(c.business_unit))} · Acknowledged ${obDateTime(c.acknowledged_at)}</div>
             </div>
             <button class="btn btn-outline btn-sm" onclick="obOpenCase('${c.id}')">Open case</button>
           </div>`).join('')}
@@ -632,7 +632,7 @@ function obRenderDrawer() {
       <div class="ob-drawer-top">
         <div>
           <h2 id="obDrawerTitle">${esc(c.employee_name)}</h2>
-          <div class="meta">${obBadge(c.status)} <span>${esc(c.ref_no)}</span> <span>${esc(c.business_unit)}</span> <span>Last day ${obDate(c.effective_last_day)}</span></div>
+          <div class="meta">${obBadge(c.status)} <span>${esc(c.ref_no)}</span> <span>${esc(WCT.buName(c.business_unit))}</span> <span>Last day ${obDate(c.effective_last_day)}</span></div>
         </div>
         <button class="ob-x" type="button" onclick="obCloseDrawer()" aria-label="Close">${OB_ICON.x}</button>
       </div>
@@ -1029,7 +1029,7 @@ function obOpenInvite(prefill = {}) {
         <div class="ob-field"><label for="obV_business_unit">Business unit <span class="req">*</span></label>
           <select id="obV_business_unit" ${isSuper ? '' : 'disabled'}>
             ${isSuper ? '<option value="">Choose…</option>' : ''}
-            ${['E&C', 'Land', 'Mall'].map((b) => `<option value="${obAttr(b)}" ${bu === b ? 'selected' : ''}>${esc(b)}</option>`).join('')}
+            ${WCT.businessUnits().filter((u) => u.is_active !== false || u.code === bu).map((u) => `<option value="${obAttr(u.code)}" ${bu === u.code ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}
           </select></div>
         <div class="ob-field"><label for="obV_company_name">Company</label>
           <input id="obV_company_name" list="obCompanyList" value="${obAttr(prefill.company_name || '')}" placeholder="Start typing…">
