@@ -49,9 +49,13 @@ def watch(page, who):
     page.on('pageerror', lambda e: errors.append(f'[{who}] pageerror: {e}'))
     page.on('dialog', lambda d: d.accept())  # confirm() prompts
 
+# The first-visit guided tours would cover the page; mark every tour as seen.
+NO_TOURS = "(()=>{const g=Storage.prototype.getItem;Storage.prototype.getItem=function(k){return String(k).startsWith('wct_tour:')?'done':g.call(this,k);};})()"
+
 def admin_page(browser, role):
     email, scope, roles = ROLES[role]
     ctx = browser.new_context(viewport={'width': 1440, 'height': 900})
+    ctx.add_init_script(NO_TOURS)
     page = ctx.new_page()
     watch(page, role)
     page.goto(f'{FE}/admin.html')
@@ -61,6 +65,7 @@ def admin_page(browser, role):
 
 def employee_page(browser, query=''):
     ctx = browser.new_context(viewport={'width': 1280, 'height': 900})
+    ctx.add_init_script(NO_TOURS)
     page = ctx.new_page()
     watch(page, 'employee')
     page.goto(f'{FE}/login.html')
@@ -68,7 +73,7 @@ def employee_page(browser, query=''):
                   [token('candidate', seed['employee_user_id'], 'aina.ali@wct.my'),
                    {'id': seed['employee_user_id'], 'email': 'aina.ali@wct.my', 'name': 'Aina'}])
     page.goto(f'{FE}/index.html{query}')
-    page.wait_for_load_state('networkidle')
+    page.wait_for_load_state('load'); page.wait_for_timeout(1800)  # live updates keep a connection open, so never 'networkidle'
     return ctx, page
 
 def dump(browser):
@@ -91,7 +96,7 @@ with sync_playwright() as p:
 
         # 1. HR invites the employee.
         ctx, hr = admin_page(browser, 'hr')
-        hr.goto(f'{FE}/admin.html'); hr.wait_for_load_state('networkidle')
+        hr.goto(f'{FE}/admin.html'); hr.wait_for_load_state('load'); hr.wait_for_timeout(1800)  # live updates keep a connection open, so never 'networkidle'
         hr.get_by_role('link', name='Offboarding').click() if hr.get_by_role('link', name='Offboarding').count() else hr.click('text=Offboarding')
         hr.wait_for_selector('.ob-kpis')
         shot(hr, 'hr_dashboard')
@@ -102,6 +107,7 @@ with sync_playwright() as p:
         hr.fill('#obV_department', 'Construction')
         hr.fill('#obV_date_joined', '2022-03-01')
         hr.fill('#obV_immediate_superior_name', 'Evelyn Tan')
+        if hr.locator('#obV_immediate_superior_email').count(): hr.fill('#obV_immediate_superior_email', 'evelyn.tan@wct.my')
         shot(hr, 'hr_invite_form')
         hr.click('#obModalOk')
         hr.wait_for_selector('dialog.ob-drawer[open]')
@@ -120,13 +126,13 @@ with sync_playwright() as p:
         expect(emp.locator('#obEmpErr_notice_period_days')).to_be_visible()
         emp.fill('#obEmpNotice', '0')
         emp.fill('#obEmpOfficial', '2026-12-31')
-        emp.fill('#obEmpActual', '2026-12-24')
+        emp.fill('#obEmpActual', '2026-12-31')
         emp.click('text=Better Offer')
         emp.click('text=Career Advancement')
         emp.fill('#obEmpOther', 'Moving closer to family')
         emp.locator('.ob-emp-other').get_by_role('button', name='Add').click()
         emp.fill('#obEmpComments', 'Thank you for a great three years.')
-        emp.check('#obEmpDeclare')
+        emp.check('#obEmpSigAgree')
         shot(emp, 'employee_form_filled')
         emp.click('text=Submit Exit Interview')
         emp.wait_for_selector('text=Department clearance (0/6)')
@@ -138,7 +144,7 @@ with sync_playwright() as p:
 
         # 3. IT PIC signs IT from My tasks.
         ctx, it = admin_page(browser, 'it')
-        it.goto(f'{FE}/admin.html'); it.wait_for_load_state('networkidle')
+        it.goto(f'{FE}/admin.html'); it.wait_for_load_state('load'); it.wait_for_timeout(1800)  # live updates keep a connection open, so never 'networkidle'
         it.wait_for_selector('.ob-task')
         shot(it, 'it_my_tasks')
         it.locator('.ob-task', has_text='Aina Binti Ali').get_by_role('button', name='Open checklist').click()
@@ -155,7 +161,7 @@ with sync_playwright() as p:
 
         # 4. HR signs the remaining five on behalf.
         ctx, hr = admin_page(browser, 'hr')
-        hr.goto(f'{FE}/admin.html'); hr.wait_for_load_state('networkidle')
+        hr.goto(f'{FE}/admin.html'); hr.wait_for_load_state('load'); hr.wait_for_timeout(1800)  # live updates keep a connection open, so never 'networkidle'
         hr.click('text=Offboarding'); hr.wait_for_selector('.ob-row')
         hr.fill('#obSearch', 'aina')
         hr.wait_for_timeout(700)
@@ -187,7 +193,7 @@ with sync_playwright() as p:
         emp.click('text=Review & acknowledge')
         emp.wait_for_selector('text=Your exit clearance')
         shot(emp, 'employee_ack')
-        emp.check('#obEmpAckDeclare')
+        emp.check('#obEmpAckSigAgree')
         emp.click('text=Acknowledge & sign')
         emp.wait_for_selector('text=Final pay being processed', state='attached') if False else emp.wait_for_selector('text=Exit Clearance Form (PDF)')
         shot(emp, 'employee_after_ack')
@@ -197,7 +203,7 @@ with sync_playwright() as p:
 
         # 6. Payroll PIC marks payroll done.
         ctx, pay = admin_page(browser, 'pay')
-        pay.goto(f'{FE}/admin.html'); pay.wait_for_load_state('networkidle')
+        pay.goto(f'{FE}/admin.html'); pay.wait_for_load_state('load'); pay.wait_for_timeout(1800)  # live updates keep a connection open, so never 'networkidle'
         pay.get_by_role('button', name='My tasks').click()
         pay.wait_for_selector('.ob-task')
         shot(pay, 'payroll_tasks')
@@ -213,7 +219,7 @@ with sync_playwright() as p:
 
         # 7. HR dashboard shows it completed; status filter works.
         ctx, hr = admin_page(browser, 'hr')
-        hr.goto(f'{FE}/admin.html'); hr.wait_for_load_state('networkidle')
+        hr.goto(f'{FE}/admin.html'); hr.wait_for_load_state('load'); hr.wait_for_timeout(1800)  # live updates keep a connection open, so never 'networkidle'
         hr.click('text=Offboarding'); hr.wait_for_selector('.ob-row')
         hr.click('.ob-kpi:has-text("Completed this month")')
         hr.wait_for_timeout(700)
