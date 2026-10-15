@@ -2115,54 +2115,6 @@ function fmtMoney(v){
 // a new tab, and let the browser's own "Print > Save as PDF" do the work.
 // No third-party service, no cost.
 // ---------------------------------------------------------------------------
-function pdfPrintStyles(){
-  return `
-  @page{ size:A4; margin:18mm 16mm; }
-  *{box-sizing:border-box;}
-  body{font-family:'Georgia',serif;font-size:11.5px;color:#1a1a1a;margin:0;line-height:1.55;}
-  .doc-page + .doc-page{ page-break-before: always; }
-  .letterhead{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #000;padding-bottom:12px;margin-bottom:20px;}
-  .letterhead .brand-row{display:flex;align-items:center;gap:14px;}
-  .letterhead img.logo{height:52px;}
-  .letterhead h1{font-size:19px;margin:0 0 2px;letter-spacing:.02em;}
-  .letterhead .tagline{font-size:10px;color:#666;font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.07em;}
-  .letterhead .ref-box{text-align:right;font-family:Arial,sans-serif;}
-  .letterhead .ref-box .big{font-size:14px;font-weight:bold;}
-  h2.section{font-family:Arial,sans-serif;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#000;padding:5px 10px;margin:20px 0 10px;}
-  h2.section:first-of-type{margin-top:0;}
-  table{width:100%;border-collapse:collapse;margin-bottom:6px;}
-  th{font-family:Arial,sans-serif;font-size:9px;text-transform:uppercase;color:#666;text-align:left;padding:4px 8px;border-bottom:1px solid #ccc;}
-  td{padding:5px 8px;font-size:10.5px;vertical-align:top;}
-  .kv{display:flex;flex-wrap:wrap;gap:0 24px;}
-  .kv .item{width:calc(50% - 12px);padding:3px 0;font-size:11px;}
-  .kv .item.full{width:100%;}
-  .kv .lbl{font-family:Arial,sans-serif;font-size:8.5px;text-transform:uppercase;color:#888;letter-spacing:.04em;display:block;}
-  .footer{margin-top:24px;border-top:1px solid #ccc;padding-top:8px;font-family:Arial,sans-serif;font-size:8.5px;color:#888;display:flex;justify-content:space-between;}
-  .legal-body p{margin:0 0 10px;font-size:10.8px;text-align:justify;}
-  .confirm-box{border:1px solid #999;padding:12px 14px;margin-top:16px;background:#FAFAF9;}
-  .confirm-box .lbl{font-family:Arial,sans-serif;font-size:8.5px;text-transform:uppercase;color:#888;}
-  table.form-box{width:100%;border-collapse:collapse;margin-bottom:2px;}
-  table.form-box td{border:1px solid #333;padding:5px 8px;font-size:9.5px;vertical-align:top;}
-  table.form-box td.lbl{background:#F0F0EE;font-weight:bold;width:32%;}
-  table.form-box td.section-hdr{background:#333;color:#fff;font-weight:bold;text-transform:uppercase;font-size:9.5px;letter-spacing:.03em;}
-  table.data-table{width:100%;border-collapse:collapse;margin-bottom:8px;}
-  table.data-table th,table.data-table td{border:1px solid #999;padding:4px 7px;font-size:9px;text-align:left;}
-  table.data-table th{background:#eee;}
-  h2.bahagian{font-size:10.5px;background:#000;color:#fff;padding:5px 10px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.03em;}
-  .print-bar{background:#FFF6D6;border-bottom:2px solid #E0C34C;padding:10px 16px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:12.5px;display:flex;justify-content:space-between;align-items:center;}
-  .print-bar button{font-family:Arial,sans-serif;font-weight:bold;font-size:13px;padding:8px 18px;border-radius:6px;border:none;cursor:pointer;background:#000;color:#fff;}
-  @media print{ .print-bar{display:none;} }
-  `;
-}
-function openPrintWindow(html){
-  const win = window.open('', '_blank');
-  if(!win){ alert('Please allow pop-ups for this site to generate the PDF.'); return; }
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => setTimeout(() => win.print(), 400);
-}
-
 function exportMyApplicationPdfById(id){
   const row = myApplications.find(a=>a.id===id);
   if(!row){ alert('Could not find that application.'); return; }
@@ -2185,58 +2137,8 @@ function obFamily(o){
 function exportMyOnboardingPdf(){
   if(!onboardingState || !onboardingAppId){ alert('No onboarding data loaded.'); return; }
   const a = myApplications.find(x=>x.id===onboardingAppId) || {};
-  const o = onboardingState;
-  const f = obFamily(o);
-  const chk = (v) => v ? '☑' : '☐';
-  const childRowsBelow18 = (f.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">None</td></tr>`;
-  const childRows18to23 = (f.children_18_to_23||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">None</td></tr>`;
-  const emergencyRows = (o.emergency_contacts||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.relationship)}</td><td>${fmt(c.contact)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>`;
-
-  const page1 = `
-  <div class="doc-page">
-    <div class="letterhead">
-      <div class="brand-row"><img class="logo" src="${WCT_LOGO_DATA_URI}"><div><h1 style="font-size:16px;">Employee Personal Details Form</h1><div class="tagline">Reference: ${esc(a.reference_no||'')} · ${esc(a.name_nric||'')}</div></div></div>
-    </div>
-    <table class="form-box">
-      <tr><td colspan="2" class="section-hdr">Statutory Details</td></tr>
-      <tr><td class="lbl">EPF No.</td><td>${fmt(o.epf_no)}</td></tr>
-      <tr><td class="lbl">SOCSO No.</td><td>${fmt(o.socso_no)}</td></tr>
-      <tr><td class="lbl">Income Tax No.</td><td>${fmt(o.income_tax_no)}</td></tr>
-      <tr><td class="lbl">Tax Branch</td><td>${fmt(o.tax_branch)}</td></tr>
-      <tr><td class="lbl">Bank Account No.</td><td>${fmt(o.bank_account_no)}</td></tr>
-      <tr><td class="lbl">CIDB Green Card No.</td><td>${fmt(o.cidb_green_card_no)}</td></tr>
-      <tr><td class="lbl">Bank</td><td>${fmt(o.salary_bank)}</td></tr>
-    </table>
-    <table class="form-box">
-      <tr><td colspan="2" class="section-hdr">Spouse Information</td></tr>
-      <tr><td class="lbl">Name</td><td>${fmt(f.spouse_name)}</td></tr>
-      <tr><td class="lbl">NRIC No.</td><td>${fmt(f.spouse_nric)}</td></tr>
-      <tr><td class="lbl">Date of Birth</td><td>${fmtDate(f.spouse_date_of_birth)}</td></tr>
-      <tr><td class="lbl">Working</td><td>${fmt(f.spouse_working)}</td></tr>
-    </table>
-    <h2 class="bahagian">Children Below 18</h2>
-    <table class="data-table"><thead><tr><th>Name</th><th>Gender</th><th>NRIC</th><th>DOB</th><th>Education</th><th>Tax Relief</th></tr></thead><tbody>${childRowsBelow18}</tbody></table>
-    <h2 class="bahagian">Children 18–23</h2>
-    <table class="data-table"><thead><tr><th>Name</th><th>Gender</th><th>NRIC</th><th>DOB</th><th>Education</th><th>Tax Relief</th></tr></thead><tbody>${childRows18to23}</tbody></table>
-    <h2 class="bahagian">Emergency Contacts</h2>
-    <table class="data-table"><thead><tr><th>Name</th><th>Relationship</th><th>Contact</th></tr></thead><tbody>${emergencyRows}</tbody></table>
-    <table class="form-box">
-      <tr><td colspan="2" class="section-hdr">Beneficiary (Next of Kin)</td></tr>
-      <tr><td class="lbl">Name</td><td>${fmt(o.beneficiary_name)}</td></tr>
-      <tr><td class="lbl">Relationship</td><td>${fmt(o.beneficiary_relationship)}</td></tr>
-      <tr><td class="lbl">Contact No.</td><td>${fmt(o.beneficiary_contact)}</td></tr>
-    </table>
-    <div class="footer">
-      <span>Reference ${esc(a.reference_no||'')} — Generated ${fmtDateTime(new Date().toISOString())}</span>
-      <span>WCT Group Employment Onboarding Portal</span>
-    </div>
-  </div>`;
-
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Onboarding — ${esc(a.reference_no||'')} — WCT Group</title><style>${pdfPrintStyles()}</style></head><body>
-  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
-  ${page1}
-  </body></html>`;
-  openPrintWindow(html);
+  const o = { ...onboardingState, ...obFamily(onboardingState) };
+  WCT.openPrint(WCT.onboardingPdfHtml(a, o));
 }
 
 // ---------------------------------------------------------------------------
