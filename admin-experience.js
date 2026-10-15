@@ -29,14 +29,15 @@
     const hr = typeof obIsHr === 'function' ? obIsHr() : false;
     const superAdmin = adminScope === 'ALL';
     const payroll = !!roles.payroll_pic && !superAdmin;
+    const unit = (window.WCT && adminScope) ? WCT.buName(adminScope) : adminScope;
     const clearance = (roles.clearance_department_ids || []).length > 0 && !superAdmin;
     const superior = adminScope === 'SUPERIOR';
     let label = superAdmin ? 'Super Admin (all business units)'
-      : hr ? `HR admin for ${adminScope}`
+      : hr ? `HR admin for ${unit}`
       : adminScope === 'GROUP' ? 'Payroll PIC (all business units)'
       : superior ? 'an immediate superior (Reporting Unit reviewer)'
-      : payroll ? `Payroll PIC (all business units) and ${adminScope} staff`
-      : clearance ? `Clearance PIC for ${adminScope}` : `${adminScope} staff`;
+      : payroll ? `Payroll PIC for ${unit}`
+      : clearance ? `Clearance PIC for ${unit}` : `${unit} staff`;
     return { hr, superAdmin, payroll, clearance, superior, label };
   }
   function firstName() {
@@ -74,8 +75,8 @@
         body: '<p>Invite a leaver, follow their Exit Interview and six-department clearance, then hand over to Payroll.</p><p>The red badge counts tasks waiting on <b>you</b>. A step-by-step offboarding guide opens the first time you go there.</p>' },
       { target: navLink('analytics'), optional: true, placement: 'right', title: 'Analytics',
         body: '<p>Recruitment and offboarding trends in two tabs, ready to export as PDF or CSV.</p>' },
-      r.superAdmin ? { target: navLink('adminAccess'), optional: true, placement: 'right', title: 'Admin Access',
-        body: '<p>Invite colleagues and grant roles. <b>Payroll PIC</b> and <b>Super Admin</b> cover every business unit, so they need no unit.</p>' } : null,
+      r.superAdmin ? { target: navLink('adminAccess'), optional: true, placement: 'right', title: 'Group Admin Access',
+        body: '<p>See who can open each business unit. Add people to a group as <b>HR Admin</b> or <b>Payroll PIC</b>; one person can belong to several groups and switch between them from their profile menu.</p>' } : null,
       { target: '#liveDot', optional: true, placement: 'right', title: 'Live updates',
         body: "<p>When this shows <b>Live</b>, changes made by your teammates appear on your screen straight away. No refreshing needed.</p>" },
       { target: '#wxSearchBtn', optional: true, placement: 'bottom', title: 'Jump anywhere',
