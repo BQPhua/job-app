@@ -23,20 +23,36 @@
   </head>
   <body>
     <a class="sr-only" href="#cardRoot">Skip to sign in</a>
-    <main class="auth">
-      <aside class="auth-brand" aria-label="About WCT Careers">
+    <main class="auth fit">
+      <aside class="auth-brand bright" aria-label="About WCT Careers">
+        <svg class="auth-skyline" viewBox="0 0 600 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+          <g fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M0 250h600"/>
+            <path d="M40 250V170h50v80M60 170v-18h10v18"/>
+            <path d="M110 250V120h60v130M110 140h60M110 160h60M110 180h60M110 200h60M110 220h60"/>
+            <path d="M260 250V60l40-34 40 34v190M260 90h80M260 120h80M260 150h80M260 180h80M260 210h80M300 26V8"/>
+            <path d="M360 250V140h70v110M375 140v-20h40v20"/>
+            <path d="M450 250V100h46v150M450 125h46M450 150h46M450 175h46M450 200h46M450 225h46"/>
+            <path d="M515 250V180h60v70"/>
+          </g>
+        </svg>
         <div class="auth-road" aria-hidden="true"><div class="surface"><div class="edge l"></div><div class="edge r"></div><div class="lane"></div></div></div>
-        <div class="auth-brand-top"><span class="auth-chip"><i></i>WCT Group Careers</span></div>
+        <div class="auth-brand-top"><span class="auth-chip"><i></i>WCT Careers</span></div>
         <div class="auth-headline">
-          <h1>Careers at <em>WCT.</em></h1>
+          <h1 id="taglineText" aria-live="polite">WCT: Building a Better Tomorrow, <em>Together</em></h1>
+          <div class="tagline-ctrl">
+            <div class="tagline-dots" role="group" aria-label="Choose a tagline" id="taglineDots"></div>
+            <button type="button" class="tagline-pause" id="taglinePause" aria-label="Pause tagline rotation" aria-pressed="false" onclick="toggleTaglines()">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button>
+          </div>
           <p>Our growth is driven by our people. Join a team that empowers you to learn, grow and thrive in a safe, inclusive and dynamic workplace.</p>
           <ul class="auth-points">
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><span><b>Nearly 2,000 people.</b> Across engineering &amp; construction, property development, hotels and malls.</span></li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg><span><b>Learn and grow.</b> Structured training keeps your skills ahead of the industry.</span></li>
-            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg><span><b>Safe and well.</b> A strong health and safety culture protects every one of us.</span></li>
+            <li tabindex="0"><span class="pt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span><b><span class="pt-num" data-count-key="people">2000</span>+ people</b> across engineering &amp; construction, property development, malls, hotels, aviation and F&amp;B.</span></li>
+            <li tabindex="0"><span class="pt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg></span><span><b>Learn and grow.</b> Structured training keeps your skills ahead of the industry.</span></li>
+            <li tabindex="0"><span class="pt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg></span><span><b>Safe and well.</b> A strong health and safety culture protects every one of us.</span></li>
           </ul>
         </div>
-        <div class="auth-brand-foot"><span>WCT Group · Building Values</span><span>Employment Application Portal</span></div>
+        <div class="auth-brand-foot"><span>WCT <span aria-hidden="true">|</span> Building Values</span><span>Employment Application Portal</span></div>
       </aside>
 
       <section class="auth-panel">
@@ -72,6 +88,51 @@
       const ICON_EYE_OPEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
       const ICON_EYE_CLOSED = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+      // ---------- rotating WCT recruitment taglines (stakeholder feedback) ----------
+      const TAGLINES = [
+        ['WCT: Building a Better Tomorrow, ', 'Together'],
+        ['WCT: Where Your Future ', 'Takes Shape'],
+        ['Grow with WCT, ', 'Build a Better Tomorrow'],
+        ['Big Dreams Start ', 'with WCT'],
+        ['Build Beyond Today ', 'with WCT'],
+      ];
+      let tagIdx = 0, tagTimer = null, tagPaused = false;
+      const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      function showTagline(i) {
+        tagIdx = (i + TAGLINES.length) % TAGLINES.length;
+        const el = document.getElementById('taglineText');
+        if (!el) return;
+        el.classList.remove('in'); void el.offsetWidth;
+        el.innerHTML = `${esc(TAGLINES[tagIdx][0])}<em>${esc(TAGLINES[tagIdx][1])}</em>`;
+        el.classList.add('in');
+        document.querySelectorAll('#taglineDots button').forEach((b, j) => b.setAttribute('aria-current', j === tagIdx ? 'true' : 'false'));
+      }
+      function scheduleTaglines() {
+        clearInterval(tagTimer);
+        if (!tagPaused && !reduceMotion) tagTimer = setInterval(() => showTagline(tagIdx + 1), 5000);
+      }
+      function toggleTaglines() {
+        tagPaused = !tagPaused;
+        const b = document.getElementById('taglinePause');
+        b.setAttribute('aria-pressed', String(tagPaused));
+        b.setAttribute('aria-label', tagPaused ? 'Play tagline rotation' : 'Pause tagline rotation');
+        b.innerHTML = tagPaused ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7Z"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>';
+        scheduleTaglines();
+      }
+      (function initTaglines() {
+        const dots = document.getElementById('taglineDots');
+        if (!dots) return;
+        dots.innerHTML = TAGLINES.map((t, i) => `<button type="button" aria-label="Tagline ${i + 1}: ${esc(t.join(''))}" onclick="showTagline(${i});scheduleTaglines();"></button>`).join('');
+        const brand = document.querySelector('.auth-brand');
+        brand.addEventListener('mouseenter', () => clearInterval(tagTimer));
+        brand.addEventListener('mouseleave', scheduleTaglines);
+        if (reduceMotion) { tagPaused = true; document.getElementById('taglinePause').hidden = true; }
+        showTagline(0);
+        scheduleTaglines();
+        if (window.WX && WX.countUp) WX.countUp(document, '.pt-num');
+      })();
+
 
       function render() {
         root.innerHTML = tab === 'signin' ? signinView() : tab === 'register' ? registerView() : forgotView();
