@@ -30,6 +30,9 @@ def token(*args):
 HR_TOKEN = token('admin', 'hr.land@wct.my', 'Land', '{"bu_admin":true,"payroll_pic":false,"clearance_department_ids":[]}')
 CAND_TOKEN = token('candidate', seed['employee_user_id'], 'aina.ali@wct.my')
 
+# First-visit guided tours would cover the pages; mark every tour as seen.
+NO_TOURS = "(()=>{const g=Storage.prototype.getItem;Storage.prototype.getItem=function(k){return String(k).startsWith('wct_tour:')?'done':g.call(this,k);};})()"
+
 violations = []
 def v(page_name, width, rule, detail):
     violations.append({'page': page_name, 'width': width, 'rule': rule, 'detail': detail})
@@ -80,30 +83,30 @@ def watch(page, who):
 with sync_playwright() as p:
     b = p.chromium.launch(headless=True)
     for w in WIDTHS:
-        ctx = b.new_context(viewport={'width': w, 'height': 900})
+        ctx = b.new_context(viewport={'width': w, 'height': 900}); ctx.add_init_script(NO_TOURS)
         pg = ctx.new_page(); watch(pg, f'cand{w}')
         # Candidate login page (signed out)
-        pg.goto(f'{FE}/login.html?bu=Land'); pg.wait_for_load_state('networkidle')
+        pg.goto(f'{FE}/login.html?bu=Land'); pg.wait_for_load_state('load'); pg.wait_for_timeout(1500)
         audit(pg, 'cand_login', w)
         # Candidate home + first wizard step
         pg.evaluate("([t,u])=>{localStorage.setItem('wct_token',t);localStorage.setItem('wct_user',JSON.stringify(u));}",
                     [CAND_TOKEN, {'id': seed['employee_user_id'], 'email': 'aina.ali@wct.my', 'name': 'Aina'}])
-        pg.goto(f'{FE}/index.html?bu=Land'); pg.wait_for_load_state('networkidle')
+        pg.goto(f'{FE}/index.html?bu=Land'); pg.wait_for_load_state('load'); pg.wait_for_timeout(1500)
         audit(pg, 'cand_home', w)
-        pg.click('text=Begin Application'); pg.wait_for_load_state('networkidle'); pg.wait_for_timeout(300)
+        pg.click('text=Begin Application'); pg.wait_for_load_state('load'); pg.wait_for_timeout(1500); pg.wait_for_timeout(300)
         audit(pg, 'cand_personal', w, expect_stepper=True)
         ctx.close()
 
-        ctx = b.new_context(viewport={'width': w, 'height': 900})
+        ctx = b.new_context(viewport={'width': w, 'height': 900}); ctx.add_init_script(NO_TOURS)
         pg = ctx.new_page(); watch(pg, f'admin{w}')
-        pg.goto(f'{FE}/admin.html'); pg.wait_for_load_state('networkidle')
+        pg.goto(f'{FE}/admin.html'); pg.wait_for_load_state('load'); pg.wait_for_timeout(1500)
         audit(pg, 'admin_login', w)
         pg.evaluate("([t,s])=>{localStorage.setItem('wct_admin_token',t);sessionStorage.setItem('wct_admin_scope',s);}", [HR_TOKEN, 'Land'])
-        pg.goto(f'{FE}/admin.html'); pg.wait_for_load_state('networkidle'); pg.wait_for_timeout(300)
+        pg.goto(f'{FE}/admin.html'); pg.wait_for_load_state('load'); pg.wait_for_timeout(1500); pg.wait_for_timeout(300)
         audit(pg, 'admin_dashboard', w)
         pg.locator('button[title="View details"], button[aria-label="View details"]').first.click(); pg.wait_for_timeout(500)
         audit(pg, 'admin_detail', w)
-        pg.goto(f'{FE}/admin.html'); pg.wait_for_load_state('networkidle')
+        pg.goto(f'{FE}/admin.html'); pg.wait_for_load_state('load'); pg.wait_for_timeout(1500)
         pg.evaluate("setView('offboarding')"); pg.wait_for_selector('.ob-kpis'); pg.wait_for_timeout(300)
         audit(pg, 'admin_offboarding', w)
         ctx.close()
