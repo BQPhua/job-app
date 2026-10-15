@@ -1516,7 +1516,7 @@ async function quickUpdateStatus(id, status){
   const label = STATUS_LABELS[status] || status;
   const warnMsg = status === 'blacklisted'
     ? 'Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email.'
-    : `Change this application's status to "${label}"? The candidate will be notified by email.`;
+    : `Change this application's status to "${label}"?${status === 'hired' ? ' The candidate will be emailed a link to complete onboarding.' : ''}`;
   if(!confirm(warnMsg)){ openStatusPanelId = null; loadApplications(); return; }
   openStatusPanelId = null;
   try{
@@ -3124,7 +3124,7 @@ async function updateStatus(status){
   const label = STATUS_LABELS[status] || status;
   const warnMsg = status === 'blacklisted'
     ? 'Blacklist this candidate? They will be signed out immediately and blocked from logging in or applying again using this email. This can be reversed later by changing their status.'
-    : `Change this application's status to "${label}"? The candidate will be notified by email.`;
+    : `Change this application's status to "${label}"?${status === 'hired' ? ' The candidate will be emailed a link to complete onboarding.' : ''}`;
   if(!confirm(warnMsg)) return;
   try{
     const { error } = await apiTry(() => api.post(`/admin/applications/${selectedApp.id}/status`, {status}, {admin: true}));
