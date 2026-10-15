@@ -2,7 +2,7 @@
 // WCT Group Job Application — client logic
 // ============================================================================
 
-const STEPS = ['start','personal','language','education','experience','questions',
+const STEPS = ['start','personal','language','education','experience','questions','family',
                'referees','attachments','review','consent-lang','pdpa','final','done'];
 
 let state = {
@@ -13,21 +13,26 @@ let state = {
   business_unit: '',
   position_applying: '',
   name_nric: '', alias: '',
-  permanent_address: '', permanent_postcode: '',
-  correspondence_address: '', correspondence_postcode: '',
+  permanent_address: '', permanent_address2: '', permanent_postcode: '', permanent_city: '', permanent_state: '',
+  correspondence_address: '', correspondence_address2: '', correspondence_postcode: '', correspondence_city: '', correspondence_state: '',
   tel_residence: '', tel_office: '', mobile_phone: '', email: '',
   place_of_birth: '', nric_new: '', passport_number: '', citizen: '', marital_status: '',
   date_of_birth: '', age: '', bumiputra: '', race: '',
   epf_no: '', income_tax_no: '', tax_branch: '', socso_no: '', bank_account_no: '',
   cidb_green_card_no: '', cidb_branch: '',
+  // Bahasa Malaysia and English are fixed rows (compulsory); every other
+  // language or dialect (Mandarin included) is an "other" row the candidate
+  // can add or remove. See normalizeLanguages().
   language_ability: [
     {language:'Bahasa Malaysia', spoken:'', written:''},
     {language:'English', spoken:'', written:''},
-    {language:'Mandarin', spoken:'', written:''},
-    {language:'Others (please state)', spoken:'', written:''}
+    {language:'', spoken:'', written:''}
   ],
-  education: [ {type:'School', name:'', from_year:'', to_year:'', qualification:''} ],
+  education: [ {type:'School', name:'', from_year:'', to_year:'', qualification:'', course_name:''} ],
   working_experience: [ {employer:'', from:'', to:'', is_current:false, position:'', remuneration:'', responsibilities:''} ],
+  no_working_experience: false,
+  spouse_name:'', spouse_nric:'', spouse_date_of_birth:'', spouse_working:'',
+  children_below_18: [], children_18_to_23: [],
   resignation_notice_required:'', notice_period:'', date_available_to_start:'',
   expected_basic_salary:'',
   relatives_in_company:'', relatives_name:'', relatives_relationship:'',
@@ -36,8 +41,8 @@ let state = {
   willing_based_outside_klang_valley:'',
   physical_defects:'', physical_defects_specify:'',
   arrested_convicted:'', arrested_convicted_specify:'',
-  referee1:{name:'',designation:'',relationship:'',contact:''},
-  referee2:{name:'',designation:'',relationship:'',contact:''},
+  referee1:{name:'',designation:'',company:'',relationship:'',contact:''},
+  referee2:{name:'',designation:'',company:'',relationship:'',contact:''},
   declaration_lawsuit:'', declaration_lawsuit_specify:'',
   declaration_other_matters:'', declaration_other_matters_specify:'',
   profile_picture_url:'', attachments:[],
@@ -80,12 +85,12 @@ function numericOnly(v){ return (v == null ? '' : String(v)).replace(/[^0-9]/g, 
 // moment the person changes anything inside that field, on any step, without
 // needing per-field wiring.
 document.addEventListener('input', (e) => {
-  const f = e.target.closest && e.target.closest('.field.invalid, fieldset.invalid, .upload-box.invalid');
+  const f = e.target.closest && e.target.closest('.field.invalid, fieldset.invalid, .upload-box.invalid, td.invalid, .doc-sec.invalid, .no-exp.invalid');
   if(f) f.classList.remove('invalid');
   if(e.target.classList && e.target.classList.contains('invalid')) e.target.classList.remove('invalid');
 });
 document.addEventListener('change', (e) => {
-  const f = e.target.closest && e.target.closest('.field.invalid, fieldset.invalid, .upload-box.invalid');
+  const f = e.target.closest && e.target.closest('.field.invalid, fieldset.invalid, .upload-box.invalid, td.invalid, .doc-sec.invalid, .no-exp.invalid');
   if(f) f.classList.remove('invalid');
   if(e.target.classList && e.target.classList.contains('invalid')) e.target.classList.remove('invalid');
 });
@@ -112,6 +117,19 @@ function currentPatch(){
   const p = {...state};
   delete p.step; delete p.id; delete p.reference_no; delete p.status;
   delete p.jts_agreed; delete p.pdpa_agreed;
+  // "Same as permanent address": store the permanent address as the
+  // correspondence one, so HR always sees a full address.
+  if(corrSameAsPermanent){
+    // null (not '') so a blank permanent field also clears an old
+    // correspondence value instead of being skipped by the '' strip below.
+    ['address','address2','postcode','city','state'].forEach(k => { p[`correspondence_${k}`] = state[`permanent_${k}`] || null; });
+  }
+  // Blank "other language" rows are just empty slots on screen.
+  p.language_ability = state.language_ability.filter((r, i) => i < 2 || (r.language||'').trim() || r.spoken || r.written);
+  // Optional family tables: drop rows nobody filled in.
+  p.children_below_18 = state.children_below_18.filter(c => (c.name||'').trim() || (c.nric||'').trim());
+  p.children_18_to_23 = state.children_18_to_23.filter(c => (c.name||'').trim() || (c.nric||'').trim());
+  if(state.no_working_experience) p.working_experience = [];
   // Strip empty-string values so the database's coalesce() correctly keeps
   // the existing column value instead of overwriting it with ''. Postgres's
   // coalesce() only falls back on NULL, not on empty string — so a blank
@@ -154,8 +172,8 @@ async function saveDraft(){
 // Short names for the progress caption ("Step 3 of 11 · Education").
 const STEP_LABELS = {
   personal:'Personal Particulars', language:'Language Ability', education:'Education',
-  experience:'Working Experience', questions:'Employment Questions', referees:'Referees & Declarations',
-  attachments:'Attachments & Photo', review:'Review', 'consent-lang':'Consent Language', pdpa:'PDPA Consent', final:'Submit'
+  experience:'Working Experience', questions:'Employment Questions', family:'Family Details', referees:'Referees & Declarations',
+  attachments:'Photo & Documents', review:'Review', 'consent-lang':'Consent Language', pdpa:'PDPA Consent', final:'Submit'
 };
 
 // SVG icons (replacing emoji so they render the same everywhere and can be
@@ -212,6 +230,7 @@ function render(){
     case 'education': root.innerHTML = tplEducation(); break;
     case 'experience': root.innerHTML = tplExperience(); break;
     case 'questions': root.innerHTML = tplQuestions(); break;
+    case 'family': root.innerHTML = tplFamily(); break;
     case 'referees': root.innerHTML = tplReferees(); break;
     case 'attachments': root.innerHTML = tplAttachments(); break;
     case 'review': root.innerHTML = tplReview(); break;
@@ -234,8 +253,9 @@ let linkBusinessUnit = null; // which business unit this candidate is applying
 // under, derived from the URL (?bu=Mall etc.) rather than a dropdown —
 // see boot() below.
 
+const CANDIDATE_STATUS_LABELS = { submitted:'Submitted', kiv:'KIV', rejected:'Not successful', shortlisted:'Shortlisted', hired:'Hired' };
 function statusBadgeHtml(status){
-  const label = (status||'').replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
+  const label = CANDIDATE_STATUS_LABELS[status] || (status||'').replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
   return `<span class="status-badge ${esc(status)}">${esc(label)}</span>`;
 }
 
@@ -246,7 +266,7 @@ function tplStart(){
   return `
     <div class="step-eyebrow">Welcome${currentUser?.name ? ', '+esc(currentUser.name) : ''}</div>
     <h2>Employment Application</h2>
-    <p class="step-desc">Apply once — your application will be routed to the right hiring team across E&amp;C, Land, and Mall.</p>
+    <p class="step-desc">Apply once — your application goes straight to the right hiring team in WCT Group.</p>
 
     ${obEmpHomeCardHtml()}
 
@@ -257,7 +277,7 @@ function tplStart(){
           <div class="draft-banner-icon">${UI_ICON.draft}</div>
           <div class="draft-banner-body">
             <div class="draft-banner-title">${esc(a.reference_no)}</div>
-            <div class="draft-banner-meta">${esc(a.business_unit)} · Draft in progress</div>
+            <div class="draft-banner-meta">${esc(WCT.buName(a.business_unit))} · Draft in progress</div>
           </div>
           <div class="draft-banner-actions" style="display:flex;gap:8px;">
             <button class="btn btn-primary btn-sm" onclick="continueDraft('${a.id}')">Continue →</button>
@@ -275,7 +295,7 @@ function tplStart(){
           ${others.map(a=>`
             <tr>
               <td><strong><a href="#" onclick="viewMyApplication('${a.id}'); return false;" style="color:var(--navy-2);text-decoration:underline;">${esc(a.reference_no)}</a></strong></td>
-              <td>${esc(a.business_unit)}</td>
+              <td>${esc(WCT.buName(a.business_unit))}</td>
               <td>${esc(a.position_applying)||'—'}</td>
               <td>${statusBadgeHtml(a.status)}</td>
               <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
@@ -291,10 +311,10 @@ function tplStart(){
       </table>
     ` : ''}
 
-    ${(!VALID_BUSINESS_UNITS.includes(linkBusinessUnit) && obEmpHasCases()) ? '' : `
+    ${(!linkBusinessUnit && obEmpHasCases()) ? '' : `
     <div class="section-title" style="margin-top:26px;">Start a New Application</div>
-    ${VALID_BUSINESS_UNITS.includes(linkBusinessUnit) ? `
-      <p class="step-desc" style="margin-top:0;">You are applying for a position with <strong>${esc(linkBusinessUnit)}</strong>.</p>
+    ${linkBusinessUnit ? `
+      <p class="step-desc" style="margin-top:0;">You are applying for a position with <strong>${esc(WCT.buName(linkBusinessUnit))}</strong>.</p>
       ${others.length ? `
         <div class="error-banner" style="background:#FDF3E3;border-color:#E2D3AC;color:#9C7A0E;">
           You've previously submitted ${others.length===1?'an application':others.length+' applications'} (see "Your Previous Applications" above). Submitting a new one may create a duplicate — please check the table first if you're unsure whether you've already applied.
@@ -303,13 +323,11 @@ function tplStart(){
       <div id="startErr"></div>
       <div class="btn-row"><div></div><div class="right"><button class="btn btn-primary" id="beginAppBtn" onclick="startNewApplication()">Begin Application →</button></div></div>
     ` : `
-      <div class="error-banner">This application link doesn't specify a valid business unit. Please use the link provided by HR for the specific business unit you're applying to (E&amp;C, Land, or Mall).</div>
+      <div class="error-banner">This application link doesn't specify a valid business unit. Please use the link provided by HR for the business unit you're applying to (${esc(WCT.businessUnits().map(u=>u.name).join(', '))}).</div>
     `}
     `}
   `;
 }
-
-const VALID_BUSINESS_UNITS = ['E&C', 'Land', 'Mall'];
 
 async function deleteDraft(id, referenceNo){
   if(!confirm(`Permanently delete the draft application "${referenceNo}"? This cannot be undone.`)) return;
@@ -328,6 +346,7 @@ async function deleteDraft(id, referenceNo){
 async function continueDraft(id){
   const row = myApplications.find(a=>a.id===id);
   if(!row) return;
+  pdpaDraft = { name: '', nric: '', agreed: false }; // never carry a signature over from another application
   loadStateFromRow(row);
   goStep('personal');
 }
@@ -348,93 +367,12 @@ function tplMyApplicationDetail(){
       <button class="btn btn-ghost" onclick="goStep('start')">← Back to My Applications</button>
     `;
   }
-  const refs = [a.referee1, a.referee2].filter(r => r && r.name);
-  // Full field list — kept in sync with tplReview() (the pre-submission
-  // review step) so a candidate revisiting a submitted application from "My
-  // Applications" sees everything they filled in, not just a subset.
   return `
     <div class="step-eyebrow">${esc(a.reference_no)}</div>
     <h2>Application Details</h2>
-    <p class="step-desc">${esc(a.business_unit)} · ${statusBadgeHtml(a.status)} · Submitted ${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</p>
+    <p class="step-desc">${esc(WCT.buName(a.business_unit))} · ${statusBadgeHtml(a.status)} · Submitted ${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString('en-GB') : '—'}</p>
     ${window.WXC ? WXC.trackerHtml(a.status) : ''}
-
-    <div class="review-block">
-      <h4>Personal Particulars</h4>
-      ${rrow('Position Applying For', a.position_applying)}
-      ${rrow('Name (per NRIC)', a.name_nric)}
-      ${rrow('Alias', a.alias)}
-      ${rrow('Permanent Address', (a.permanent_address||'')+' '+(a.permanent_postcode||''))}
-      ${rrow('Correspondence Address', (a.correspondence_address||'')+' '+(a.correspondence_postcode||''))}
-      ${rrow('Mobile', a.mobile_phone)}
-      ${rrow('Email', a.email)}
-      ${rrow('NRIC', a.nric_new)}
-      ${rrow('Date of Birth / Age', (a.date_of_birth||'—')+' / '+(a.age||'—'))}
-      ${rrow('Marital Status', a.marital_status)}
-      ${rrow('Race / Bumiputra', (a.race||'—')+' / '+(a.bumiputra||'—'))}
-    </div>
-
-    <div class="review-block">
-      <h4>Language Ability</h4>
-      ${(a.language_ability||[]).map(r=>rrow(r.language, `Spoken: ${r.spoken||'—'}, Written: ${r.written||'—'}`)).join('') || rrow('Language Ability','None provided')}
-    </div>
-
-    <div class="review-block">
-      <h4>Education</h4>
-      ${(a.education||[]).map(r=>rrow(r.type, `${r.name} (${r.from_year}–${r.to_year}) — ${r.qualification}${r.course_name?' — '+r.course_name:''}`)).join('') || rrow('Education','None provided')}
-    </div>
-
-    <div class="review-block">
-      <h4>Working Experience</h4>
-      ${(a.working_experience||[]).map(r=>rrow(r.position||'Position', `${r.employer} (${r.from}–${r.is_current?'Present':r.to})`)).join('') || rrow('Experience','None provided')}
-    </div>
-
-    <div class="review-block">
-      <h4>Employment Questions</h4>
-      ${rrow('Resignation Notice Required', a.resignation_notice_required)}
-      ${rrow('Date Available to Start', a.date_available_to_start)}
-      ${rrow('Expected Basic Salary', fmtMoney(a.expected_basic_salary))}
-      ${rrow('Relatives in Company', a.relatives_in_company==='Yes' ? `Yes — ${a.relatives_name} (${a.relatives_relationship})` : a.relatives_in_company)}
-      ${rrow('Referred by Anyone', a.referral_person==='Yes' ? `Yes — ${a.referral_name}, ${a.referral_department}` : a.referral_person)}
-      ${rrow('Own Transport (Car / Motorcycle)', `${a.own_transport_motorcar||'—'} / ${a.own_transport_motorcycle||'—'}`)}
-      ${rrow('Willing Outside Klang Valley', a.willing_based_outside_klang_valley)}
-      ${rrow('Physical Defects', a.physical_defects)}
-      ${rrow('Arrested / Convicted', a.arrested_convicted)}
-    </div>
-
-    ${refs.length ? `
-    <div class="review-block">
-      <h4>Referees</h4>
-      ${refs.map((r,i)=>rrow(`Referee ${i+1}`, `${r.name} — ${r.designation} · ${r.relationship} · ${r.contact}`)).join('')}
-    </div>` : ''}
-
-    <div class="review-block">
-      <h4>Declarations</h4>
-      ${rrow('(B) Lawsuits/Proceedings', a.declaration_lawsuit==='Yes' ? `Yes — ${a.declaration_lawsuit_specify}` : a.declaration_lawsuit)}
-      ${rrow('(C) Other Matters', a.declaration_other_matters==='Yes' ? `Yes — ${a.declaration_other_matters_specify}` : a.declaration_other_matters)}
-    </div>
-
-    <div class="review-block">
-      <h4>Attachments</h4>
-      <div class="file-thumb-row">
-        <div class="k" style="width:44%;">Passport Size Photo</div>
-        <div class="v" style="width:56%;">
-          ${a.profile_picture_url
-            ? `<img src="${a.profile_picture_url}" class="profile-thumb-lg">`
-            : `<span style="color:var(--ink-soft);">Not uploaded</span>`}
-        </div>
-      </div>
-      ${(a.attachments||[]).length ? a.attachments.map(f=>{
-        const isImg = f.type && f.type.startsWith('image/');
-        return `<div class="file-thumb-row">
-          <div class="k" style="width:44%;"></div>
-          <div class="v" style="width:56%;display:flex;align-items:center;gap:10px;">
-            <span class="file-thumb">${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : UI_ICON.file}</span>
-            <a href="${f.url}" target="_blank">${esc(f.name)}</a>
-          </div>
-        </div>`;
-      }).join('') : rrow('Documents', 'None attached')}
-    </div>
-
+    ${applicationSummaryHtml(a, false)}
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="goStep('start')">← Back to My Applications</button>
       <div class="right"><button class="btn btn-primary" onclick="exportMyApplicationPdfById('${a.id}')">${UI_ICON.pdf} Download as PDF</button></div>
@@ -451,11 +389,12 @@ async function loadMyApplications(){
 }
 
 async function startNewApplication(){
-  if(!VALID_BUSINESS_UNITS.includes(linkBusinessUnit)){
+  if(!linkBusinessUnit){
     document.getElementById('startErr').innerHTML = `<div class="error-banner">This application link doesn't specify a valid business unit.</div>`;
     return;
   }
   showLoading('Creating your application...');
+  pdpaDraft = { name: '', nric: '', agreed: false };
   try{
     const { data, error } = await apiTry(() => api.post('/applications', { business_unit: linkBusinessUnit }));
     if(error) throw error;
@@ -481,10 +420,14 @@ function loadStateFromRow(row){
       if(k==='language_ability' && (!row[k] || row[k].length===0)) return;
       if(k==='education' && (!row[k] || row[k].length===0)) return;
       if(k==='working_experience' && (!row[k] || row[k].length===0)) return;
-      if(k==='attachments' && !row[k]) return;
+      if(['attachments','children_below_18','children_18_to_23'].includes(k) && !row[k]) return;
       state[k] = row[k] ?? state[k];
     }
   });
+  state.language_ability = normalizeLanguages(state.language_ability);
+  ['referee1','referee2'].forEach(k => { state[k] = {name:'',designation:'',company:'',relationship:'',contact:'', ...(state[k]||{})}; });
+  state.no_working_experience = !!state.no_working_experience;
+  corrSameAsPermanent = WCT.sameAddress(state);
   // If the saved SOCSO number differs from the NRIC, treat it as intentionally
   // edited so we don't silently overwrite it if they revisit the NRIC field.
   socsoManuallyEdited = !!(state.socso_no && state.socso_no !== state.nric_new);
@@ -506,22 +449,15 @@ function tplPersonal(){
       <div class="field"><label>Alias <span class="opt-tag">(optional)</span></label><input type="text" value="${esc(state.alias)}" oninput="updateField('alias', this.value)"></div>
     </div>
 
-    <div class="field" id="field-permanent_address"><label>Permanent Address <span class="req-star">*</span></label><textarea placeholder="e.g. Address Line 1: 12 Jalan Damai&#10;Address Line 2: Taman Sentosa&#10;Address Line 3: Petaling Jaya" oninput="updateField('permanent_address', this.value)">${esc(state.permanent_address)}</textarea></div>
-    <div class="grid">
-      <div class="field" id="field-permanent_postcode"><label>Postcode <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 50450" maxlength="5" value="${esc(state.permanent_postcode)}" oninput="this.value=numericOnly(this.value);updateField('permanent_postcode', this.value)"></div>
-      <div></div>
-    </div>
+    ${addressFieldsHtml('permanent', 'Permanent Address')}
 
-    <div class="field"><label>Correspondence Address <span class="opt-tag">(if different from permanent address)</span></label><textarea id="correspondenceAddressInput" oninput="handleCorrespondenceAddressChange(this.value)">${esc(state.correspondence_address)}</textarea></div>
-    <div class="grid">
-      <div class="field"><label>Postcode <span class="opt-tag">(optional)</span></label><input type="text" inputmode="numeric" id="correspondencePostcodeInput" maxlength="5" value="${esc(state.correspondence_postcode)}" oninput="this.value=numericOnly(this.value);updateField('correspondence_postcode', this.value)"></div>
-      <div></div>
-    </div>
+    <label class="radio-opt" style="margin:4px 0 14px;"><input type="checkbox" ${corrSameAsPermanent?'checked':''} onchange="toggleCorrSame(this.checked)"> My correspondence address is the same as my permanent address</label>
+    ${corrSameAsPermanent ? '' : addressFieldsHtml('correspondence', 'Correspondence Address')}
 
     <div class="grid g3">
       <div class="field"><label>Tel — Residence <span class="opt-tag">(optional)</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0312345678" value="${esc(state.tel_residence)}" oninput="this.value=numericOnly(this.value);updateField('tel_residence', this.value)"></div>
       <div class="field"><label>Tel — Office <span class="opt-tag">(optional)</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0387654321" value="${esc(state.tel_office)}" oninput="this.value=numericOnly(this.value);updateField('tel_office', this.value)"></div>
-      <div class="field" id="field-mobile_phone"><label>Mobile Phone <span class="req-star">*</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" value="${esc(state.mobile_phone)}" oninput="this.value=numericOnly(this.value);updateField('mobile_phone', this.value)"></div>
+      <div class="field" id="field-mobile_phone"><label>Mobile Phone <span class="req-star">*</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" maxlength="11" value="${esc(state.mobile_phone)}" oninput="this.value=numericOnly(this.value);updateField('mobile_phone', this.value)"><div class="hint">10–11 digits, no dashes or spaces</div></div>
     </div>
 
     <div class="grid">
@@ -596,9 +532,10 @@ function validatePersonalStep(){
   const errs = [];
   if(!state.position_applying.trim()) errs.push({field:'field-position_applying', message:'Please enter the position you are applying for.'});
   if(!state.name_nric.trim()) errs.push({field:'field-name_nric', message:'Please enter your name (per NRIC/Passport).'});
-  if(!state.permanent_address.trim()) errs.push({field:'field-permanent_address', message:'Please enter your permanent address.'});
-  if(!state.permanent_postcode.trim()) errs.push({field:'field-permanent_postcode', message:'Please enter your permanent address postcode.'});
+  addressErrors('permanent', 'permanent address', errs);
+  if(!corrSameAsPermanent) addressErrors('correspondence', 'correspondence address', errs);
   if(!state.mobile_phone.trim()) errs.push({field:'field-mobile_phone', message:'Please enter your mobile phone number.'});
+  else if(!WCT.isValidPhone(state.mobile_phone)) errs.push({field:'field-mobile_phone', message:'Mobile phone number must be 10–11 digits.'});
   if(!state.email.trim()) errs.push({field:'field-email', message:'Please enter your email address.'});
   if(!state.place_of_birth.trim()) errs.push({field:'field-place_of_birth', message:'Please enter your place of birth.'});
   if(!state.citizen) errs.push({field:'field-citizen', message:'Please select your citizenship.'});
@@ -616,6 +553,42 @@ function validatePersonalStep(){
   return errs;
 }
 
+// Address: Line 1 | Line 2, then Postcode | City | State (stakeholder
+// feedback 2026-10-14). Line 1 keeps the original *_address column, so old
+// one-box addresses still show up in Line 1.
+let corrSameAsPermanent = true;
+function addressFieldsHtml(kind, title){
+  const v = (k) => esc(state[`${kind}_${k}`]);
+  const up = (k) => `updateField('${kind}_${k}', this.value)`;
+  return `
+    <div class="section-title" style="margin-top:6px;">${title} <span class="req-star">*</span></div>
+    <div class="grid">
+      <div class="field" id="field-${kind}_address"><label for="${kind}Addr1">Address line 1 <span class="req-star">*</span></label><input type="text" id="${kind}Addr1" autocomplete="address-line1" placeholder="e.g. No. 12, Jalan Damai 3/2" value="${v('address')}" oninput="${up('address')}"></div>
+      <div class="field"><label for="${kind}Addr2">Address line 2 <span class="opt-tag">(optional)</span></label><input type="text" id="${kind}Addr2" autocomplete="address-line2" placeholder="e.g. Taman Damai Indah" value="${v('address2')}" oninput="${up('address2')}"></div>
+    </div>
+    <div class="grid g3">
+      <div class="field" id="field-${kind}_postcode"><label for="${kind}Postcode">Postcode <span class="req-star">*</span></label><input type="text" id="${kind}Postcode" inputmode="numeric" autocomplete="postal-code" placeholder="e.g. 47100" maxlength="5" value="${v('postcode')}" oninput="this.value=numericOnly(this.value);${up('postcode')}"></div>
+      <div class="field" id="field-${kind}_city"><label for="${kind}City">City <span class="req-star">*</span></label><input type="text" id="${kind}City" autocomplete="address-level2" placeholder="e.g. Puchong" value="${v('city')}" oninput="${up('city')}"></div>
+      <div class="field" id="field-${kind}_state"><label for="${kind}State">State <span class="req-star">*</span></label>
+        <select id="${kind}State" autocomplete="address-level1" onchange="${up('state')}"><option value="">Select</option>${WCT.MY_STATES.map(o=>`<option ${state[`${kind}_state`]===o?'selected':''}>${o}</option>`).join('')}</select></div>
+    </div>`;
+}
+function addressErrors(kind, label, errs){
+  if(!(state[`${kind}_address`]||'').trim()) errs.push({field:`field-${kind}_address`, message:`Please enter address line 1 of your ${label}.`});
+  const pc = (state[`${kind}_postcode`]||'').trim();
+  if(!pc) errs.push({field:`field-${kind}_postcode`, message:`Please enter the postcode of your ${label}.`});
+  else if(state[`${kind}_state`] !== 'Outside Malaysia' && !/^\d{5}$/.test(pc)) errs.push({field:`field-${kind}_postcode`, message:`The postcode of your ${label} must be 5 digits.`});
+  if(!(state[`${kind}_city`]||'').trim()) errs.push({field:`field-${kind}_city`, message:`Please enter the city of your ${label}.`});
+  if(!state[`${kind}_state`]) errs.push({field:`field-${kind}_state`, message:`Please select the state of your ${label}.`});
+}
+function toggleCorrSame(checked){
+  corrSameAsPermanent = checked;
+  if(!checked && WCT.sameAddress(state)){
+    ['address','address2','postcode','city','state'].forEach(k => { state[`correspondence_${k}`] = ''; });
+  }
+  render();
+}
+
 // SOCSO number auto-mirrors the NRIC field as the person types it, since for
 // most Malaysian employees the two match. It stays editable — once the person
 // types into the SOCSO field directly, we stop overwriting it from NRIC.
@@ -629,7 +602,9 @@ let socsoManuallyEdited = false;
 // the standalone 'salary' step no longer exists.
 // ============================================================================
 
-const ONBOARDING_STEPS = ['statutory','spouse_children','emergency_beneficiary','review'];
+// Spouse & children moved to the job application (Family Details step) on
+// 2026-10-14, so onboarding is two steps plus the review.
+const ONBOARDING_STEPS = ['statutory','emergency_beneficiary','review'];
 
 let onboardingAppId = null;
 let onboardingState = null;
@@ -642,6 +617,8 @@ async function openOnboarding(applicationId){
     if(error) throw error;
     onboardingAppId = applicationId;
     onboardingState = data;
+    salaryAck = { name: '', agreed: !!data.salary_crediting_confirmed };
+    personalAck = { name: data.personal_details_signed_name || '', agreed: !!data.personal_details_confirmed };
     onboardingStep = onboardingState.status === 'completed' ? 'review' : 'statutory';
     hideLoading();
     goStep('onboarding');
@@ -660,18 +637,12 @@ async function saveOnboarding(showAlert){
       socso_no: document.getElementById('ob_socso_no')?.value.trim() || '',
       bank_account_no: document.getElementById('ob_bank_account_no')?.value.trim() || '',
       cidb_green_card_no: document.getElementById('ob_cidb_green_card_no')?.value.trim() || '',
-      spouse_name: document.getElementById('ob_spouse_name')?.value.trim() || '',
-      spouse_nric: document.getElementById('ob_spouse_nric')?.value.trim() || '',
-      spouse_date_of_birth: document.getElementById('ob_spouse_dob')?.value || '',
-      spouse_working: document.querySelector('input[name="ob_spouse_working"]:checked')?.value || '',
-      children_below_18: onboardingState.children_below_18,
-      children_18_to_23: onboardingState.children_18_to_23,
       emergency_contacts: onboardingState.emergency_contacts,
       beneficiary_name: document.getElementById('ob_beneficiary_name')?.value.trim() || '',
       beneficiary_relationship: document.getElementById('ob_beneficiary_relationship')?.value.trim() || '',
       beneficiary_contact: document.getElementById('ob_beneficiary_contact')?.value.trim() || '',
       tp3_data: onboardingState.tp3_data,
-      salary_company: onboardingState.salary_company || '',
+      salary_company: document.getElementById('ob_salary_company')?.value || onboardingState.salary_company || '',
       salary_bank: document.getElementById('ob_salary_bank')?.value.trim() || '',
       // Salary Account No. is no longer its own editable field — it always
       // mirrors Bank Account No. directly at save time.
@@ -690,57 +661,44 @@ async function saveOnboarding(showAlert){
     Object.keys(patch).forEach(key => {
       if(patch[key] === '') delete patch[key];
     });
+    if(obEditsFamily(onboardingState)){
+      // Sent as-is (null when blank) so a cleared value really clears.
+      ['spouse_name','spouse_nric','spouse_date_of_birth','spouse_working'].forEach(k => { patch[k] = onboardingState[k] || null; });
+      ['children_below_18','children_18_to_23'].forEach(k => {
+        patch[k] = (onboardingState[k] || []).filter(c => (c.name||'').trim() || (c.nric||'').trim());
+      });
+    }
     const { data, error } = await apiTry(() => api.patch(`/onboarding/${onboardingAppId}`, { patch }));
     if(error) throw error;
-    onboardingState = data;
+    onboardingState = { ...data, available_companies: onboardingState.available_companies, family: onboardingState.family };
     if(showAlert) alert('Saved.');
     return true;
   } catch(e){ alert('Error saving: ' + e.message); return false; }
 }
 
+// People hired before family details moved onto the application form have
+// none on their application; they fill them in here, on the onboarding record.
+function obEditsFamily(o){
+  const f = (o && o.family) || {};
+  return !['spouse_name','spouse_nric','spouse_date_of_birth','spouse_working','children_below_18','children_18_to_23']
+    .some(k => Array.isArray(f[k]) ? f[k].length > 0 : !!f[k]);
+}
 async function onboardingGoStep(step){
+  if(onboardingStep === 'statutory' && obEditsFamily(onboardingState)){
+    famTarget = 'ob';
+    const errs = validateFamilyStep();
+    const box = document.getElementById('obFamErr');
+    if(errs.length){
+      clearAllInvalidFields();
+      if(box) box.innerHTML = `<div class="error-banner">${errs.map(e => esc(e.message)).join('<br>')}</div>`;
+      const el = errs[0].field && markFieldInvalid(errs[0].field);
+      if(el) el.scrollIntoView({ behavior:'smooth', block:'center' });
+      return;
+    }
+    if(box) box.innerHTML = '';
+  }
   const ok = await saveOnboarding(false);
   if(ok){ onboardingStep = step; render(); window.scrollTo(0,0); }
-}
-
-// Applies the annual limit cap live as the candidate types, updating the
-// field in place (no full re-render) so typing doesn't lose focus.
-function addChildBelow18(){ onboardingState.children_below_18 = [...onboardingState.children_below_18, {name:'',gender:'',nric:'',date_of_birth:'',course_name:'',tax_relief:false}]; render(); }
-function removeChildBelow18(i){ onboardingState.children_below_18.splice(i,1); render(); }
-function updateChildBelow18(i, key, val){ onboardingState.children_below_18[i][key] = val; }
-
-function addChild18to23(){ onboardingState.children_18_to_23 = [...onboardingState.children_18_to_23, {name:'',date_of_birth:'',course_name:'',gender:'',nric:'',tax_relief:false}]; render(); }
-function removeChild18to23(i){ onboardingState.children_18_to_23.splice(i,1); render(); }
-function updateChild18to23(i, key, val){ onboardingState.children_18_to_23[i][key] = val; }
-
-function handleSpouseNricInput(val){
-  onboardingState.spouse_nric = val;
-  const derivedDob = deriveDobFromNric(val);
-  if(derivedDob){
-    onboardingState.spouse_date_of_birth = derivedDob;
-    const dobEl = document.getElementById('ob_spouse_dob');
-    if(dobEl) dobEl.value = derivedDob; // update in place, no full re-render (keeps focus while typing)
-  }
-}
-
-function handleChildBelow18NricInput(i, val){
-  updateChildBelow18(i, 'nric', val);
-  const derivedDob = deriveDobFromNric(val);
-  if(derivedDob){
-    onboardingState.children_below_18[i].date_of_birth = derivedDob;
-    const dobEl = document.getElementById(`childBelow18Dob${i}`);
-    if(dobEl) dobEl.value = derivedDob;
-  }
-}
-
-function handleChild18to23NricInput(i, val){
-  updateChild18to23(i, 'nric', val);
-  const derivedDob = deriveDobFromNric(val);
-  if(derivedDob){
-    onboardingState.children_18_to_23[i].date_of_birth = derivedDob;
-    const dobEl = document.getElementById(`child18to23Dob${i}`);
-    if(dobEl) dobEl.value = derivedDob;
-  }
 }
 
 // Education level dropdown used for both children tables — kindergarten
@@ -755,29 +713,9 @@ function addEmergencyContact(){ onboardingState.emergency_contacts = [...onboard
 function removeEmergencyContact(i){ onboardingState.emergency_contacts.splice(i,1); render(); }
 function updateEmergencyContact(i, key, val){ onboardingState.emergency_contacts[i][key] = val; }
 
-async function confirmOnboardingSection(section){
-  await saveOnboarding(false);
-  try{
-    const { data, error } = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section }));
-    if(error) throw error;
-    onboardingState = data;
-    // TP3 has been removed from the candidate-facing flow entirely, but the
-    // server-side "all sections confirmed → completed" logic may still
-    // expect it — so it's silently confirmed the moment personal_details
-    // is, with no UI ever shown for it. This avoids needing to touch
-    // rpc_confirm_onboarding_section's internal completion logic.
-    if(section === 'personal_details' && !onboardingState.tp3_confirmed){
-      const { data: tp3Data, error: tp3Error } = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section: 'tp3' }));
-      if(!tp3Error) onboardingState = tp3Data;
-    }
-    if(onboardingState.status === 'completed') onboardingStep = 'review';
-    render();
-  } catch(e){ alert('Error: ' + e.message); }
-}
-
 function backFromOnboarding(){
   onboardingAppId = null; onboardingState = null; onboardingStep = 'statutory';
-  salaryAckChecked = false;
+  salaryAck = { name: '', agreed: false }; personalAck = { name: '', agreed: false };
   goStep('start');
 }
 
@@ -795,7 +733,6 @@ function tplOnboarding(){
   if(onboardingStep === 'preview') return tplObPreview();
   const stepMap = {
     statutory: tplObStatutory,
-    spouse_children: tplObSpouseChildren,
     emergency_beneficiary: tplObEmergencyBeneficiary
   };
   return `
@@ -841,102 +778,36 @@ function tplObStatutory(){
       <div class="field"><label>CIDB Green Card No.</label><input type="text" id="ob_cidb_green_card_no" placeholder="e.g. N/A" value="${esc(o.cidb_green_card_no)}"></div>
     </div>
 
-    <div class="section-title">Bank Details</div>
+    ${obEditsFamily(o) ? (() => { famTarget = 'ob'; return `
+      <div class="section-title">Family Details <span class="opt-tag">(optional — for tax relief and benefits)</span></div>
+      <div class="ob-family">${familyFieldsHtml(false)}</div>
+      <div id="obFamErr"></div>`; })() : ''}
+
+    <div class="section-title">Bank Details (Salary Crediting)</div>
     <div class="grid">
-      <div class="field"><label>Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
-      <div class="field"><label>Bank Account No.</label><input type="text" inputmode="numeric" id="ob_bank_account_no" value="${esc(o.bank_account_no)}" oninput="this.value=numericOnly(this.value)"></div>
+      <div class="field"><label for="ob_salary_bank">Bank</label><input type="text" placeholder="e.g. Maybank" id="ob_salary_bank" value="${esc(o.salary_bank)}"></div>
+      <div class="field"><label for="ob_bank_account_no">Bank Account No.</label><input type="text" inputmode="numeric" id="ob_bank_account_no" value="${esc(o.bank_account_no)}" oninput="this.value=numericOnly(this.value)"></div>
     </div>
+    ${(o.available_companies||[]).length ? `<div class="grid">
+      <div class="field"><label for="ob_salary_company">Employing company</label>
+        <select id="ob_salary_company"><option value="">Select</option>${o.available_companies.map(c=>`<option ${o.salary_company===c?'selected':''}>${esc(c)}</option>`).join('')}</select></div><div></div></div>` : ''}
 
     <p style="font-size:12.5px;color:var(--ink-soft);margin-top:14px;">I confirm that the information herein is correct and in order. Should there be any discrepancy in the information, which will lead to possible delay or inability to credit my salaries, it is my sole responsibility.<br><br>
     <em>Saya mengesahkan maklumat tersebut diatas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</em></p>
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="confirm_salary_crediting" ${salaryAckChecked?'checked':''} onchange="salaryAckChecked=this.checked;render();">
-      <label for="confirm_salary_crediting">I confirm the above information is correct.</label>
-    </div>
+    ${WCT.sigHtml({
+      id: 'salarySig', title: 'Salary crediting confirmation',
+      name: salaryAck.name || obApplicantName(), agreed: salaryAck.agreed,
+      signedAt: o.salary_crediting_confirmed ? o.salary_crediting_confirmed_at : null,
+      agreeText: 'I confirm the above information is correct.',
+      onChange: (v) => { salaryAck = { name: v.name, agreed: v.agreed }; },
+    })}
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="backFromOnboarding()">← Back to My Applications</button>
-      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" ${salaryAckChecked ? '' : 'disabled'} onclick="onboardingGoStep('spouse_children')">Next →</button></div>
+      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" data-sig-gate="salarySig" ${(salaryAck.agreed && (salaryAck.name || obApplicantName())) || o.salary_crediting_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('emergency_beneficiary')">Next →</button></div>
     </div>
-    ${!salaryAckChecked ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
-  `;
-}
-
-// ---------------------------------------------------------------------------
-// STEP 2: Spouse + Children
-// ---------------------------------------------------------------------------
-function tplObSpouseChildren(){
-  const o = onboardingState;
-  return `
-    <div class="section-title" style="margin-top:0;">Spouse Information <span class="opt-tag">(if applicable)</span></div>
-    <div class="grid">
-      <div class="field"><label>Name (per NRIC)</label><input type="text" id="ob_spouse_name" value="${esc(o.spouse_name)}"></div>
-      <div class="field"><label>NRIC No. (without dash)</label><input type="text" inputmode="numeric" maxlength="12" id="ob_spouse_nric" value="${esc(o.spouse_nric)}" oninput="this.value=numericOnly(this.value);handleSpouseNricInput(this.value)"></div>
-    </div>
-    <div class="grid">
-      <div class="field"><label>Date of Birth</label><input type="date" id="ob_spouse_dob" value="${esc(o.spouse_date_of_birth)}"></div>
-      <div class="field"><label>Working?</label>
-        <div class="radio-row">
-          ${['Yes','No'].map(v=>`<label class="radio-opt"><input type="radio" name="ob_spouse_working" value="${v}" ${o.spouse_working===v?'checked':''}> ${v}</label>`).join('')}
-        </div>
-      </div>
-    </div>
-
-    <div class="section-title">Children Below 18 Years Old</div>
-    <table class="dyn">
-      <thead><tr><th>Name (per NRIC)</th><th>Gender</th><th>NRIC No. (no dash)</th><th>Date of Birth</th><th>Education</th><th>Tax Relief</th><th></th></tr></thead>
-      <tbody>
-        ${o.children_below_18.map((c,i)=>`
-          <tr>
-            <td><input type="text" value="${esc(c.name)}" oninput="updateChildBelow18(${i},'name',this.value)"></td>
-            <td>
-              <select onchange="updateChildBelow18(${i},'gender',this.value)">
-                <option value="">—</option>
-                <option ${c.gender==='Male'?'selected':''}>Male</option>
-                <option ${c.gender==='Female'?'selected':''}>Female</option>
-              </select>
-            </td>
-            <td><input type="text" inputmode="numeric" maxlength="12" value="${esc(c.nric)}" oninput="this.value=numericOnly(this.value);handleChildBelow18NricInput(${i}, this.value)"></td>
-            <td><input type="date" id="childBelow18Dob${i}" value="${esc(c.date_of_birth)}" oninput="updateChildBelow18(${i},'date_of_birth',this.value)"></td>
-            <td><select onchange="updateChildBelow18(${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></td>
-            <td style="text-align:center;"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="updateChildBelow18(${i},'tax_relief',this.checked)"></td>
-            <td><button class="remove-x" type="button" aria-label="Remove this row" onclick="removeChildBelow18(${i})">${UI_ICON.x}</button></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-    <button class="add-row-btn" onclick="addChildBelow18()">+ Add child</button>
-
-    <div class="section-title">Children Above 18 Up To 23 <span class="opt-tag">(unmarried &amp; full-time student)</span></div>
-    <table class="dyn">
-      <thead><tr><th>Name</th><th>Gender</th><th>NRIC No. (no dash)</th><th>Date of Birth</th><th>Education</th><th>Tax Relief</th><th></th></tr></thead>
-      <tbody>
-        ${o.children_18_to_23.map((c,i)=>`
-          <tr>
-            <td><input type="text" value="${esc(c.name)}" oninput="updateChild18to23(${i},'name',this.value)"></td>
-            <td>
-              <select onchange="updateChild18to23(${i},'gender',this.value)">
-                <option value="">—</option>
-                <option ${c.gender==='Male'?'selected':''}>Male</option>
-                <option ${c.gender==='Female'?'selected':''}>Female</option>
-              </select>
-            </td>
-            <td><input type="text" inputmode="numeric" maxlength="12" value="${esc(c.nric)}" oninput="this.value=numericOnly(this.value);handleChild18to23NricInput(${i}, this.value)"></td>
-            <td><input type="date" id="child18to23Dob${i}" value="${esc(c.date_of_birth)}" oninput="updateChild18to23(${i},'date_of_birth',this.value)"></td>
-            <td><select onchange="updateChild18to23(${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></td>
-            <td style="text-align:center;"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="updateChild18to23(${i},'tax_relief',this.checked)"></td>
-            <td><button class="remove-x" type="button" aria-label="Remove this row" onclick="removeChild18to23(${i})">${UI_ICON.x}</button></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-    <button class="add-row-btn" onclick="addChild18to23()">+ Add child</button>
-
-    <div class="btn-row">
-      <button class="btn btn-ghost" onclick="onboardingGoStep('statutory')">← Back</button>
-      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" onclick="onboardingGoStep('emergency_beneficiary')">Next →</button></div>
-    </div>
+    <p class="hint" data-sig-hint="salarySig" style="text-align:right;margin-top:6px;" ${(salaryAck.agreed && (salaryAck.name || obApplicantName())) || o.salary_crediting_confirmed ? 'hidden' : ''}>Please sign the confirmation above to continue.</p>
   `;
 }
 
@@ -969,24 +840,61 @@ function tplObEmergencyBeneficiary(){
       <div class="field"><label>Contact No.</label><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" id="ob_beneficiary_contact" value="${esc(o.beneficiary_contact)}" oninput="this.value=numericOnly(this.value)"></div>
     </div>
 
-    <div class="checkbox-row">
-      <input type="checkbox" id="confirm_personal_details" ${o.personal_details_confirmed?'checked disabled':''} onchange="if(this.checked) confirmOnboardingSection('personal_details')">
-      <label for="confirm_personal_details">I confirm the Statutory Details, Spouse, Children, Emergency Contact and Beneficiary information above is true and correct.</label>
-      ${o.personal_details_confirmed ? `<div class="hint" style="margin-left:auto;">Confirmed ${new Date(o.personal_details_confirmed_at).toLocaleString()}</div>` : ''}
-    </div>
+    ${WCT.sigHtml({
+      id: 'personalSig', title: 'Personal details confirmation',
+      name: personalAck.name || o.personal_details_signed_name || obApplicantName(), agreed: personalAck.agreed,
+      signedAt: o.personal_details_confirmed ? o.personal_details_confirmed_at : null,
+      agreeText: 'I confirm the Statutory Details, Emergency Contact and Beneficiary information above is true and correct.',
+      onChange: (v) => { personalAck = { name: v.name, agreed: v.agreed }; if(v.ok){ const el = document.getElementById('obStepErr'); if(el) el.innerHTML = ''; } },
+    })}
+    <div id="obStepErr"></div>
 
     <div class="btn-row">
-      <button class="btn btn-ghost" onclick="onboardingGoStep('spouse_children')">← Back</button>
-      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" ${o.personal_details_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('preview')">Next →</button></div>
+      <button class="btn btn-ghost" onclick="onboardingGoStep('statutory')">← Back</button>
+      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" onclick="confirmPersonalAndPreview()">Next →</button></div>
     </div>
-    ${!o.personal_details_confirmed ? `<p class="hint" style="text-align:right;margin-top:6px;">Please check the confirmation box above to continue.</p>` : ''}
   `;
 }
 
-let salaryAckChecked = false; // local-only acknowledgment (now shown on the
-// Statutory Details step); the real, final confirmation happens on the
-// Review Before Submitting page via submitOnboarding() — this checkbox just
-// gates advancing past Statutory Details, it does not itself lock anything in.
+// The two onboarding signatures (shared signature component). Ticking a box
+// only updates the signature block, never re-renders the page, so values
+// typed on the step are kept (this was the "digital sign clears my data" bug:
+// the old checkbox re-rendered the page from the last saved copy).
+//   salaryAck   — Statutory Details; recorded when onboarding is submitted
+//   personalAck — Emergency/Beneficiary; recorded when moving to the review
+let salaryAck = { name: '', agreed: false };
+let personalAck = { name: '', agreed: false };
+function obApplicantName(){
+  const a = myApplications.find(x=>x.id===onboardingAppId) || {};
+  return a.name_nric || (currentUser && currentUser.name) || '';
+}
+async function confirmPersonalAndPreview(){
+  const o = onboardingState;
+  if(!o.personal_details_confirmed){
+    const sig = WCT.sigValue('personalSig');
+    if(!sig.ok){
+      document.getElementById('personalSig').classList.add('invalid');
+      document.getElementById('obStepErr').innerHTML = `<div class="error-banner">Please type your full name and tick the confirmation box to sign.</div>`;
+      return;
+    }
+    showLoading('Saving...');
+    const ok = await saveOnboarding(false);
+    if(!ok){ hideLoading(); return; }
+    const res = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section: 'personal_details', signed_name: sig.name }));
+    if(res.error){ hideLoading(); alert('Error: ' + res.error.message); return; }
+    let data = res.data;
+    // TP3 is no longer shown but the server still expects it confirmed.
+    if(!data.tp3_confirmed){
+      const tp3 = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section: 'tp3' }));
+      if(!tp3.error) data = tp3.data;
+    }
+    onboardingState = { ...data, available_companies: o.available_companies, family: o.family };
+    hideLoading();
+    onboardingStep = 'preview'; render(); window.scrollTo(0,0);
+    return;
+  }
+  onboardingGoStep('preview');
+}
 
 // ---------------------------------------------------------------------------
 // REVIEW / PREVIEW — comprehensive, paginated read-only summary of every
@@ -1011,25 +919,16 @@ function obSummaryPage1Html(o){
       ${obReviewRow('Bank Account No.', o.bank_account_no)}
       ${obReviewRow('CIDB Green Card No.', o.cidb_green_card_no)}
       ${obReviewRow('Bank', o.salary_bank)}
+      ${obReviewRow('Employing Company', o.salary_company)}
     </div>
 
-    <div class="review-block">
-      <h4>Spouse Information</h4>
-      ${obReviewRow('Name', o.spouse_name)}
-      ${obReviewRow('NRIC', o.spouse_nric)}
-      ${obReviewRow('Date of Birth', o.spouse_date_of_birth)}
-      ${obReviewRow('Working', o.spouse_working)}
-    </div>
 
-    <div class="review-block">
-      <h4>Children Below 18</h4>
-      ${(o.children_below_18||[]).map(c=>obReviewRow(c.name||'Unnamed', `${c.gender||'—'} · NRIC: ${c.nric||'—'} · DOB: ${c.date_of_birth||'—'} · Education: ${c.course_name||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obReviewRow('Children','None')}
-    </div>
-
-    <div class="review-block">
-      <h4>Children 18–23 (Unmarried, Full-Time Student)</h4>
-      ${(o.children_18_to_23||[]).map(c=>obReviewRow(c.name||'Unnamed', `${c.gender||'—'} · NRIC: ${c.nric||'—'} · DOB: ${c.date_of_birth||'—'} · Education: ${c.course_name||'—'} · Tax Relief: ${c.tax_relief?'Yes':'No'}`)).join('') || obReviewRow('Children','None')}
-    </div>
+    ${(() => { const f = obFamily(o); const kids = [...(f.children_below_18||[]), ...(f.children_18_to_23||[])];
+      return (f.spouse_name || kids.length) ? `<div class="review-block">
+      <h4>Family Details <span class="hint" style="font-weight:400;">(from your application)</span></h4>
+      ${obReviewRow('Spouse', f.spouse_name ? `${f.spouse_name}${f.spouse_nric ? ' · '+f.spouse_nric : ''}` : '')}
+      ${kids.map(c=>obReviewRow(c.name||'Child', `${c.gender||'—'} · NRIC: ${c.nric||'—'} · Tax relief: ${c.tax_relief?'Yes':'No'}`)).join('')}
+    </div>` : ''; })()}
 
     <div class="review-block">
       <h4>Emergency Contacts</h4>
@@ -1069,9 +968,9 @@ async function submitOnboarding(){
   const ok = await saveOnboarding(false);
   if(!ok) return;
   try{
-    const { data, error } = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section: 'salary_crediting' }));
+    const { data, error } = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section: 'salary_crediting', signed_name: salaryAck.name || obApplicantName() }));
     if(error) throw error;
-    onboardingState = data;
+    onboardingState = { ...data, available_companies: onboardingState.available_companies, family: onboardingState.family };
     onboardingStep = 'review';
     render();
     window.scrollTo(0,0);
@@ -1207,27 +1106,6 @@ function handleDobTextInput(el){
   }
 }
 
-// Auto-completes the Correspondence Address (postcode included) from the
-// Permanent Address the moment what's been typed so far looks like the
-// start of that same address — covers the common case of a candidate whose
-// correspondence address IS their permanent one, without them having to
-// retype the whole thing. Direct DOM update rather than a full render() so
-// typing doesn't lose focus except in the one moment it actually snaps.
-function handleCorrespondenceAddressChange(val){
-  state.correspondence_address = val;
-  const typed = val.trim().replace(/\s+/g,' ').toLowerCase();
-  const perm = (state.permanent_address||'').trim().replace(/\s+/g,' ').toLowerCase();
-  const alreadyMatches = state.correspondence_address === state.permanent_address;
-  if(!alreadyMatches && typed.length >= 5 && perm.length >= typed.length && perm.startsWith(typed)){
-    state.correspondence_address = state.permanent_address;
-    state.correspondence_postcode = state.permanent_postcode;
-    const addrEl = document.getElementById('correspondenceAddressInput');
-    const postcodeEl = document.getElementById('correspondencePostcodeInput');
-    if(addrEl) addrEl.value = state.correspondence_address;
-    if(postcodeEl) postcodeEl.value = state.correspondence_postcode;
-  }
-}
-
 function handleDobChange(val){
   state.date_of_birth = val;
   if(val){
@@ -1243,29 +1121,68 @@ function handleDobChange(val){
 // ---------------------------------------------------------------------------
 // STEP: language ability
 // ---------------------------------------------------------------------------
+const FIXED_LANGUAGES = ['Bahasa Malaysia', 'English'];
+// Old drafts carried "Others (please state)" as a real row value; it is only
+// a hint now. BM and English always come first.
+function normalizeLanguages(list, keepBlank){
+  const rows = (list||[]).map(r => ({language:'', spoken:'', written:'', ...r}))
+    .map(r => /^others \(please state\)$/i.test((r.language||'').trim()) ? {...r, language:''} : r);
+  const fixed = FIXED_LANGUAGES.map(name => rows.find(r => r.language === name) || {language:name, spoken:'', written:''});
+  const others = rows.filter(r => !FIXED_LANGUAGES.includes(r.language) && (keepBlank || (r.language||'').trim() || r.spoken || r.written));
+  return [...fixed, ...(others.length ? others : [{language:'', spoken:'', written:''}])];
+}
 function tplLanguage(){
-  const rows = state.language_ability.map((r,i)=>`
+  state.language_ability = normalizeLanguages(state.language_ability, true);
+  const fixed = state.language_ability.slice(0, 2).map((r,i)=>`
     <tr>
-      <td><input type="text" value="${esc(r.language)}" oninput="updateArrayField('language_ability',${i},'language',this.value)"></td>
-      <td>${selectGFS(r.spoken, `updateArrayField('language_ability',${i},'spoken',this.value)`)}</td>
-      <td>${selectGFS(r.written, `updateArrayField('language_ability',${i},'written',this.value)`)}</td>
+      <td><div class="lang-fixed">${esc(r.language)}</div></td>
+      <td id="field-lang-spoken-${i}">${selectGFS(r.spoken, `updateArrayField('language_ability',${i},'spoken',this.value)`, `${esc(r.language)} spoken`)}</td>
+      <td id="field-lang-written-${i}">${selectGFS(r.written, `updateArrayField('language_ability',${i},'written',this.value)`, `${esc(r.language)} written`)}</td>
+      <td></td>
     </tr>`).join('');
+  const others = state.language_ability.slice(2).map((r,j)=>{ const i = j + 2; return `
+    <tr>
+      <td id="field-lang-name-${i}"><input type="text" aria-label="Other language or dialect ${j+1}" placeholder="e.g. Mandarin, Tamil, Cantonese" value="${esc(r.language)}" oninput="updateArrayField('language_ability',${i},'language',this.value)"></td>
+      <td id="field-lang-spoken-${i}">${selectGFS(r.spoken, `updateArrayField('language_ability',${i},'spoken',this.value)`, 'Spoken')}</td>
+      <td id="field-lang-written-${i}">${selectGFS(r.written, `updateArrayField('language_ability',${i},'written',this.value)`, 'Written')}</td>
+      <td><button class="remove-x" type="button" aria-label="Remove this language" title="Remove" onclick="removeLangRow(${i})">${UI_ICON.x}</button></td>
+    </tr>`; }).join('');
   return `
     <div class="step-eyebrow">Application Form</div>
-    <h2>Language Ability</h2>
-    <p class="step-desc">Rate your spoken and written ability for each language.</p>
-    <table class="dyn">
-      <thead><tr><th>Language / Dialect</th><th>Spoken</th><th>Written</th></tr></thead>
-      <tbody>${rows}</tbody>
+    <h2>Language Ability <span class="tag-req" style="vertical-align:middle;">COMPULSORY</span></h2>
+    <p class="step-desc">Rate your spoken and written ability for each language. Bahasa Malaysia and English are required.</p>
+    <table class="dyn lang-table">
+      <thead><tr><th>Language / Dialect</th><th>Spoken <span class="req-star">*</span></th><th>Written <span class="req-star">*</span></th><th style="width:48px;"></th></tr></thead>
+      <tbody>${fixed}</tbody>
     </table>
-    <button class="add-row-btn" onclick="addLangRow()">+ Add another language</button>
-    ${navButtons('personal','education')}
+    <div class="section-title">Other Languages / Dialects <span class="opt-tag">(optional)</span></div>
+    <table class="dyn lang-table">
+      <tbody>${others}</tbody>
+    </table>
+    <button class="add-row-btn" onclick="addLangRow()">+ Add Another Language/Dialect</button>
+    ${navButtonsValidated('personal','education', validateLanguageStep)}
   `;
 }
-function selectGFS(val, onchangeFn){
-  return `<select onchange="${onchangeFn}"><option value="">—</option>${['Good','Fair','Slight'].map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
+function selectGFS(val, onchangeFn, label){
+  return `<select ${label ? `aria-label="${label}"` : ''} onchange="${onchangeFn}"><option value="">—</option>${['Good','Fair','Slight'].map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
 }
 function addLangRow(){ state.language_ability.push({language:'',spoken:'',written:''}); render(); }
+function removeLangRow(i){
+  if(i < 2) return;
+  state.language_ability.splice(i,1);
+  render();
+}
+function validateLanguageStep(){
+  const errs = [];
+  state.language_ability.forEach((r,i)=>{
+    const name = (r.language||'').trim();
+    if(i >= 2 && !name && !r.spoken && !r.written) return; // empty spare row
+    if(i >= 2 && !name) errs.push({field:`field-lang-name-${i}`, message:`Please name the other language/dialect, or remove that row.`});
+    if(!r.spoken) errs.push({field:`field-lang-spoken-${i}`, message:`${name || 'Other language'}: please rate your spoken ability.`});
+    if(!r.written) errs.push({field:`field-lang-written-${i}`, message:`${name || 'Other language'}: please rate your written ability.`});
+  });
+  return errs;
+}
 
 // ---------------------------------------------------------------------------
 // STEP: education
@@ -1293,19 +1210,19 @@ function tplEducation(){
         </select>
       </td>
       <td><input type="text" id="field-edu-name-${i}" placeholder="Institution name" value="${esc(r.name)}" oninput="updateArrayField('education',${i},'name',this.value)"></td>
-      <td style="width:110px;min-width:110px;"><select style="min-width:96px;" onchange="updateArrayField('education',${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></td>
-      <td style="width:110px;min-width:110px;"><select style="min-width:96px;" onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></td>
+      <td style="width:110px;min-width:110px;" id="field-edu-from-${i}"><select aria-label="From year" style="min-width:96px;" onchange="updateArrayField('education',${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></td>
+      <td style="width:110px;min-width:110px;" id="field-edu-to-${i}"><select aria-label="To year" style="min-width:96px;" onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></td>
       <td style="min-width:170px;"><select id="field-edu-qualification-${i}" onchange="updateArrayField('education',${i},'qualification',this.value)">${educationOptionsHtml(r.qualification)}</select></td>
       <td style="min-width:150px;"><input type="text" value="${esc(r.course_name)}" oninput="updateArrayField('education',${i},'course_name',this.value)"></td>
-      <td><button class="remove-x" type="button" aria-label="Remove this row" onclick="removeRow('education',${i})">${UI_ICON.x}</button></td>
+      <td>${state.education.length > 1 ? `<button class="remove-x" type="button" aria-label="Remove this row" onclick="removeRowConfirm('education',${i})">${UI_ICON.x}</button>` : ''}</td>
     </tr>`).join('');
   return `
     <div class="step-eyebrow">Application Form</div>
-    <h2>Education</h2>
-    <p class="step-desc">Add your school, college/university, and any professional body memberships.</p>
+    <h2>Education <span class="tag-req" style="vertical-align:middle;">COMPULSORY</span></h2>
+    <p class="step-desc">Add your school, college/university, and any professional body memberships. At least one entry is required.</p>
 
     <table class="dyn">
-      <thead><tr><th>Type</th><th>Institution</th><th>From</th><th>To</th><th>Qualification</th><th>Course Name</th><th></th></tr></thead>
+      <thead><tr><th>Type</th><th>Institution <span class="req-star">*</span></th><th>From <span class="req-star">*</span></th><th>To <span class="req-star">*</span></th><th>Qualification <span class="req-star">*</span></th><th>Course Name</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <button class="add-row-btn" onclick="addEduRow()">+ Add education entry</button>
@@ -1314,8 +1231,12 @@ function tplEducation(){
 }
 function validateEducationStep(){
   const errs = [];
+  if(!state.education.length) addEduRow();
   state.education.forEach((r,i)=>{
-    if(!r.name.trim()) errs.push({field:`field-edu-name-${i}`, message:`Education entry ${i+1}: please enter the institution name.`});
+    if(!(r.name||'').trim()) errs.push({field:`field-edu-name-${i}`, message:`Education entry ${i+1}: please enter the institution name.`});
+    if(!r.from_year) errs.push({field:`field-edu-from-${i}`, message:`Education entry ${i+1}: please select the "From" year.`});
+    if(!r.to_year) errs.push({field:`field-edu-to-${i}`, message:`Education entry ${i+1}: please select the "To" year.`});
+    if(r.from_year && r.to_year && Number(r.to_year) < Number(r.from_year)) errs.push({field:`field-edu-to-${i}`, message:`Education entry ${i+1}: the "To" year can't be before the "From" year.`});
     if(!r.qualification) errs.push({field:`field-edu-qualification-${i}`, message:`Education entry ${i+1}: please select a qualification.`});
   });
   return errs;
@@ -1326,11 +1247,13 @@ function addEduRow(){ state.education.push({type:'School',name:'',from_year:'',t
 // STEP: working experience
 // ---------------------------------------------------------------------------
 function tplExperience(){
-  const rows = state.working_experience.map((r,i)=>`
+  const none = !!state.no_working_experience;
+  if(!none && !state.working_experience.length) state.working_experience.push(blankExp());
+  const rows = none ? '' : state.working_experience.map((r,i)=>`
     <div class="card" style="padding:18px;margin-bottom:14px;border-color:#E4E4E3;">
       <div class="grid">
-        <div class="field" id="field-exp-employer-${i}"><label>Employer Name &amp; Address <span class="req-star">*</span></label><textarea placeholder="e.g. n/a" oninput="updateArrayField('working_experience',${i},'employer',this.value)">${esc(r.employer)}</textarea></div>
-        <div class="field" id="field-exp-position-${i}"><label>Last Position Held <span class="req-star">*</span></label><input type="text" placeholder="e.g. n/a" value="${esc(r.position)}" oninput="updateArrayField('working_experience',${i},'position',this.value)"></div>
+        <div class="field" id="field-exp-employer-${i}"><label>Employer Name &amp; Address <span class="req-star">*</span></label><textarea placeholder="e.g. ABC Construction Sdn Bhd, Petaling Jaya" oninput="updateArrayField('working_experience',${i},'employer',this.value)">${esc(r.employer)}</textarea></div>
+        <div class="field" id="field-exp-position-${i}"><label>Last Position Held <span class="req-star">*</span></label><input type="text" placeholder="e.g. Site Supervisor" value="${esc(r.position)}" oninput="updateArrayField('working_experience',${i},'position',this.value)"></div>
       </div>
       <div class="grid">
         <div class="field" id="field-exp-from-${i}"><label>From <span class="req-star">*</span></label><input type="month" value="${esc(r.from)}" oninput="updateArrayField('working_experience',${i},'from',this.value)"></div>
@@ -1341,49 +1264,78 @@ function tplExperience(){
       </div>
       <label class="radio-opt" style="margin:-8px 0 14px;"><input type="checkbox" ${r.is_current?'checked':''} onchange="toggleCurrentJob(${i}, this.checked)"> I am currently working here</label>
       <div class="grid">
-        <div class="field" id="field-exp-remuneration-${i}"><label>Last Drawn Remuneration (Monthly) — RM <span class="req-star">*</span></label><input type="text" placeholder="e.g. 3000 or n/a" value="${esc(r.remuneration)}" oninput="updateArrayField('working_experience',${i},'remuneration',this.value)"></div>
+        <div class="field" id="field-exp-remuneration-${i}"><label>Last Drawn Remuneration (Monthly) — RM <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 3000" value="${esc(r.remuneration)}" oninput="this.value=numericOnly(this.value);updateArrayField('working_experience',${i},'remuneration',this.value)"></div>
         <div></div>
       </div>
-      <div class="field"><label>Job Responsibilities <span class="req-star">*</span></label><textarea placeholder="e.g. n/a" oninput="updateArrayField('working_experience',${i},'responsibilities',this.value)">${esc(r.responsibilities)}</textarea></div>
-      <button class="btn-danger-outline" onclick="removeRow('working_experience',${i})">Remove this entry</button>
+      <div class="field" id="field-exp-responsibilities-${i}"><label>Job Responsibilities <span class="req-star">*</span></label><textarea placeholder="Your main duties in this role" oninput="updateArrayField('working_experience',${i},'responsibilities',this.value)">${esc(r.responsibilities)}</textarea></div>
+      ${state.working_experience.length > 1 ? `<button class="btn-danger-outline" onclick="removeRowConfirm('working_experience',${i})">Remove this entry</button>` : ''}
     </div>`).join('');
   return `
     <div class="step-eyebrow">Application Form</div>
-    <h2>Working Experience / Achievement</h2>
-    <p class="step-desc">Please complete this even if a resume/CV is attached. You'll be able to attach your CV in a later step.</p>
+    <h2>Working Experience / Achievement <span class="tag-req" style="vertical-align:middle;">COMPULSORY</span></h2>
+    <p class="step-desc">Please complete this even if a resume/CV is attached. Start with your most recent job.</p>
+    <label class="no-exp" id="field-no_working_experience">
+      <input type="checkbox" ${none?'checked':''} onchange="toggleNoExperience(this.checked)">
+      <span><strong>I do not have any previous working experience.</strong><br>If you do not have any previous working experience, tick this box and you may proceed to the next page.</span>
+    </label>
     ${rows}
-    <button class="add-row-btn" onclick="addExpRow()">+ Add work experience</button>
+    ${none ? '' : `<button class="add-row-btn" onclick="addExpRow()">+ Add work experience</button>`}
     ${navButtonsValidated('education','questions', validateExperienceStep)}
   `;
 }
+function blankExp(){ return {employer:'',from:'',to:'',is_current:false,position:'',remuneration:'',responsibilities:''}; }
 function toggleCurrentJob(i, checked){
   state.working_experience[i].is_current = checked;
   if(checked) state.working_experience[i].to = '';
   render();
 }
-// An entry nobody has touched yet (every field still at its default) is not
-// held to the required-field rules below — leaving it blank and clicking
-// Next is allowed, same as if the row weren't there. The moment any field on
-// the row has something in it, the whole row becomes required; the way out
-// at that point is either to finish it or remove the entry.
-function isExpRowEmpty(r){
-  return !r.employer.trim() && !r.position.trim() && !r.from && !r.to &&
-    !r.is_current && !r.remuneration.trim() && !r.responsibilities.trim();
+const isExpRowEmpty = (r) => !(r.employer||'').trim() && !(r.position||'').trim() && !r.from && !r.to &&
+  !r.is_current && !(r.remuneration||'').trim() && !(r.responsibilities||'').trim();
+async function toggleNoExperience(checked){
+  if(checked && state.working_experience.some(r => !isExpRowEmpty(r))){
+    const yes = await askYesNo('Clear your work experience?', 'Ticking this box will remove the work experience you have entered on this page. Are you sure?');
+    if(!yes){ render(); return; }
+  }
+  state.no_working_experience = checked;
+  state.working_experience = checked ? [] : [blankExp()];
+  render();
 }
+// The section is compulsory: either tick "no previous working experience" or
+// complete every entry in full.
 function validateExperienceStep(){
   const errs = [];
+  if(state.no_working_experience) return errs;
+  if(!state.working_experience.length) state.working_experience.push(blankExp());
   state.working_experience.forEach((r,i)=>{
-    if(isExpRowEmpty(r)) return;
-    if(!r.employer.trim()) errs.push({field:`field-exp-employer-${i}`, message:`Work experience ${i+1}: please enter the employer name and address.`});
-    if(!r.position.trim()) errs.push({field:`field-exp-position-${i}`, message:`Work experience ${i+1}: please enter the last position held.`});
-    if(!r.from) errs.push({field:`field-exp-from-${i}`, message:`Work experience ${i+1}: please provide the "From" month/year.`});
-    if(!r.is_current && !r.to) errs.push({field:`field-exp-to-${i}`, message:`Work experience ${i+1}: please provide the "To" month/year, or tick "I am currently working here".`});
-    if(!r.remuneration.trim()) errs.push({field:`field-exp-remuneration-${i}`, message:`Work experience ${i+1}: please enter the last drawn remuneration.`});
+    const n = state.working_experience.length > 1 ? ` ${i+1}` : '';
+    if(!(r.employer||'').trim()) errs.push({field:`field-exp-employer-${i}`, message:`Work experience${n}: please enter the employer name and address (or tick "I do not have any previous working experience").`});
+    if(!(r.position||'').trim()) errs.push({field:`field-exp-position-${i}`, message:`Work experience${n}: please enter the last position held.`});
+    if(!r.from) errs.push({field:`field-exp-from-${i}`, message:`Work experience${n}: please provide the "From" month/year.`});
+    if(!r.is_current && !r.to) errs.push({field:`field-exp-to-${i}`, message:`Work experience${n}: please provide the "To" month/year, or tick "I am currently working here".`});
+    if(r.from && r.to && !r.is_current && r.to < r.from) errs.push({field:`field-exp-to-${i}`, message:`Work experience${n}: the "To" date can't be before the "From" date.`});
+    if(!(r.remuneration||'').trim()) errs.push({field:`field-exp-remuneration-${i}`, message:`Work experience${n}: please enter the last drawn remuneration.`});
+    if(!(r.responsibilities||'').trim()) errs.push({field:`field-exp-responsibilities-${i}`, message:`Work experience${n}: please describe your job responsibilities.`});
   });
   return errs;
 }
-function addExpRow(){ state.working_experience.push({employer:'',from:'',to:'',is_current:false,position:'',remuneration:'',responsibilities:''}); render(); }
+function addExpRow(){ state.working_experience.push(blankExp()); render(); }
 function removeRow(arr, idx){ state[arr].splice(idx,1); render(); }
+async function removeRowConfirm(arr, idx){
+  if(await askYesNo('Remove this entry?', 'Are you sure you want to remove this entry?')) removeRow(arr, idx);
+}
+// Yes/No question in the site's own dialog (falls back to the browser's).
+function askYesNo(title, message){
+  if(!window.WX || !WX.dialog) return Promise.resolve(window.confirm(message));
+  return new Promise((resolve) => {
+    let answer = false;
+    const dlg = WX.dialog({ title, html: `<p style="margin:0 0 18px;">${esc(message)}</p>
+      <div class="btn-row" style="margin:0;border:0;padding:0;"><button type="button" class="btn btn-ghost" data-a="no">No</button><div class="right"><button type="button" class="btn btn-primary" data-a="yes">Yes</button></div></div>`,
+      onClose: () => resolve(answer) });
+    dlg.querySelector('[data-a="yes"]').addEventListener('click', () => { answer = true; dlg.close(); });
+    dlg.querySelector('[data-a="no"]').addEventListener('click', () => dlg.close());
+    dlg.querySelector('[data-a="yes"]').focus();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // STEP: employment questions
@@ -1472,8 +1424,104 @@ function tplQuestions(){
     <div class="field" id="field-arrested_convicted"><label>Have you been arrested or convicted of any offence? <span class="req-star">*</span></label>${yesNo('arrested_convicted', state.arrested_convicted, true)}</div>
     ${state.arrested_convicted==='Yes' ? `<div class="field" id="field-arrested_convicted_specify"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('arrested_convicted_specify', this.value)">${esc(state.arrested_convicted_specify)}</textarea></div>` : ''}
 
-    ${navButtonsValidated('experience','referees', validateQuestionsStep)}
+    ${navButtonsValidated('experience','family', validateQuestionsStep)}
   `;
+}
+
+// ---------------------------------------------------------------------------
+// STEP: family details (optional) — spouse and children, moved here from
+// onboarding's Statutory Details (stakeholder feedback 2026-10-14).
+// ---------------------------------------------------------------------------
+const blankChild = () => ({name:'',gender:'',nric:'',date_of_birth:'',course_name:'',tax_relief:false});
+// The family block edits the application, or — for people hired before it
+// moved onto the application form — their onboarding record (famTarget 'ob').
+let famTarget = 'app';
+function fam(){
+  const o = famTarget === 'ob' ? onboardingState : state;
+  ['children_below_18','children_18_to_23'].forEach(k => { if(!Array.isArray(o[k])) o[k] = []; });
+  return o;
+}
+function famSet(key, value){ fam()[key] = value; }
+function famChildSet(key, i, field, value){ fam()[key][i][field] = value; }
+function famAddChild(key){ fam()[key].push(blankChild()); render(); }
+async function famRemoveChild(key, i){
+  if(await askYesNo('Remove this entry?', 'Are you sure you want to remove this entry?')){ fam()[key].splice(i,1); render(); }
+}
+function childRowsHtml(key){
+  return fam()[key].map((c,i)=>`
+    <tr>
+      <td id="field-${key}-name-${i}"><input type="text" aria-label="Child name" value="${esc(c.name)}" oninput="famChildSet('${key}',${i},'name',this.value)"></td>
+      <td><select aria-label="Gender" onchange="famChildSet('${key}',${i},'gender',this.value)"><option value="">—</option>${['Male','Female'].map(o=>`<option ${c.gender===o?'selected':''}>${o}</option>`).join('')}</select></td>
+      <td id="field-${key}-nric-${i}"><input type="text" aria-label="NRIC" inputmode="numeric" maxlength="12" value="${esc(c.nric)}" oninput="this.value=numericOnly(this.value);familyChildNric('${key}',${i},this.value)"></td>
+      <td><input type="date" aria-label="Date of birth" id="${key}Dob${i}" value="${esc(c.date_of_birth)}" oninput="famChildSet('${key}',${i},'date_of_birth',this.value)"></td>
+      <td><select aria-label="Education" onchange="famChildSet('${key}',${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></td>
+      <td style="text-align:center;"><input type="checkbox" aria-label="Claim child tax relief" ${c.tax_relief?'checked':''} onchange="famChildSet('${key}',${i},'tax_relief',this.checked)"></td>
+      <td><button class="remove-x" type="button" aria-label="Remove this child" onclick="famRemoveChild('${key}',${i})">${UI_ICON.x}</button></td>
+    </tr>`).join('') || `<tr><td colspan="7" class="hint" style="padding:12px;">No children added.</td></tr>`;
+}
+function familyChildNric(key, i, val){
+  fam()[key][i].nric = val;
+  const dob = deriveDobFromNric(val);
+  if(dob && val.length >= 6){
+    fam()[key][i].date_of_birth = dob;
+    const el = document.getElementById(`${key}Dob${i}`);
+    if(el) el.value = dob; // in place: keeps focus while typing
+  }
+}
+function familySpouseNric(val){
+  fam().spouse_nric = val;
+  const dob = deriveDobFromNric(val);
+  if(dob){
+    fam().spouse_date_of_birth = dob;
+    const el = document.getElementById('spouseDob');
+    if(el) el.value = dob;
+  }
+}
+// Spouse + both children tables. `first` drops the top margin of the first title.
+function familyFieldsHtml(first = true){
+  const f = fam();
+  const head = `<thead><tr><th>Name (per NRIC)</th><th>Gender</th><th>NRIC No. (no dash)</th><th>Date of Birth</th><th>Education</th><th>Tax Relief</th><th></th></tr></thead>`;
+  return `
+    <div class="section-title" ${first ? 'style="margin-top:0;"' : ''}>Spouse Information</div>
+    <div class="grid">
+      <div class="field"><label for="spouseName">Name (per NRIC)</label><input type="text" id="spouseName" value="${esc(f.spouse_name)}" oninput="famSet('spouse_name', this.value)"></div>
+      <div class="field" id="field-spouse_nric"><label for="spouseNric">NRIC No. (without dash)</label><input type="text" id="spouseNric" inputmode="numeric" maxlength="12" value="${esc(f.spouse_nric)}" oninput="this.value=numericOnly(this.value);familySpouseNric(this.value)"></div>
+    </div>
+    <div class="grid">
+      <div class="field"><label for="spouseDob">Date of Birth</label><input type="date" id="spouseDob" value="${esc(f.spouse_date_of_birth)}" oninput="famSet('spouse_date_of_birth', this.value)"></div>
+      <div class="field"><label>Working?</label>
+        <div class="radio-row">${['Yes','No'].map(v=>`<label class="radio-opt"><input type="radio" name="spouse_working" ${f.spouse_working===v?'checked':''} onchange="famSet('spouse_working','${v}')"> ${v}</label>`).join('')}</div>
+      </div>
+    </div>
+
+    <div class="section-title">Children Below 18 Years Old</div>
+    <div class="table-scroll"><table class="dyn">${head}<tbody>${childRowsHtml('children_below_18')}</tbody></table></div>
+    <button type="button" class="add-row-btn" onclick="famAddChild('children_below_18')">+ Add child</button>
+
+    <div class="section-title">Children 18 Years Old and Above <span class="opt-tag">(unmarried &amp; in full-time study)</span></div>
+    <div class="table-scroll"><table class="dyn">${head}<tbody>${childRowsHtml('children_18_to_23')}</tbody></table></div>
+    <button type="button" class="add-row-btn" onclick="famAddChild('children_18_to_23')">+ Add child</button>
+    <p class="hint" style="margin-top:10px;">Tick "Tax Relief" for each child you will claim child tax relief for.</p>`;
+}
+function tplFamily(){
+  famTarget = 'app';
+  return `
+    <div class="step-eyebrow">Application Form</div>
+    <h2>Family Details <span class="tag-opt" style="vertical-align:middle;">Optional</span></h2>
+    <p class="step-desc">Fill this in if it applies to you — HR uses it for tax relief and benefits. You can leave this page blank and continue.</p>
+    ${familyFieldsHtml(true)}
+    ${navButtonsValidated('questions','referees', validateFamilyStep)}
+  `;
+}
+function validateFamilyStep(){
+  const errs = [];
+  const f = fam();
+  if(f.spouse_nric && f.spouse_nric.length !== 12) errs.push({field:'field-spouse_nric', message:'Spouse NRIC must be 12 digits (or leave it blank).'});
+  ['children_below_18','children_18_to_23'].forEach(key => f[key].forEach((c,i) => {
+    if(!(c.name||'').trim() && ((c.nric||'') || c.date_of_birth)) errs.push({field:`field-${key}-name-${i}`, message:'Please enter the name of each child you add (or remove the row).'});
+    if(c.nric && c.nric.length !== 12) errs.push({field:`field-${key}-nric-${i}`, message:`${c.name || 'Child'}: NRIC must be 12 digits (or leave it blank).`});
+  }));
+  return errs;
 }
 
 // ---------------------------------------------------------------------------
@@ -1490,20 +1538,22 @@ function tplReferees(){
         <legend>Referee 1 <span class="req-star">*</span></legend>
         <div class="field"><label>Name <span class="req-star">*</span></label><input type="text" placeholder="e.g. John Tan" value="${esc(state.referee1.name)}" oninput="updateNested(state.referee1,'name',this.value)"></div>
         <div class="field"><label>Designation <span class="req-star">*</span></label><input type="text" placeholder="e.g. Project Manager" value="${esc(state.referee1.designation)}" oninput="updateNested(state.referee1,'designation',this.value)"></div>
+        <div class="field"><label>Company <span class="req-star">*</span></label><input type="text" placeholder="e.g. ABC Engineering Sdn Bhd" value="${esc(state.referee1.company)}" oninput="updateNested(state.referee1,'company',this.value)"></div>
         <div class="field"><label>Relationship <span class="req-star">*</span></label><input type="text" placeholder="e.g. Ex-supervisor" value="${esc(state.referee1.relationship)}" oninput="updateNested(state.referee1,'relationship',this.value)"></div>
-        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 0123456789" value="${esc(state.referee1.contact)}" oninput="this.value=numericOnly(this.value);updateNested(state.referee1,'contact',this.value)"></div>
+        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 0123456789" value="${esc(state.referee1.contact)}" maxlength="11" oninput="this.value=numericOnly(this.value);updateNested(state.referee1,'contact',this.value)"></div>
       </fieldset>
       <fieldset id="field-referee2">
         <legend>Referee 2 <span class="req-star">*</span></legend>
         <div class="field"><label>Name <span class="req-star">*</span></label><input type="text" placeholder="e.g. Jane Lim" value="${esc(state.referee2.name)}" oninput="updateNested(state.referee2,'name',this.value)"></div>
         <div class="field"><label>Designation <span class="req-star">*</span></label><input type="text" placeholder="e.g. HR Manager" value="${esc(state.referee2.designation)}" oninput="updateNested(state.referee2,'designation',this.value)"></div>
+        <div class="field"><label>Company <span class="req-star">*</span></label><input type="text" placeholder="e.g. XYZ Holdings Berhad" value="${esc(state.referee2.company)}" oninput="updateNested(state.referee2,'company',this.value)"></div>
         <div class="field"><label>Relationship <span class="req-star">*</span></label><input type="text" placeholder="e.g. Colleague" value="${esc(state.referee2.relationship)}" oninput="updateNested(state.referee2,'relationship',this.value)"></div>
-        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 0129876543" value="${esc(state.referee2.contact)}" oninput="this.value=numericOnly(this.value);updateNested(state.referee2,'contact',this.value)"></div>
+        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 0129876543" value="${esc(state.referee2.contact)}" maxlength="11" oninput="this.value=numericOnly(this.value);updateNested(state.referee2,'contact',this.value)"></div>
       </fieldset>
     </div>
 
     <div class="section-title">Declarations</div>
-    <p style="font-size:13px;line-height:1.6;">(A) I declare that the statement made by me to the foregoing question are true, complete and correct to the best of my knowledge and belief. Permission is given to the Company to make such investigations as and when necessary on the information given above. I understand that my misrepresentation or material omission made herein or on any other documents requested by the Company, will render dismissal or termination of my employment with the Company.</p>
+    <p class="decl-text">(A) ${esc(WCT.DECLARATION_A)}</p>
 
     <div class="field" id="field-declaration_lawsuit">
       <label>(B) I declare that save and except for the following I am not involved in, a party to nor the subject of any law suits, arbitral proceedings, disciplinary proceedings, criminal inquiry, investigation and/or conviction and/or any other legal or quasi-legal proceedings. <span class="req-star">*</span></label>
@@ -1523,7 +1573,7 @@ function tplReferees(){
     </div>
     ${state.declaration_other_matters==='Yes' ? `<div class="field" id="field-declaration_other_matters_specify"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('declaration_other_matters_specify', this.value)">${esc(state.declaration_other_matters_specify)}</textarea><div class="hint">Add an attachment on the next step if you need more space.</div></div>` : ''}
 
-    ${navButtonsValidated('questions','attachments', validateRefereesStep)}
+    ${navButtonsValidated('family','attachments', validateRefereesStep)}
   `;
 }
 function validateRefereesStep(){
@@ -1532,8 +1582,10 @@ function validateRefereesStep(){
     const r = state[key];
     if(!r.name.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a name.`});
     if(!r.designation.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a designation.`});
+    if(!(r.company||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter the company.`});
     if(!r.relationship.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter your relationship to them.`});
     if(!r.contact.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a contact number.`});
+    else if(!WCT.isValidPhone(r.contact)) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: the contact number must be 10–11 digits.`});
   });
   if(!state.declaration_lawsuit) errs.push({field:'field-declaration_lawsuit', message:'Please answer declaration (B) — lawsuits, proceedings, and investigations.'});
   if(state.declaration_lawsuit==='Yes' && !state.declaration_lawsuit_specify.trim()) errs.push({field:'field-declaration_lawsuit_specify', message:'Please specify the details for declaration (B).'});
@@ -1545,46 +1597,143 @@ function validateRefereesStep(){
 // ---------------------------------------------------------------------------
 // STEP: attachments & profile picture
 // ---------------------------------------------------------------------------
+const DOC_ICONS = {
+  ic: ['#E0F2FE','#0369A1','<rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h4M14 14h3"/>'],
+  resume: ['#FEE2E2','#B91016','<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>'],
+  academic: ['#F3E8FF','#7E22CE','<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>'],
+  payslip: ['#DCFCE7','#15803D','<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>'],
+  other: ['#F1F5F9','#475569','<path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>'],
+};
+function docFileRowHtml(f){
+  const url = WCT.fileUrl(f.url);
+  return `<div class="doc-file">
+    <span class="th">${WCT.isImage(f) ? `<img src="${esc(url)}" alt="">` : esc(WCT.fileBadge(f))}</span>
+    <a href="${esc(url)}" target="_blank" rel="noopener">${esc(f.name)}</a>
+    ${f.category ? '' : `<select class="doc-move" aria-label="Which document is ${esc(f.name)}?" onchange="moveAttachment(${f._index}, this.value)">
+      <option value="">Which document is this?</option>${DOC_MOVE_OPTIONS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>`}
+    <button type="button" class="x" aria-label="Remove ${esc(f.name)}" onclick="removeAttachmentConfirm(${f._index})">Remove</button>
+  </div>`;
+}
+// Files uploaded before the document sections existed have no category and
+// show under "Other documents"; the candidate can say what each one is.
+const DOC_MOVE_OPTIONS = [['ic_front','IC — front / passport'],['ic_back','IC — back'],['resume','Resume / CV'],['academic','Academic certificate'],['payslip','Payslip'],['other','Other document']];
+async function moveAttachment(i, category){
+  const f = state.attachments[i];
+  if(!f || !category) return;
+  if(category.startsWith('ic_')) state.attachments.forEach(a => { if(a !== f && a.category === category) a.category = 'other'; });
+  f.category = category;
+  await saveDraftQuiet();
+  render();
+}
 function tplAttachments(){
-  const attList = state.attachments.map((a,i)=>{
-    const isImg = a.type && a.type.startsWith('image/');
-    return `<div class="attach-item">
-      <div class="attach-thumb">${isImg ? `<img src="${a.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : UI_ICON.file}</div>
-      <div class="attach-name">${esc(a.name)}</div>
-      <button class="remove-x" onclick="removeAttachment(${i})">Remove</button>
-    </div>`;
+  const docs = WCT.docsByCategory(state.attachments);
+  const sections = WCT.DOC_SECTIONS.map(sec => {
+    const [bg, fg, icon] = DOC_ICONS[sec.key];
+    const head = `<div class="doc-sec-h"><span class="ic" style="background:${bg};color:${fg}"><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg></span>
+      <div><h4>${esc(sec.label)}</h4><div class="s">${esc(sec.hint)}</div></div>
+      <span class="badge">${sec.required ? '<span class="tag-req">Required</span>' : '<span class="tag-opt">Optional</span>'}</span></div>`;
+    if(sec.slots){
+      return `<div class="doc-sec wide" id="field-docs-${sec.key}">${head}
+        <div class="ic-slots">${sec.slots.map(([cat, label]) => {
+          const f = docs[cat][0];
+          if(f) return `<div class="ic-slot done"><span class="lbl">${label}</span>${WCT.isImage(f) ? `<img src="${esc(WCT.fileUrl(f.url))}" alt="IC ${label.toLowerCase()}">` : `<span>${esc(f.name)}</span>`}
+            <span style="font-size:13px;">${esc(f.name)} · <button type="button" class="link-btn" style="color:var(--danger);" onclick="removeAttachmentConfirm(${f._index})">Remove</button></span></div>`;
+          const optionalBack = cat === 'ic_back' && state.citizen === 'Non-Malaysian';
+          return `<button type="button" class="ic-slot" onclick="pickDoc('${cat}')"><span class="lbl">${label}${optionalBack ? ' (optional)' : ''}</span>+ Upload ${label.toLowerCase()} of IC${cat==='ic_front' ? ' / passport' : ''}</button>`;
+        }).join('')}</div>
+        <div id="docErr-${sec.key}"></div></div>`;
+    }
+    return `<div class="doc-sec" id="field-docs-${sec.key}">${head}
+      <div class="doc-files">${docs[sec.key].map(docFileRowHtml).join('')}</div>
+      <button type="button" class="doc-add" onclick="pickDoc('${sec.key}')">+ Add file</button>
+      <div id="docErr-${sec.key}"></div></div>`;
   }).join('');
 
   return `
     <div class="step-eyebrow">Application Form</div>
-    <h2>Attachments &amp; Passport Size Photo</h2>
+    <h2>Photo &amp; Documents</h2>
+    <p class="step-desc">Upload clear copies: PDF, JPG, PNG or Word files, max ${MAX_UPLOAD_MB}MB each. You can add several files to each section.</p>
 
-    <div class="section-title" style="margin-top:0;">Passport Size Photo <span class="req-star">*</span></div>
-    ${state.profile_picture_url ? `<img src="${state.profile_picture_url}" class="profile-preview">` : ''}
-    <div class="upload-box" id="field-profile_picture_url" onclick="document.getElementById('profileInput').click()">
-      <div style="font-size:14px;display:flex;gap:8px;align-items:center;justify-content:center;">${UI_ICON.camera} Click to ${state.profile_picture_url?'change':'upload'} your passport size photo</div>
-      <div class="hint">JPG or PNG, clear passport-style photo recommended — max ${MAX_UPLOAD_MB}MB</div>
+    <div class="section-title" style="margin-top:0;">Photo <span class="tag-opt">Optional</span></div>
+    <div class="photo-row">
+      <div class="photo-frame">${state.profile_picture_url ? `<img src="${esc(WCT.fileUrl(state.profile_picture_url))}" alt="Your photo">` : WCT.photoSticker(150, 170)}</div>
+      <div>
+        <div style="font-weight:700;">${state.profile_picture_url ? 'Your photo' : 'Add a recent photo of yourself'}</div>
+        <div class="hint" style="font-size:14px;margin-top:4px;">A plain background with your face clearly visible is best. You can skip this if you don't have one now.</div>
+        <div class="photo-actions">
+          <button type="button" class="btn btn-primary" onclick="document.getElementById('profileInput').click()">${UI_ICON.camera} ${state.profile_picture_url ? 'Change photo' : 'Upload photo'}</button>
+          ${state.profile_picture_url ? `<button type="button" class="btn btn-ghost" onclick="removePhoto()">Remove photo</button>` : ''}
+        </div>
+        <div id="profileUploadErr"></div>
+      </div>
     </div>
-    <div id="profileUploadErr"></div>
     <input type="file" id="profileInput" accept="image/*" style="display:none" onchange="handleProfileUpload(this.files[0]); this.value='';">
 
     <div class="section-title">Supporting Documents</div>
-    <p class="hint">Resume/CV, certificates, testimonials, IC copy (front and back), payslip, etc. Add attachments if you need more space than the form provides.</p>
-    <div class="upload-box" onclick="document.getElementById('attachInput').click()">
-      <div style="font-size:14px;display:flex;gap:8px;align-items:center;justify-content:center;">${UI_ICON.clip} Click to add a document</div>
-      <div class="hint">PDF, JPG, PNG, or Word files — max ${MAX_UPLOAD_MB}MB each</div>
-    </div>
-    <div id="attachUploadErr"></div>
-    <input type="file" id="attachInput" style="display:none" onchange="handleAttachmentUpload(this.files[0]); this.value='';">
-    <div class="attach-list">${attList}</div>
+    <div class="doc-grid">${sections}</div>
+    <input type="file" id="docInput" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,image/*,application/pdf" multiple style="display:none" onchange="handleDocUpload(this.files); this.value='';">
 
     ${navButtonsValidated('referees','review', validateAttachmentsStep)}
   `;
 }
+// IC (front, plus back for Malaysians) and a resume are required.
 function validateAttachmentsStep(){
   const errs = [];
-  if(!state.profile_picture_url) errs.push({field:'field-profile_picture_url', message:'Please upload a passport size photo before continuing — it is required.'});
+  const docs = WCT.docsByCategory(state.attachments);
+  if(!docs.ic_front.length) errs.push({field:'field-docs-ic', message:'Please upload the front of your IC (or your passport photo page).'});
+  if(state.citizen !== 'Non-Malaysian' && !docs.ic_back.length) errs.push({field:'field-docs-ic', message:'Please upload the back of your IC.'});
+  if(!docs.resume.length) errs.push({field:'field-docs-resume', message:'Please upload your resume / CV.'});
+  if(errs.length && state.attachments.some(a => !a.category)) errs.push({field:'field-docs-other', message:'Already uploaded it earlier? Use "Which document is this?" under Other documents to put it in the right section.'});
   return errs;
+}
+let pendingDocCategory = 'other';
+function pickDoc(category){
+  pendingDocCategory = category;
+  const input = document.getElementById('docInput');
+  input.multiple = !category.startsWith('ic_');
+  input.click();
+}
+function docSectionKey(category){ return category.startsWith('ic_') ? 'ic' : category; }
+async function handleDocUpload(fileList){
+  const files = Array.from(fileList || []);
+  if(!files.length) return;
+  const category = pendingDocCategory;
+  const errBox = `docErr-${docSectionKey(category)}`;
+  clearUploadError(errBox);
+  for(const f of files){ if(!checkUploadSize(f, errBox)) return; }
+  showLoading(files.length > 1 ? `Uploading ${files.length} files...` : 'Uploading document...');
+  try{
+    for(const file of files){
+      const { data, error } = await apiTry(() => api.upload('/uploads/attachment', file));
+      if(error) throw error;
+      if(category.startsWith('ic_')) state.attachments = state.attachments.filter(a => a.category !== category);
+      state.attachments.push({ ...data, category });
+    }
+  } catch(e){ hideLoading(); render(); showUploadError(errBox, 'Upload failed: '+e.message); return; }
+  hideLoading();
+  await saveDraftQuiet();
+  render();
+}
+async function removeAttachmentConfirm(i){
+  const f = state.attachments[i];
+  if(!f) return;
+  if(!(await askYesNo('Remove this file?', `Remove "${f.name}" from your application?`))) return;
+  state.attachments.splice(i,1);
+  await saveDraftQuiet();
+  render();
+}
+async function removePhoto(){
+  if(!(await askYesNo('Remove your photo?', 'Are you sure you want to remove your photo?'))) return;
+  state.profile_picture_url = null;
+  // '' would be skipped by the save (keeps the old value), so clear it explicitly.
+  if(state.id) await apiTry(() => api.patch(`/applications/${state.id}`, { reference_no: state.reference_no, patch: { profile_picture_url: null } }));
+  state.profile_picture_url = '';
+  render();
+}
+// Save without the "Saving..." overlay or toast (after an upload/removal).
+async function saveDraftQuiet(){
+  if(!state.id) return;
+  await apiTry(() => api.patch(`/applications/${state.id}`, { reference_no: state.reference_no, patch: currentPatch() }));
 }
 
 // Filename sanitization now happens server-side (backend/src/routes/uploads.js
@@ -1621,28 +1770,16 @@ async function handleProfileUpload(file){
   if(!file) return;
   clearUploadError('profileUploadErr');
   if(!checkUploadSize(file, 'profileUploadErr')) return;
-  showLoading('Uploading passport size photo...');
+  showLoading('Uploading photo...');
   try{
     const { data, error } = await apiTry(() => api.upload('/uploads/profile-picture', file));
     if(error) throw error;
     state.profile_picture_url = data.url;
   } catch(e){ hideLoading(); showUploadError('profileUploadErr', 'Upload failed: '+e.message); return; }
-  hideLoading(); render();
+  hideLoading(); await saveDraftQuiet(); render();
 }
 
-async function handleAttachmentUpload(file){
-  if(!file) return;
-  clearUploadError('attachUploadErr');
-  if(!checkUploadSize(file, 'attachUploadErr')) return;
-  showLoading('Uploading document...');
-  try{
-    const { data, error } = await apiTry(() => api.upload('/uploads/attachment', file));
-    if(error) throw error;
-    state.attachments.push(data);
-  } catch(e){ hideLoading(); showUploadError('attachUploadErr', 'Upload failed: '+e.message); return; }
-  hideLoading(); render();
-}
-function removeAttachment(i){ state.attachments.splice(i,1); render(); }
+
 
 // ---------------------------------------------------------------------------
 // STEP: review
@@ -1650,90 +1787,88 @@ function removeAttachment(i){ state.attachments.splice(i,1); render(); }
 function rrow(k,v){ return `<div class="review-row"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
 function reviewHeader(title, step){ return `<h4>${title} <span class="edit-link" onclick="goStep('${step}')">Edit</span></h4>`; }
 
+// One read-only summary of an application, used by the Review step (with
+// Edit links) and by "My Applications" → details (without).
+function applicationSummaryHtml(a, editable){
+  const h = (title, step) => editable ? reviewHeader(title, step) : `<h4>${title}</h4>`;
+  const docs = WCT.docsByCategory(a.attachments);
+  const langs = (a.language_ability||[]).filter(r => (r.language||'').trim() && !/^Others \(please state\)$/i.test(r.language));
+  const exp = (a.working_experience||[]).filter(r => (r.employer||'').trim() || (r.position||'').trim());
+  const refs = [a.referee1, a.referee2].filter(r => r && r.name);
+  const kids = [...(a.children_below_18||[]).map(c => ['Below 18', c]), ...(a.children_18_to_23||[]).map(c => ['18 and above', c])];
+  const fileRow = (label, list) => `<div class="file-thumb-row"><div class="k" style="width:44%;">${label}</div>
+    <div class="v" style="width:56%;">${list.length ? list.map(f => `<div style="display:flex;align-items:center;gap:10px;margin:2px 0;">
+      <span class="file-thumb">${WCT.isImage(f) ? `<img src="${esc(WCT.fileUrl(f.url))}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : UI_ICON.file}</span>
+      <a href="${esc(WCT.fileUrl(f.url))}" target="_blank" rel="noopener">${esc(f.name)}</a></div>`).join('') : '<span style="color:var(--ink-soft);">None</span>'}</div></div>`;
+  return `
+    <div class="review-block">
+      ${h('Personal Particulars', 'personal')}
+      ${rrow('Business Unit', WCT.buName(a.business_unit))}
+      ${rrow('Position Applying For', a.position_applying)}
+      ${rrow('Name (per NRIC)', a.name_nric)}
+      ${rrow('Alias', a.alias)}
+      ${rrow('Permanent Address', WCT.formatAddress(a, 'permanent'))}
+      ${rrow('Correspondence Address', WCT.sameAddress(a) ? 'Same as permanent address' : WCT.formatAddress(a, 'correspondence'))}
+      ${rrow('Mobile', a.mobile_phone)}
+      ${rrow('Email', a.email)}
+      ${rrow('NRIC / Passport', a.nric_new || a.passport_number)}
+      ${rrow('Date of Birth / Age', `${formatDobForDisplay(a.date_of_birth) || '—'} / ${a.age || '—'}`)}
+      ${rrow('Marital Status', a.marital_status)}
+      ${rrow('Race / Bumiputra', `${a.race || '—'} / ${a.bumiputra || '—'}`)}
+    </div>
+    <div class="review-block">
+      ${h('Language Ability', 'language')}
+      ${langs.map(r=>rrow(r.language, `Spoken: ${r.spoken||'—'}, Written: ${r.written||'—'}`)).join('') || rrow('Language Ability','None provided')}
+    </div>
+    <div class="review-block">
+      ${h('Education', 'education')}
+      ${(a.education||[]).map(r=>rrow(r.type, `${r.name} (${r.from_year}–${r.to_year}) — ${r.qualification}${r.course_name?' — '+r.course_name:''}`)).join('') || rrow('Education','None provided')}
+    </div>
+    <div class="review-block">
+      ${h('Working Experience', 'experience')}
+      ${a.no_working_experience ? rrow('Experience', 'No previous working experience') : (exp.map(r=>rrow(r.position||'Position', `${r.employer} (${r.from}–${r.is_current?'Present':r.to})`)).join('') || rrow('Experience','None provided'))}
+    </div>
+    <div class="review-block">
+      ${h('Employment Questions', 'questions')}
+      ${rrow('Resignation Notice Required', a.resignation_notice_required==='Yes' ? `Yes — ${a.notice_period||''}` : a.resignation_notice_required)}
+      ${rrow('Date Available to Start', formatDobForDisplay(a.date_available_to_start) || a.date_available_to_start)}
+      ${rrow('Expected Basic Salary', fmtMoney(a.expected_basic_salary))}
+      ${rrow('Relatives in Company', a.relatives_in_company==='Yes' ? `Yes — ${a.relatives_name} (${a.relatives_relationship})` : a.relatives_in_company)}
+      ${rrow('Referred by Anyone', a.referral_person==='Yes' ? `Yes — ${a.referral_name}, ${a.referral_department}` : a.referral_person)}
+      ${rrow('Own Transport (Car / Motorcycle)', `${a.own_transport_motorcar||'—'} / ${a.own_transport_motorcycle||'—'}`)}
+      ${rrow('Willing Outside Klang Valley', a.willing_based_outside_klang_valley)}
+      ${rrow('Physical Defects', a.physical_defects==='Yes' ? `Yes — ${a.physical_defects_specify||''}` : a.physical_defects)}
+      ${rrow('Arrested / Convicted', a.arrested_convicted==='Yes' ? `Yes — ${a.arrested_convicted_specify||''}` : a.arrested_convicted)}
+    </div>
+    <div class="review-block">
+      ${h('Family Details', 'family')}
+      ${rrow('Spouse', a.spouse_name ? `${a.spouse_name}${a.spouse_nric ? ' · '+a.spouse_nric : ''}${a.spouse_working ? ' · Working: '+a.spouse_working : ''}` : '')}
+      ${kids.map(([grp, c]) => rrow(`Child (${grp})`, `${c.name||'—'}${c.nric ? ' · '+c.nric : ''}${c.tax_relief ? ' · Tax relief' : ''}`)).join('') || rrow('Children', 'None')}
+    </div>
+    <div class="review-block">
+      ${h('Referees &amp; Declarations', 'referees')}
+      ${refs.map((r,i)=>rrow(`Referee ${i+1}`, `${r.name} — ${r.designation}${r.company ? ', '+r.company : ''} · ${r.relationship} · ${r.contact}`)).join('') || rrow('Referees', 'None provided')}
+      ${rrow('Declaration (B) — Lawsuits/Proceedings', a.declaration_lawsuit==='Yes' ? `Yes — ${a.declaration_lawsuit_specify}` : a.declaration_lawsuit)}
+      ${rrow('Declaration (C) — Other Matters', a.declaration_other_matters==='Yes' ? `Yes — ${a.declaration_other_matters_specify}` : a.declaration_other_matters)}
+    </div>
+    <div class="review-block">
+      ${h('Photo &amp; Documents', 'attachments')}
+      <div class="file-thumb-row"><div class="k" style="width:44%;">Photo</div><div class="v" style="width:56%;">
+        ${a.profile_picture_url ? `<img src="${esc(WCT.fileUrl(a.profile_picture_url))}" class="profile-thumb-lg" alt="Photo">` : '<span style="color:var(--ink-soft);">Not uploaded (optional)</span>'}</div></div>
+      ${fileRow('IC (front / back)', [...docs.ic_front, ...docs.ic_back])}
+      ${fileRow('Resume / CV', docs.resume)}
+      ${fileRow('Academic certificates', docs.academic)}
+      ${fileRow('Payslip', docs.payslip)}
+      ${fileRow('Other documents', docs.other)}
+    </div>`;
+}
+
 function tplReview(){
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Review Your Application</h2>
     <p class="step-desc">Please check every section carefully before proceeding to the consent forms. Reference number: <strong>${state.reference_no}</strong></p>
-
-    <div class="review-block">
-      ${reviewHeader('Position', 'start')}
-      ${rrow('Business Unit', state.business_unit)}
-    </div>
-
-    <div class="review-block">
-      ${reviewHeader('Personal Particulars', 'personal')}
-      ${rrow('Position Applying For', state.position_applying)}
-      ${rrow('Name', state.name_nric)}
-      ${rrow('Alias', state.alias)}
-      ${rrow('Permanent Address', state.permanent_address+' '+state.permanent_postcode)}
-      ${rrow('Correspondence Address', state.correspondence_address+' '+state.correspondence_postcode)}
-      ${rrow('Mobile', state.mobile_phone)}
-      ${rrow('Email', state.email)}
-      ${rrow('NRIC', state.nric_new)}
-      ${rrow('Date of Birth / Age', state.date_of_birth+' / '+state.age)}
-      ${rrow('Marital Status', state.marital_status)}
-      ${rrow('Race / Bumiputra', state.race+' / '+state.bumiputra)}
-    </div>
-
-    <div class="review-block">
-      ${reviewHeader('Language Ability', 'language')}
-      ${state.language_ability.map(r=>rrow(r.language, `Spoken: ${r.spoken||'—'}, Written: ${r.written||'—'}`)).join('')}
-    </div>
-
-    <div class="review-block">
-      ${reviewHeader('Education', 'education')}
-      ${state.education.map(r=>rrow(r.type, `${r.name} (${r.from_year}–${r.to_year}) — ${r.qualification}${r.course_name?' — '+r.course_name:''}`)).join('')}
-    </div>
-
-    <div class="review-block">
-      ${reviewHeader('Working Experience', 'experience')}
-      ${state.working_experience.map(r=>rrow(r.position||'Position', `${r.employer} (${r.from}–${r.is_current?'Present':r.to})`)).join('')}
-    </div>
-
-    <div class="review-block">
-      ${reviewHeader('Employment Questions', 'questions')}
-      ${rrow('Resignation Notice Required', state.resignation_notice_required)}
-      ${rrow('Date Available to Start', state.date_available_to_start)}
-      ${rrow('Expected Basic Salary', fmtMoney(state.expected_basic_salary))}
-      ${rrow('Relatives in Company', state.relatives_in_company==='Yes' ? `Yes — ${state.relatives_name} (${state.relatives_relationship})` : state.relatives_in_company)}
-      ${rrow('Referred by Anyone', state.referral_person==='Yes' ? `Yes — ${state.referral_name}, ${state.referral_department}` : state.referral_person)}
-      ${rrow('Own Transport (Car / Motorcycle)', `${state.own_transport_motorcar} / ${state.own_transport_motorcycle}`)}
-      ${rrow('Willing Outside Klang Valley', state.willing_based_outside_klang_valley)}
-      ${rrow('Physical Defects', state.physical_defects)}
-      ${rrow('Arrested / Convicted', state.arrested_convicted)}
-    </div>
-
-    <div class="review-block">
-      ${reviewHeader('Referees & Declarations', 'referees')}
-      ${rrow('Referee 1', `${state.referee1.name} — ${state.referee1.designation}`)}
-      ${rrow('Referee 2', `${state.referee2.name} — ${state.referee2.designation}`)}
-      ${rrow('Declaration (B) — Lawsuits/Proceedings', state.declaration_lawsuit==='Yes' ? `Yes — ${state.declaration_lawsuit_specify}` : state.declaration_lawsuit)}
-      ${rrow('Declaration (C) — Other Matters', state.declaration_other_matters==='Yes' ? `Yes — ${state.declaration_other_matters_specify}` : state.declaration_other_matters)}
-    </div>
-
-    <div class="review-block">
-      ${reviewHeader('Attachments', 'attachments')}
-      <div class="file-thumb-row">
-        <div class="k" style="width:44%;">Passport Size Photo</div>
-        <div class="v" style="width:56%;">
-          ${state.profile_picture_url
-            ? `<img src="${state.profile_picture_url}" class="profile-thumb-lg">`
-            : `<span style="color:var(--danger);">Not uploaded (required)</span>`}
-        </div>
-      </div>
-      ${state.attachments.length ? state.attachments.map(f=>{
-        const isImg = f.type && f.type.startsWith('image/');
-        return `<div class="file-thumb-row">
-          <div class="k" style="width:44%;"></div>
-          <div class="v" style="width:56%;display:flex;align-items:center;gap:10px;">
-            <span class="file-thumb">${isImg ? `<img src="${f.url}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">` : UI_ICON.file}</span>
-            <a href="${f.url}" target="_blank">${esc(f.name)}</a>
-          </div>
-        </div>`;
-      }).join('') : rrow('Documents', 'None attached')}
-    </div>
-
+    ${applicationSummaryHtml(state, true)}
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="goStep('attachments')">← Back</button>
       <div class="right"><button class="btn btn-primary" onclick="proceedToConsent()">Everything looks correct → Continue to Consent Forms</button></div>
@@ -1764,7 +1899,12 @@ function tplConsentLang(){
     </div>
   `;
 }
-function selectLang(l){ state.language_choice = l; render(); }
+function selectLang(l){
+  state.language_choice = l;
+  // The signature starts from what the candidate gave on the form.
+  if(!pdpaDraft.name) pdpaDraft = { name: state.name_nric || '', nric: state.nric_new || state.passport_number || '', agreed: false };
+  render();
+}
 
 // ---------------------------------------------------------------------------
 // STEP: PDPA notice
@@ -1776,15 +1916,15 @@ function tplPdpa(){
     <h2>${t.pdpaTitle}</h2>
     <div class="consent-doc">${t.pdpaBody}</div>
 
-    <div class="grid">
-      <div class="field"><label>${state.language_choice==='BM'?'Nama':'Name'}</label><input type="text" id="pdpaName" value="${esc(state.name_nric)}"></div>
-      <div class="field"><label>${state.language_choice==='BM'?'No. K/P':'NRIC No.'}</label><input type="text" id="pdpaNric" value="${esc(state.nric_new)}"></div>
-    </div>
-
-    <div class="checkbox-row">
-      <input type="checkbox" id="pdpaAgreeBox">
-      <label for="pdpaAgreeBox">${t.agreeLabel}</label>
-    </div>
+    ${WCT.sigHtml({
+      id: 'pdpaSig',
+      title: state.language_choice==='BM' ? 'Tandatangan digital' : 'Digital signature',
+      name: pdpaDraft.name, nric: pdpaDraft.nric, agreed: pdpaDraft.agreed,
+      nameLabel: state.language_choice==='BM' ? 'Nama penuh (seperti dalam K/P / pasport)' : 'Full name (as per NRIC / passport)',
+      nricLabel: state.language_choice==='BM' ? 'No. K/P / Pasport' : 'NRIC / Passport no.',
+      agreeText: t.agreeLabel,
+      onChange: (v) => { pdpaDraft = { name: v.name, nric: v.nric, agreed: v.agreed }; if(v.ok){ const el = document.getElementById('pdpaErr'); if(el) el.innerHTML = ''; } },
+    })}
     <div id="pdpaErr"></div>
 
     <div class="btn-row">
@@ -1794,14 +1934,15 @@ function tplPdpa(){
   `;
 }
 
+let pdpaDraft = { name: '', nric: '', agreed: false };
 async function submitPdpa(){
-  const box = document.getElementById('pdpaAgreeBox');
-  if(!box.checked){
-    document.getElementById('pdpaErr').innerHTML = `<div class="error-banner">Please tick the box to confirm your consent before continuing.</div>`;
+  const sig = WCT.sigValue('pdpaSig');
+  if(!sig.ok){
+    document.getElementById('pdpaSig').classList.add('invalid');
+    document.getElementById('pdpaErr').innerHTML = `<div class="error-banner">${state.language_choice==='BM' ? 'Sila taip nama dan nombor K/P anda, kemudian tandakan kotak persetujuan.' : 'Please type your full name and NRIC / passport number, then tick the box to confirm your consent.'}</div>`;
     return;
   }
-  const name = document.getElementById('pdpaName').value.trim();
-  const nric = document.getElementById('pdpaNric').value.trim();
+  const { name, nric } = sig;
   showLoading('Recording your consent...');
   try{
     // The JTS consent letter step has been removed from the candidate-facing
@@ -1832,7 +1973,7 @@ function tplFinal(){
     <div class="step-eyebrow">Final Step</div>
     <h2>Submit Your Application</h2>
     <div class="success-banner">Both consent forms have been completed.</div>
-    <p class="step-desc">Once submitted, your application will be locked and sent for review. You won't be able to make further edits — if you need to change anything, use the Back button now.</p>
+    <p class="step-desc">Once submitted, your application will be locked and sent to our HR team for review. Please use the Back button now if you need to make any changes.</p>
     <div id="finalErr"></div>
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="goStep('pdpa')">← Back</button>
@@ -1863,10 +2004,10 @@ function tplDone(){
     <div class="thankyou">
       ${window.WXC ? WXC.checkSvg : ''}
       <div class="step-eyebrow">Application Received</div>
-      <h2>Thank you for applying to WCT Group</h2>
-      <p class="step-desc">Please keep this reference number for your records — you'll need it for any follow-up.</p>
+      <h2>Thank you for completing your profile with WCT Group!</h2>
+      <p class="step-desc">Your application has been successfully submitted. We appreciate your interest in joining WCT Group and look forward to meeting you at the interview!</p>
       <div class="ref-box">${state.reference_no}</div>
-      <p class="step-desc">Our HR team will be in touch if your profile matches the role. You may close this page now.</p>
+      <p class="step-desc">Please keep this reference number for your records. For enquiries, please contact your HR Representative.</p>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="exportMyApplicationPdf(state)">${UI_ICON.pdf} Download as PDF</button>
         <button class="btn btn-ghost" onclick="backToMyApplications()">Back to My Applications</button>
@@ -1951,7 +2092,7 @@ async function backToMyApplications(){
 // ---------------------------------------------------------------------------
 function esc(v){
   if(v===null||v===undefined) return '';
-  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 function fmt(v){ return (v===null||v===undefined||v==='') ? '—' : esc(String(v)); }
 function fmtDate(v){ if(!v) return '—'; try{ return new Date(v).toLocaleDateString('en-GB'); }catch(e){ return esc(v); } }
@@ -2028,85 +2169,27 @@ function exportMyApplicationPdfById(id){
   exportMyApplicationPdf(row);
 }
 function exportMyApplicationPdf(a){
-  const edu = (a.education||[]).map(e=>`<tr><td>${fmt(e.type)}</td><td>${fmt(e.name)}</td><td>${fmt(e.from_year)}–${fmt(e.to_year)}</td><td>${fmt(e.qualification)}</td><td>${fmt(e.course_name)}</td></tr>`).join('')
-    || `<tr><td colspan="5" style="text-align:center;color:#999;">No entries provided</td></tr>`;
-  const exp = (a.working_experience||[]).map(w=>`
-    <tr><td>${fmt(w.employer)}</td><td>${fmt(w.position)}</td><td>${fmt(w.from)}–${w.is_current?'Present':fmt(w.to)}</td><td>${fmt(w.remuneration)}</td></tr>
-    ${w.responsibilities ? `<tr><td colspan="4" style="color:#555;font-style:italic;padding-top:0;">${fmt(w.responsibilities)}</td></tr>` : ''}
-  `).join('') || `<tr><td colspan="4" style="text-align:center;color:#999;">No entries provided</td></tr>`;
-  const lang = (a.language_ability||[]).map(l=>`<tr><td>${fmt(l.language)}</td><td>${fmt(l.spoken)}</td><td>${fmt(l.written)}</td></tr>`).join('')
-    || `<tr><td colspan="3" style="text-align:center;color:#999;">No entries provided</td></tr>`;
-  const refs = [a.referee1, a.referee2].filter(r => r && r.name);
-
-  const applicationPage = `
-  <div class="doc-page">
-    <div class="letterhead">
-      <div class="brand-row">
-        <img class="logo" src="${WCT_LOGO_DATA_URI}">
-        <div><h1>WCT Group of Companies</h1><div class="tagline">Employment Application — Candidate Record</div></div>
-      </div>
-      <div class="ref-box"><div class="big">${esc(a.reference_no||'')}</div><div style="font-size:10px;color:#666;">${fmt(a.business_unit)}</div></div>
-    </div>
-
-    <h2 class="section">Personal Particulars</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">Position Applying For</span>${fmt(a.position_applying)}</div>
-      <div class="item"><span class="lbl">Name (per NRIC)</span>${fmt(a.name_nric)}</div>
-      <div class="item"><span class="lbl">NRIC</span>${fmt(a.nric_new)}</div>
-      <div class="item"><span class="lbl">Date of Birth / Age</span>${fmtDate(a.date_of_birth)} / ${fmt(a.age)}</div>
-      <div class="item"><span class="lbl">Citizenship / Marital Status</span>${fmt(a.citizen)} / ${fmt(a.marital_status)}</div>
-      <div class="item"><span class="lbl">Mobile</span>${fmt(a.mobile_phone)}</div>
-      <div class="item"><span class="lbl">Email</span>${fmt(a.email)}</div>
-      <div class="item full"><span class="lbl">Permanent Address</span>${fmt(a.permanent_address)} ${fmt(a.permanent_postcode)}</div>
-    </div>
-
-    <h2 class="section">Language Ability</h2>
-    <table><thead><tr><th>Language</th><th>Spoken</th><th>Written</th></tr></thead><tbody>${lang}</tbody></table>
-
-    <h2 class="section">Education</h2>
-    <table><thead><tr><th>Type</th><th>Institution</th><th>Period</th><th>Qualification</th><th>Course Name</th></tr></thead><tbody>${edu}</tbody></table>
-
-    <h2 class="section">Working Experience</h2>
-    <table><thead><tr><th>Employer</th><th>Position</th><th>Period</th><th>Last Drawn</th></tr></thead><tbody>${exp}</tbody></table>
-
-    <h2 class="section">Employment Details</h2>
-    <div class="kv">
-      <div class="item"><span class="lbl">Expected Basic Salary</span>${fmtMoney(a.expected_basic_salary)}</div>
-      <div class="item"><span class="lbl">Available to Start</span>${fmtDate(a.date_available_to_start)}</div>
-    </div>
-
-    ${refs.length ? `
-    <h2 class="section">Referees</h2>
-    <div class="kv">
-      ${refs.map((r,i)=>`<div class="item"><span class="lbl">Referee ${i+1}</span>${fmt(r.name)} — ${fmt(r.designation)}<br>${fmt(r.relationship)} · ${fmt(r.contact)}</div>`).join('')}
-    </div>` : ''}
-
-    <h2 class="section">Declarations</h2>
-    <div class="kv">
-      <div class="item full"><span class="lbl">(B) Lawsuits/Proceedings</span>${a.declaration_lawsuit==='Yes' ? `Yes — ${fmt(a.declaration_lawsuit_specify)}` : fmt(a.declaration_lawsuit)}</div>
-      <div class="item full"><span class="lbl">(C) Other Matters</span>${a.declaration_other_matters==='Yes' ? `Yes — ${fmt(a.declaration_other_matters_specify)}` : fmt(a.declaration_other_matters)}</div>
-    </div>
-
-    <div class="footer">
-      <span>Reference ${esc(a.reference_no||'')} — Generated ${fmtDateTime(new Date().toISOString())}</span>
-      <span>WCT Group Employment Application Portal</span>
-    </div>
-  </div>`;
-
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(a.reference_no||'Application')} — WCT Group</title><style>${pdfPrintStyles()}</style></head><body>
-  <div class="print-bar"><span>Ready — use your browser's print dialog and choose "Save as PDF".</span><button onclick="window.print()">Print / Save as PDF</button></div>
-  ${applicationPage}
-  </body></html>`;
-  openPrintWindow(html);
+  WCT.openPrint(WCT.applicationPdfHtml(a, { statusLabel: CANDIDATE_STATUS_LABELS[a.status] }));
 }
 
+// Family details now live on the application; older onboarding records
+// kept their own copy, used when the application has none.
+function obFamily(o){
+  const fam = o.family || {};
+  const has = (v) => Array.isArray(v) ? v.length > 0 : !!v;
+  const out = {};
+  ['spouse_name','spouse_nric','spouse_date_of_birth','spouse_working','children_below_18','children_18_to_23']
+    .forEach(k => { out[k] = has(fam[k]) ? fam[k] : o[k]; });
+  return out;
+}
 function exportMyOnboardingPdf(){
   if(!onboardingState || !onboardingAppId){ alert('No onboarding data loaded.'); return; }
   const a = myApplications.find(x=>x.id===onboardingAppId) || {};
   const o = onboardingState;
+  const f = obFamily(o);
   const chk = (v) => v ? '☑' : '☐';
-  const childRowsBelow18 = (o.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">None</td></tr>`;
-  const childRows18to23 = (o.children_18_to_23||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">None</td></tr>`;
+  const childRowsBelow18 = (f.children_below_18||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">None</td></tr>`;
+  const childRows18to23 = (f.children_18_to_23||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.gender)}</td><td>${fmt(c.nric)}</td><td>${fmtDate(c.date_of_birth)}</td><td>${fmt(c.course_name)}</td><td style="text-align:center;">${chk(c.tax_relief)}</td></tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:#999;">None</td></tr>`;
   const emergencyRows = (o.emergency_contacts||[]).map(c=>`<tr><td>${fmt(c.name)}</td><td>${fmt(c.relationship)}</td><td>${fmt(c.contact)}</td></tr>`).join('') || `<tr><td colspan="3" style="text-align:center;color:#999;">None</td></tr>`;
 
   const page1 = `
@@ -2126,10 +2209,10 @@ function exportMyOnboardingPdf(){
     </table>
     <table class="form-box">
       <tr><td colspan="2" class="section-hdr">Spouse Information</td></tr>
-      <tr><td class="lbl">Name</td><td>${fmt(o.spouse_name)}</td></tr>
-      <tr><td class="lbl">NRIC No.</td><td>${fmt(o.spouse_nric)}</td></tr>
-      <tr><td class="lbl">Date of Birth</td><td>${fmtDate(o.spouse_date_of_birth)}</td></tr>
-      <tr><td class="lbl">Working</td><td>${fmt(o.spouse_working)}</td></tr>
+      <tr><td class="lbl">Name</td><td>${fmt(f.spouse_name)}</td></tr>
+      <tr><td class="lbl">NRIC No.</td><td>${fmt(f.spouse_nric)}</td></tr>
+      <tr><td class="lbl">Date of Birth</td><td>${fmtDate(f.spouse_date_of_birth)}</td></tr>
+      <tr><td class="lbl">Working</td><td>${fmt(f.spouse_working)}</td></tr>
     </table>
     <h2 class="bahagian">Children Below 18</h2>
     <table class="data-table"><thead><tr><th>Name</th><th>Gender</th><th>NRIC</th><th>DOB</th><th>Education</th><th>Tax Relief</th></tr></thead><tbody>${childRowsBelow18}</tbody></table>
@@ -2215,7 +2298,11 @@ function signOut(){
   // rather than a dropdown they pick themselves — different business units
   // share different links, so the right manager gets notified automatically.
   // Left in the URL (not stripped) since this link may be bookmarked/reused.
-  linkBusinessUnit = new URLSearchParams(window.location.search).get('bu');
+  // ?bu= may carry a unit's code (Land) or its name (Property Development);
+  // either way it is resolved against the managed list from the API.
+  await WCT.loadBusinessUnits();
+  const linkUnit = WCT.buResolve(new URLSearchParams(window.location.search).get('bu'));
+  linkBusinessUnit = linkUnit ? linkUnit.code : null;
 
   // A "Complete Your Onboarding" email link lands here as
   // index.html?onboarding=<application id> (carried through the sign-in
