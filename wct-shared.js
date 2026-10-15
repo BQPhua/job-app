@@ -465,6 +465,89 @@ ${page1}${icPage}${pdpaPage}
 </body></html>`;
   }
 
+  /**
+   * Printable onboarding record, in the same layout as the application PDF:
+   * page 1 Employee Personal Details, page 2 Salary Crediting Requisition.
+   *   a  the application row (name, reference, photo, unit, position)
+   *   o  the onboarding record, with spouse/children already merged in
+   */
+  function onboardingPdfHtml(a, o) {
+    a = a || {}; o = o || {};
+    const head = (title, sub, withPhoto) => `
+      <div class="head">
+        <img class="logo" src="${logoUri()}" alt="WCT">
+        <div><div class="co">${title}</div><div class="doc">${sub}</div><div class="conf">Private &amp; confidential · Prepared for HR use only</div></div>
+        ${withPhoto ? `<div class="photo">${a.profile_picture_url ? `<img src="${e(fileUrl(a.profile_picture_url))}" alt="">` : photoSticker(72, 82)}</div>` : '<div></div>'}
+      </div>`;
+    const meta = `
+      <div class="meta">
+        <div><div class="k">Employee</div><div class="v">${dash(a.name_nric)}</div></div>
+        <div><div class="k">Reference no.</div><div class="v">${dash(a.reference_no)}</div></div>
+        <div><div class="k">Business unit</div><div class="v">${dash(buName(a.business_unit))}</div></div>
+        <div><div class="k">Position</div><div class="v">${dash(a.position_applying)}</div></div>
+      </div>`;
+    const cell = (k, v, full) => `<div${full ? ' class="full"' : ''}><div class="k">${k}</div><div class="v">${v}</div></div>`;
+    let n = 0;
+    const sec = (title, inner) => `<div class="sec"><h3><span class="n">${n += 1}</span>${title}</h3>${inner}</div>`;
+    const sig = (signed, name, at, what) => `
+      <div class="sig"><div><div class="k">Employee's digital signature</div><div class="name">${e(signed ? (name || a.name_nric || '') : '')}</div>
+        <div class="who">${dash(name || a.name_nric)} · ${dash(a.nric_new || a.passport_number)}</div></div>
+        <div class="when">${signed ? `${what} confirmed electronically on ${dmyTime(at)} (MYT) through the WCT Employment Application Portal.` : 'Not yet confirmed by the employee.'}</div></div>`;
+
+    const kids = [...(o.children_below_18 || []).map((c) => ['Below 18', c]), ...(o.children_18_to_23 || []).map((c) => ['18–23, full-time student', c])];
+    const contacts = o.emergency_contacts || [];
+
+    const page1 = `
+    <div class="page">
+      ${head('Employee Personal Details', 'Onboarding · Personal details form', true)}
+      ${meta}
+      ${sec('Statutory details', `<div class="grid">
+        ${cell('EPF no.', dash(o.epf_no))}${cell('SOCSO no.', dash(o.socso_no))}
+        ${cell('Income tax file no.', dash(o.income_tax_no))}${cell('Income tax branch', dash(o.tax_branch))}
+        ${cell('Bank account no.', dash(o.bank_account_no))}${cell('CIDB green card no. / branch', `${dash(o.cidb_green_card_no)} / ${dash(o.cidb_branch)}`)}
+      </div>`)}
+      ${sec('Spouse &amp; children', (o.spouse_name || kids.length) ? `${o.spouse_name ? `<div class="grid"${kids.length ? ' style="margin-bottom:6px"' : ''}>
+        ${cell('Spouse name (per NRIC)', dash(o.spouse_name))}${cell('Spouse NRIC no.', dash(o.spouse_nric))}
+        ${cell('Spouse date of birth', dmy(o.spouse_date_of_birth))}${cell('Spouse working', dash(o.spouse_working))}
+      </div>` : ''}${kids.length ? `<table class="t"><thead><tr><th>Name</th><th>Age group</th><th>Gender</th><th>NRIC</th><th>Date of birth</th><th>Education</th><th>Child tax relief</th></tr></thead><tbody>
+        ${kids.map(([g, c]) => `<tr><td>${dash(c.name)}</td><td>${g}</td><td>${dash(c.gender)}</td><td>${dash(c.nric)}</td><td>${dmy(c.date_of_birth)}</td><td>${dash(c.course_name)}</td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
+      </tbody></table>` : ''}` : '<div class="note">No spouse or children declared.</div>')}
+      ${sec('Emergency contacts', `<table class="t"><thead><tr><th>Name (per NRIC)</th><th>Relationship</th><th>Home / mobile no.</th></tr></thead><tbody>
+        ${contacts.length ? contacts.map((c) => `<tr><td>${dash(c.name)}</td><td>${dash(c.relationship)}</td><td>${dash(c.contact)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">None provided</td></tr>'}
+      </tbody></table>`)}
+      ${sec('Beneficiary (next of kin)', `<div class="grid">
+        ${cell('Name', dash(o.beneficiary_name))}${cell('Relationship', dash(o.beneficiary_relationship))}
+        ${cell('Contact no.', dash(o.beneficiary_contact), true)}
+      </div>`)}
+      ${sec('Confirmation', sig(o.personal_details_confirmed, o.personal_details_signed_name, o.personal_details_confirmed_at, 'Personal details'))}
+    </div>`;
+
+    n = 0;
+    const page2 = `
+    <div class="page">
+      ${head('Salary Crediting Requisition', 'Onboarding · Salary crediting form', false)}
+      ${meta}
+      ${sec('Addressed to', `<div class="note">Human Resources Department, <b>${dash(o.salary_company)}</b></div>`)}
+      ${sec('Account for salary crediting', `<div class="grid">
+        ${cell('Employee name', dash(a.name_nric))}${cell('IC / passport no. submitted', dash(o.salary_ic_submitted || a.nric_new || a.passport_number))}
+        ${cell('Bank', dash(o.salary_bank))}${cell('Branch', dash(o.salary_branch))}
+        ${cell('Account no.', dash(o.salary_account_no), true)}
+      </div>`)}
+      ${sec('Declaration', `
+        <div class="decl"><b>I hereby agree that my salary is to be paid through the bank account above. I confirm that the information herein is correct and in order. Should there be any discrepancy in the information, which may lead to a delay or inability to credit my salary, it is my sole responsibility.</b></div>
+        <div class="decl"><i>Saya bersetuju gaji saya dibayar melalui akaun bank di atas. Saya mengesahkan maklumat tersebut di atas adalah betul dan teratur. Sebarang perbezaan dalam maklumat tersebut, yang mungkin mengakibatkan kelewatan ataupun ketidakmasukan gaji, adalah tanggungjawab saya sendiri.</i></div>
+        ${sig(o.salary_crediting_confirmed, o.salary_crediting_signed_name, o.salary_crediting_confirmed_at, 'Salary crediting details')}`)}
+    </div>`;
+
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${e(a.reference_no || 'Onboarding')} — Onboarding — WCT Group</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@600;700&family=Source+Sans+3:wght@400;600;700&family=Caveat:wght@600&display=swap" rel="stylesheet">
+<style>${pdfStyles()}</style></head><body>
+<div class="bar"><span>Ready: use your browser's print dialog and choose "Save as PDF" (2 pages).</span><button onclick="window.print()">Print / Save as PDF</button></div>
+${page1}${page2}
+<div class="foot"><span>${e(a.reference_no || '')} · ${e(a.name_nric || '')} · Onboarding</span><span>WCT Employment Application Portal · generated ${dmyTime(new Date().toISOString())}</span></div>
+</body></html>`;
+  }
+
   /** Open printable HTML in a new tab and start printing once fonts/images load. */
   function openPrint(html) {
     const win = global.open('', '_blank');
@@ -480,6 +563,6 @@ ${page1}${icPage}${pdpaPage}
     MY_STATES, addressLines, formatAddress, sameAddress, isValidPhone, fileUrl,
     DOC_SECTIONS, docsByCategory, isImage, fileBadge, photoSticker,
     sigHtml, sigValue, sigUpdate,
-    STATUS_TEXT, DECLARATION_A, DECLARATION_B, DECLARATION_C, applicationPdfHtml, openPrint,
+    STATUS_TEXT, DECLARATION_A, DECLARATION_B, DECLARATION_C, applicationPdfHtml, onboardingPdfHtml, openPrint,
   };
 }(window));
