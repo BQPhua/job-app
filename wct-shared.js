@@ -32,8 +32,8 @@
   // Business units
   // --------------------------------------------------------------------------
   const BU_FALLBACK = [
-    { code: 'E&C', name: 'E&C' }, { code: 'Land', name: 'Property Development' }, { code: 'Mall', name: 'Malls Management' },
-    { code: 'REIT', name: 'REIT' }, { code: 'Aviation', name: 'Aviation' }, { code: 'F&B', name: 'F&B' }, { code: 'Hotels', name: 'Hotels' },
+    { code: 'E&C', name: 'E&C' }, { code: 'Land', name: 'Property Development' }, { code: 'Mall', name: 'Malls Management', aliases: ['REIT'] },
+    { code: 'Aviation', name: 'Aviation' }, { code: 'F&B', name: 'F&B' }, { code: 'Hotels', name: 'Hotels' },
   ];
   let units = BU_FALLBACK.slice();
 
@@ -58,7 +58,9 @@
   function buResolve(input) {
     const v = String(input || '').trim().toLowerCase();
     if (!v) return null;
-    return units.find((u) => u.code.toLowerCase() === v) || units.find((u) => u.name.toLowerCase() === v) || null;
+    return units.find((u) => u.code.toLowerCase() === v) || units.find((u) => u.name.toLowerCase() === v)
+      // a unit merged into another (REIT -> Malls) still opens via its old link
+      || units.find((u) => (u.aliases || []).some((a) => String(a).toLowerCase() === v)) || null;
   }
   /** Short badge text for a unit ("PD" for Property Development). */
   function buInitials(code) {
@@ -117,9 +119,10 @@
     { key: 'resume', label: 'Resume / CV', hint: 'Your latest resume', required: true },
     { key: 'academic', label: 'Academic certificates', hint: 'SPM, diploma, degree, transcripts' },
     { key: 'payslip', label: 'Payslip', hint: 'Latest 3 months, if currently employed' },
+    { key: 'declaration', label: 'Declaration details', hint: 'More details for declaration (B) or (C), if the box was too short' },
     { key: 'other', label: 'Other documents', hint: 'Release letter, testimonials, etc.' },
   ];
-  const DOC_CATEGORY_KEYS = ['ic_front', 'ic_back', 'resume', 'academic', 'payslip', 'other'];
+  const DOC_CATEGORY_KEYS = ['ic_front', 'ic_back', 'resume', 'academic', 'payslip', 'declaration', 'other'];
   /** Files grouped by category; files from before sections existed count as 'other'. */
   function docsByCategory(list) {
     const out = {};
@@ -280,6 +283,12 @@
   };
   const PDPA_ENTITIES = '*WCT Holdings Berhad, WCT Berhad, WCT Equity Sdn Bhd, KKKBWCT Joint Venture Sdn Bhd, WCT Overseas Sdn Bhd, WCT Group Sdn Bhd, WCT TSR Sdn Bhd, WCT Construction Sdn Bhd, WCT International Sdn Bhd, Intraxis Engineering Sdn Bhd, WCT Machinery Sdn Bhd, WCT Products Sdn Bhd, W Facade Sdn Bhd, WCT Land Sdn Bhd, WCT Assets Sdn Bhd, WCT Acres Sdn Bhd, Gabungan Efektif Sdn Bhd, WCT Properties Sdn Bhd, Gemilang Waras Sdn Bhd, and other related WCT Group entities.';
 
+  // Education type as shown ('School' is stored for secondary school).
+  const EDU_TYPE_LABELS = { School: 'Secondary School', 'College/University': 'College / University', 'Professional Body': 'Professional Body' };
+  const eduTypeLabel = (t) => EDU_TYPE_LABELS[t] || t || '';
+  // Declarations (B)/(C) read like the manual form: NIL, or the details.
+  const declAnswer = (v, spec) => (v === 'No' ? 'NIL' : v === 'Yes' ? (spec || 'Declared') : '');
+
   const DECLARATION_A = 'I declare that the statements made by me to the foregoing questions are true, complete and correct to the best of my knowledge and belief. Permission is given to the Company to make such investigations as and when necessary on the information given above. I understand that my misrepresentation or material omission made herein or on any other documents requested by the Company, will render dismissal or termination of my employment with the Company.';
   const DECLARATION_B = 'I declare that save and except for the following I am not involved in, a party to nor the subject of any law suits, arbitral proceedings, disciplinary proceedings, criminal inquiry, investigation and/or conviction and/or any other legal or quasi-legal proceedings.';
   const DECLARATION_C = 'I declare that save and except for the following I am not aware of any matter or information that may affect my personal and/or professional public standing or repute or that might adversely affect your consideration of my application for employment.';
@@ -401,7 +410,7 @@
       ${sec('Language ability', `<table class="t"><thead><tr><th>Language / dialect</th><th>Spoken</th><th>Written</th></tr></thead><tbody>
         ${row(langs.map((l) => `<tr><td>${e(l.language)}</td><td>${dash(l.spoken)}</td><td>${dash(l.written)}</td></tr>`).join(''), 'None provided', 3)}</tbody></table>`)}
       ${sec('Education', `<table class="t"><thead><tr><th>Type</th><th>Institution</th><th>Period</th><th>Qualification</th><th>Course</th></tr></thead><tbody>
-        ${row(edu.map((r) => `<tr><td>${dash(r.type)}</td><td>${dash(r.name)}</td><td>${dash(r.from_year)} – ${dash(r.to_year)}</td><td>${dash(r.qualification)}</td><td>${dash(r.course_name)}</td></tr>`).join(''), 'None provided', 5)}</tbody></table>`)}
+        ${row(edu.map((r) => `<tr><td>${dash(eduTypeLabel(r.type))}</td><td>${dash(r.name)}</td><td>${dash(r.from_year)} – ${dash(r.to_year)}</td><td>${dash(r.qualification)}</td><td>${dash(r.course_name)}</td></tr>`).join(''), 'None provided', 5)}</tbody></table>`)}
       ${sec('Working experience', a.no_working_experience && !exp.length
         ? '<div class="note">No previous working experience (declared by the candidate).</div>'
         : `<table class="t"><thead><tr><th>Employer</th><th>Last position</th><th>Period</th><th>Last drawn (RM)</th></tr></thead><tbody>
@@ -420,12 +429,12 @@
           ${kidsA.map((c) => `<tr><td>${dash(c.name)}</td><td>Below 18</td><td>${dash(c.gender)}</td><td>${dash(c.nric)}</td><td>${dmy(c.date_of_birth)}</td><td>${dash(c.course_name)}</td></tr>`).join('')}
           ${kidsB.map((c) => `<tr><td>${dash(c.name)}</td><td>18 and above</td><td>${dash(c.gender)}</td><td>${dash(c.nric)}</td><td>${dmy(c.date_of_birth)}</td><td>${dash(c.course_name)}</td></tr>`).join('')}
         </tbody></table>` : ''}`) : ''}
-      ${sec('Referees', `<table class="t"><thead><tr><th></th><th>Name</th><th>Designation</th><th>Company</th><th>Relationship</th><th>Contact</th></tr></thead><tbody>
+      ${sec('Referees', a.no_referees ? '<div class="note">No referee provided (declared by the candidate).</div>' : `<table class="t"><thead><tr><th></th><th>Name</th><th>Designation</th><th>Company</th><th>Relationship</th><th>Contact</th></tr></thead><tbody>
         ${row(refs.map((r, i) => `<tr><td>${i + 1}</td><td>${dash(r.name)}</td><td>${dash(r.designation)}</td><td>${dash(r.company)}</td><td>${dash(r.relationship)}</td><td>${dash(r.contact)}</td></tr>`).join(''), 'None provided', 6)}</tbody></table>`)}
       ${sec('Declarations', `
         <div class="decl"><span class="ans">${a.submitted_at ? 'Agreed' : '—'}</span><b>(A) ${e(DECLARATION_A)}</b></div>
-        <div class="decl"><span class="ans">${dash(a.declaration_lawsuit)}</span><b>(B) ${e(DECLARATION_B)}</b>${a.declaration_lawsuit === 'Yes' ? `<div class="spec">${e(a.declaration_lawsuit_specify)}</div>` : ''}</div>
-        <div class="decl"><span class="ans">${dash(a.declaration_other_matters)}</span><b>(C) ${e(DECLARATION_C)}</b>${a.declaration_other_matters === 'Yes' ? `<div class="spec">${e(a.declaration_other_matters_specify)}</div>` : ''}</div>
+        <div class="decl"><b>(B) ${e(DECLARATION_B)}</b><div class="spec">${dash(declAnswer(a.declaration_lawsuit, a.declaration_lawsuit_specify))}</div></div>
+        <div class="decl"><b>(C) ${e(DECLARATION_C)}</b><div class="spec">${dash(declAnswer(a.declaration_other_matters, a.declaration_other_matters_specify))}</div></div>
         <div class="sig"><div><div class="k">Candidate's digital signature</div><div class="name">${e(signedName)}</div><div class="who">${dash(signedName)} · ${dash(a.pdpa_agreed_nric || a.nric_new || a.passport_number)}</div></div>
           <div class="when">${a.pdpa_agreed_at ? `Signed electronically on ${dmyTime(a.pdpa_agreed_at)} (MYT) through the WCT Employment Application Portal. PDPA notice read in ${a.language_choice === 'BM' ? 'Bahasa Melayu' : 'English'}.` : 'Not yet signed.'}</div></div>`)}
       ${sec('Supporting documents', `<div class="files">
@@ -564,6 +573,6 @@ ${page1}${page2}
     MY_STATES, addressLines, formatAddress, sameAddress, isValidPhone, fileUrl,
     DOC_SECTIONS, docsByCategory, isImage, fileBadge, photoSticker,
     sigHtml, sigValue, sigUpdate,
-    STATUS_TEXT, DECLARATION_A, DECLARATION_B, DECLARATION_C, applicationPdfHtml, onboardingPdfHtml, openPrint,
+    STATUS_TEXT, DECLARATION_A, DECLARATION_B, DECLARATION_C, eduTypeLabel, declAnswer, applicationPdfHtml, onboardingPdfHtml, openPrint,
   };
 }(window));
