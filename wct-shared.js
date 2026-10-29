@@ -32,8 +32,8 @@
   // Business units
   // --------------------------------------------------------------------------
   const BU_FALLBACK = [
-    { code: 'E&C', name: 'E&C' }, { code: 'Land', name: 'Property Development' }, { code: 'Mall', name: 'Malls Management', aliases: ['REIT'] },
-    { code: 'Aviation', name: 'Aviation' }, { code: 'F&B', name: 'F&B' }, { code: 'Hotels', name: 'Hotels' },
+    { code: 'E&C', name: 'E&C' }, { code: 'Land', name: 'Property Development' }, { code: 'Mall', name: 'Malls Management' },
+    { code: 'REIT', name: 'REIT' }, { code: 'Aviation', name: 'Aviation' }, { code: 'F&B', name: 'F&B' }, { code: 'Hotels', name: 'Hotels' },
   ];
   let units = BU_FALLBACK.slice();
 
@@ -145,7 +145,7 @@
     const id = `wst${stickerSeq += 1}`;
     return `<svg class="wct-sticker" width="${w}" height="${h}" viewBox="0 0 150 170" role="img" aria-label="Photo" xmlns="http://www.w3.org/2000/svg">
 <defs><linearGradient id="${id}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E0F2FE"/><stop offset="1" stop-color="#FEE2E2"/></linearGradient><clipPath id="${id}c"><rect x="14" y="14" width="122" height="142" rx="18"/></clipPath></defs>
-<rect x="8" y="10" width="134" height="152" rx="22" fill="#fff" stroke="#E2E8F0" stroke-width="2" transform="rotate(-3 75 86)"/>
+<rect x="8" y="10" width="134" height="152" rx="22" fill="#fff" stroke="#E2E8F0" stroke-width="2"/>
 <g clip-path="url(#${id}c)"><rect x="14" y="14" width="122" height="142" fill="url(#${id}g)"/>
 <circle cx="75" cy="70" r="26" fill="#0F172A" opacity=".9"/><path d="M28 160c4-34 24-50 47-50s43 16 47 50Z" fill="#0F172A" opacity=".9"/>
 <path d="M57 120l18 18 18-18" fill="none" stroke="#D7141A" stroke-width="6" stroke-linejoin="round"/></g>
@@ -284,10 +284,10 @@
   const PDPA_ENTITIES = '*WCT Holdings Berhad, WCT Berhad, WCT Equity Sdn Bhd, KKKBWCT Joint Venture Sdn Bhd, WCT Overseas Sdn Bhd, WCT Group Sdn Bhd, WCT TSR Sdn Bhd, WCT Construction Sdn Bhd, WCT International Sdn Bhd, Intraxis Engineering Sdn Bhd, WCT Machinery Sdn Bhd, WCT Products Sdn Bhd, W Facade Sdn Bhd, WCT Land Sdn Bhd, WCT Assets Sdn Bhd, WCT Acres Sdn Bhd, Gabungan Efektif Sdn Bhd, WCT Properties Sdn Bhd, Gemilang Waras Sdn Bhd, and other related WCT Group entities.';
 
   // Education type as shown ('School' is stored for secondary school).
-  const EDU_TYPE_LABELS = { School: 'Secondary School', 'College/University': 'College / University', 'Professional Body': 'Professional Body' };
+  const EDU_TYPE_LABELS = { 'Primary School': 'Primary School', School: 'Secondary School', 'College/University': 'College / University', 'Professional Body': 'Professional Body' };
   const eduTypeLabel = (t) => EDU_TYPE_LABELS[t] || t || '';
-  // Declarations (B)/(C) read like the manual form: NIL, or the details.
-  const declAnswer = (v, spec) => (v === 'No' ? 'NIL' : v === 'Yes' ? (spec || 'Declared') : '');
+  // Declarations (B)/(C) read like the manual form: NONE, or the details.
+  const declAnswer = (v, spec) => (v === 'No' ? 'NONE' : v === 'Yes' ? (spec || 'Declared') : '');
 
   const DECLARATION_A = 'I declare that the statements made by me to the foregoing questions are true, complete and correct to the best of my knowledge and belief. Permission is given to the Company to make such investigations as and when necessary on the information given above. I understand that my misrepresentation or material omission made herein or on any other documents requested by the Company, will render dismissal or termination of my employment with the Company.';
   const DECLARATION_B = 'I declare that save and except for the following I am not involved in, a party to nor the subject of any law suits, arbitral proceedings, disciplinary proceedings, criminal inquiry, investigation and/or conviction and/or any other legal or quasi-legal proceedings.';
@@ -337,6 +337,11 @@
   .sig .when{font-size:10.5px;color:#334155;align-self:end;}
   .files{columns:2;column-gap:18px;font-size:11px;}
   .files div{break-inside:avoid;padding:2px 0;}
+  /* The table's footer row repeats on every printed page and keeps the page
+     content clear of the fixed footer line below. */
+  table.pw{width:100%;border-collapse:collapse;}
+  table.pw > tbody > tr > td, table.pw > tfoot > tr > td{padding:0;border:0;}
+  .pw-space{height:24px;}
   .foot{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:space-between;font-size:8.5px;color:#64748B;border-top:1px solid #E2E8F0;padding-top:4px;background:#fff;}
   .ic{display:grid;gap:18px;margin-top:18px;}
   .ic .slot{border:1px dashed #94A3B8;border-radius:8px;padding:12px;text-align:center;}
@@ -381,6 +386,9 @@
     const kidsA = pick('children_below_18') || [];
     const kidsB = pick('children_18_to_23') || [];
     const spouse = pick('spouse_name');
+    const count = (k, list) => { const v = pick(k); return v != null && v !== '' ? Number(v) : (list.length ? list.length : null); };
+    const nBelow = count('children_below_18_count', kidsA);
+    const nAbove = count('children_18_to_23_count', kidsB);
     const refs = [a.referee1, a.referee2].filter((r) => r && r.name);
     let n = 0;
     const sec = (title, inner, flow) => `<div class="sec${flow ? ' flow' : ''}"><h3><span class="n">${n += 1}</span>${title}</h3>${inner}</div>`;
@@ -423,8 +431,11 @@
         ${cell('Referred by anyone', yn(a.referral_person, a.referral_person === 'Yes' ? `${a.referral_name || ''}, ${a.referral_department || ''}` : ''))}${cell('Physical defects / disabilities', yn(a.physical_defects, a.physical_defects_specify))}
         ${cell('Arrested / convicted', yn(a.arrested_convicted, a.arrested_convicted_specify), true)}
       </div>`)}
-      ${(spouse || kidsA.length || kidsB.length) ? sec('Family details', `
-        ${spouse ? `<div class="grid" style="margin-bottom:6px">${cell('Spouse name', dash(spouse))}${cell('Spouse NRIC', dash(pick('spouse_nric')))}${cell('Spouse date of birth', dmy(pick('spouse_date_of_birth')))}${cell('Spouse working', dash(pick('spouse_working')))}</div>` : ''}
+      ${(spouse || kidsA.length || kidsB.length || nBelow != null || nAbove != null) ? sec('Family details', `
+        <div class="grid"${(kidsA.length || kidsB.length) ? ' style="margin-bottom:6px"' : ''}>
+          ${spouse ? `${cell('Spouse name', dash(spouse))}${cell('Spouse occupation', dash(pick('spouse_occupation')))}${cell('Spouse working', dash(pick('spouse_working')))}` : ''}
+          ${cell('Children below 18', nBelow == null ? '—' : String(nBelow))}${cell('Children 18 and above', nAbove == null ? '—' : String(nAbove))}
+        </div>
         ${(kidsA.length || kidsB.length) ? `<table class="t"><thead><tr><th>Child</th><th>Age group</th><th>Gender</th><th>NRIC</th><th>Date of birth</th><th>Education</th></tr></thead><tbody>
           ${kidsA.map((c) => `<tr><td>${dash(c.name)}</td><td>Below 18</td><td>${dash(c.gender)}</td><td>${dash(c.nric)}</td><td>${dmy(c.date_of_birth)}</td><td>${dash(c.course_name)}</td></tr>`).join('')}
           ${kidsB.map((c) => `<tr><td>${dash(c.name)}</td><td>18 and above</td><td>${dash(c.gender)}</td><td>${dash(c.nric)}</td><td>${dmy(c.date_of_birth)}</td><td>${dash(c.course_name)}</td></tr>`).join('')}
@@ -470,7 +481,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@600;700&family=Source+Sans+3:wght@400;600;700&family=Caveat:wght@600&display=swap" rel="stylesheet">
 <style>${pdfStyles()}</style></head><body>
 <div class="bar"><span>Ready: use your browser's print dialog and choose "Save as PDF" (${pages} page${pages > 1 ? 's' : ''}).</span><button onclick="window.print()">Print / Save as PDF</button></div>
-${page1}${icPage}${pdpaPage}
+<table class="pw"><tfoot><tr><td><div class="pw-space"></div></td></tr></tfoot><tbody><tr><td>${page1}${icPage}${pdpaPage}</td></tr></tbody></table>
 <div class="foot"><span>${e(a.reference_no || '')} · ${e(a.name_nric || '')}</span><span>WCT Employment Application Portal · generated ${dmyTime(new Date().toISOString())}</span></div>
 </body></html>`;
   }
@@ -517,8 +528,8 @@ ${page1}${icPage}${pdpaPage}
         ${cell('Bank account no.', dash(o.bank_account_no))}${cell('CIDB green card no. / branch', `${dash(o.cidb_green_card_no)} / ${dash(o.cidb_branch)}`)}
       </div>`)}
       ${sec('Spouse &amp; children', (o.spouse_name || kids.length) ? `${o.spouse_name ? `<div class="grid"${kids.length ? ' style="margin-bottom:6px"' : ''}>
-        ${cell('Spouse name (per NRIC)', dash(o.spouse_name))}${cell('Spouse NRIC no.', dash(o.spouse_nric))}
-        ${cell('Spouse date of birth', dmy(o.spouse_date_of_birth))}${cell('Spouse working', dash(o.spouse_working))}
+        ${cell('Spouse name', dash(o.spouse_name))}${cell('Spouse occupation', dash(o.spouse_occupation))}
+        ${cell('Spouse working', dash(o.spouse_working))}
       </div>` : ''}${kids.length ? `<table class="t"><thead><tr><th>Name</th><th>Age group</th><th>Gender</th><th>NRIC</th><th>Date of birth</th><th>Education</th><th>Child tax relief</th></tr></thead><tbody>
         ${kids.map(([g, c]) => `<tr><td>${dash(c.name)}</td><td>${g}</td><td>${dash(c.gender)}</td><td>${dash(c.nric)}</td><td>${dmy(c.date_of_birth)}</td><td>${dash(c.course_name)}</td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
       </tbody></table>` : ''}` : '<div class="note">No spouse or children declared.</div>')}
@@ -553,7 +564,7 @@ ${page1}${icPage}${pdpaPage}
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Lexend:wght@600;700&family=Source+Sans+3:wght@400;600;700&family=Caveat:wght@600&display=swap" rel="stylesheet">
 <style>${pdfStyles()}</style></head><body>
 <div class="bar"><span>Ready: use your browser's print dialog and choose "Save as PDF" (2 pages).</span><button onclick="window.print()">Print / Save as PDF</button></div>
-${page1}${page2}
+<table class="pw"><tfoot><tr><td><div class="pw-space"></div></td></tr></tfoot><tbody><tr><td>${page1}${page2}</td></tr></tbody></table>
 <div class="foot"><span>${e(a.reference_no || '')} · ${e(a.name_nric || '')} · Onboarding</span><span>WCT Employment Application Portal · generated ${dmyTime(new Date().toISOString())}</span></div>
 </body></html>`;
   }
