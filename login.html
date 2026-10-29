@@ -28,12 +28,7 @@
         <div class="auth-photo" aria-hidden="true"><img src="wct-ascent.jpg" alt="" width="1500" height="892" fetchpriority="high" decoding="async"></div>
         <div class="auth-brand-top"><span class="auth-chip"><i></i>WCT Careers</span></div>
         <div class="auth-headline">
-          <h1 id="taglineText" aria-live="polite">WCT: Building a Better Tomorrow, <em>Together</em></h1>
-          <div class="tagline-ctrl">
-            <div class="tagline-dots" role="group" aria-label="Choose a tagline" id="taglineDots"></div>
-            <button type="button" class="tagline-pause" id="taglinePause" aria-label="Pause tagline rotation" aria-pressed="false" onclick="toggleTaglines()">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg></button>
-          </div>
+          <h1 id="taglineText">WCT: Building a Better Tomorrow, <em>Together</em></h1>
           <p>Our growth is driven by our people. Join a team that empowers you to learn, grow and thrive in a safe, inclusive and dynamic workplace.</p>
           <ul class="auth-points">
             <li tabindex="0"><span class="pt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span><b><span class="pt-num" data-count-key="people">2000</span>+ people</b> across engineering &amp; construction, property development, malls, hotels, aviation and F&amp;B.</span></li>
@@ -78,49 +73,9 @@
       const ICON_EYE_CLOSED = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-      // ---------- rotating WCT recruitment taglines (stakeholder feedback) ----------
-      const TAGLINES = [
-        ['WCT: Building a Better Tomorrow, ', 'Together'],
-        ['WCT: Where Your Future ', 'Takes Shape'],
-        ['Grow with WCT, ', 'Build a Better Tomorrow'],
-        ['Big Dreams Start ', 'with WCT'],
-        ['Build Beyond Today ', 'with WCT'],
-      ];
-      let tagIdx = 0, tagTimer = null, tagPaused = false;
-      const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      function showTagline(i) {
-        tagIdx = (i + TAGLINES.length) % TAGLINES.length;
-        const el = document.getElementById('taglineText');
-        if (!el) return;
-        el.classList.remove('in'); void el.offsetWidth;
-        el.innerHTML = `${esc(TAGLINES[tagIdx][0])}<em>${esc(TAGLINES[tagIdx][1])}</em>`;
-        el.classList.add('in');
-        document.querySelectorAll('#taglineDots button').forEach((b, j) => b.setAttribute('aria-current', j === tagIdx ? 'true' : 'false'));
-      }
-      function scheduleTaglines() {
-        clearInterval(tagTimer);
-        if (!tagPaused && !reduceMotion) tagTimer = setInterval(() => showTagline(tagIdx + 1), 5000);
-      }
-      function toggleTaglines() {
-        tagPaused = !tagPaused;
-        const b = document.getElementById('taglinePause');
-        b.setAttribute('aria-pressed', String(tagPaused));
-        b.setAttribute('aria-label', tagPaused ? 'Play tagline rotation' : 'Pause tagline rotation');
-        b.innerHTML = tagPaused ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7Z"/></svg>' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>';
-        scheduleTaglines();
-      }
-      (function initTaglines() {
-        const dots = document.getElementById('taglineDots');
-        if (!dots) return;
-        dots.innerHTML = TAGLINES.map((t, i) => `<button type="button" aria-label="Tagline ${i + 1}: ${esc(t.join(''))}" onclick="showTagline(${i});scheduleTaglines();"></button>`).join('');
-        const brand = document.querySelector('.auth-brand');
-        brand.addEventListener('mouseenter', () => clearInterval(tagTimer));
-        brand.addEventListener('mouseleave', scheduleTaglines);
-        if (reduceMotion) { tagPaused = true; document.getElementById('taglinePause').hidden = true; }
-        showTagline(0);
-        scheduleTaglines();
-        if (window.WX && WX.countUp) WX.countUp(document, '.pt-num');
-      })();
+      // One WCT recruitment tagline, the one the majority agreed on
+      // (stakeholder feedback 29 Oct 2026); it no longer rotates.
+      if (window.WX && WX.countUp) WX.countUp(document, '.pt-num');
 
 
       function render() {
