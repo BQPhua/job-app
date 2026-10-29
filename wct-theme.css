@@ -119,7 +119,6 @@ tbody tr:hover td{background:#FBFCFE;}
 
 /* candidate app header */
 .topbar{background:linear-gradient(90deg,var(--wct-navy) 0%,var(--wct-navy-800) 100%);}
-.progress .seg.active, .progress .seg.done{background:var(--wct-navy);}
 
 /* ==========================================================================
    AUTH SCREENS (candidate login.html + admin.html sign-in)
