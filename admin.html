@@ -1581,7 +1581,8 @@ function downloadApplicationsCsv(data, filename){
       'Onboarding Status','Onboarding EPF No.','Onboarding Income Tax No.','Onboarding Tax Branch',
       'Onboarding SOCSO No.','Onboarding Bank Account No.','Onboarding CIDB Green Card No.','Onboarding CIDB Branch',
       // -- Family (application; older records: onboarding) --
-      'Spouse Name','Spouse NRIC','Spouse Date of Birth','Spouse Working',
+      'Spouse Name','Spouse Occupation','Spouse Working',
+      'No. of Children Below 18','No. of Children 18 and Above',
       'Children Below 18 (JSON)','Children 18 and Above (JSON)',
       // -- Onboarding: Emergency & Beneficiary --
       'Emergency Contacts (JSON)','Beneficiary Name','Beneficiary Relationship','Beneficiary Contact',
@@ -1614,8 +1615,9 @@ function downloadApplicationsCsv(data, filename){
       a.pdpa_agreed, a.pdpa_agreed_name, a.pdpa_agreed_nric, dt(a.pdpa_agreed_at),
       a.ob_status, a.ob_epf_no, a.ob_income_tax_no, a.ob_tax_branch,
       a.ob_socso_no, a.ob_bank_account_no, a.ob_cidb_green_card_no, a.ob_cidb_branch,
-      a.spouse_name || a.ob_spouse_name, a.spouse_nric || a.ob_spouse_nric, a.spouse_date_of_birth || a.ob_spouse_date_of_birth, a.spouse_working || a.ob_spouse_working,
-      jsonCell((a.children_below_18||[]).length ? a.children_below_18 : a.ob_children_below_18), jsonCell((a.children_18_to_23||[]).length ? a.children_18_to_23 : a.ob_children_18_to_23),
+      a.spouse_name || a.ob_spouse_name, a.spouse_occupation, a.spouse_working || a.ob_spouse_working,
+      a.children_below_18_count, a.children_18_to_23_count,
+      jsonCell((a.ob_children_below_18||[]).length ? a.ob_children_below_18 : a.children_below_18), jsonCell((a.ob_children_18_to_23||[]).length ? a.ob_children_18_to_23 : a.children_18_to_23),
       jsonCell(a.ob_emergency_contacts), a.ob_beneficiary_name, a.ob_beneficiary_relationship, a.ob_beneficiary_contact,
       jsonCell(a.ob_tp3_data),
       a.ob_salary_company, a.ob_salary_bank, a.ob_salary_branch, a.ob_salary_account_no, a.ob_salary_ic_submitted,
@@ -2984,9 +2986,9 @@ function ynPill(v, spec){
   if(v === 'No') return '<span class="pill-no">No</span>';
   return '<span class="pill-no">—</span>';
 }
-// Declarations (B)/(C): NIL, or what the candidate declared.
+// Declarations (B)/(C): NONE, or what the candidate declared.
 function declPill(v, spec){
-  if(v === 'No') return '<span class="pill-no">NIL</span>';
+  if(v === 'No') return '<span class="pill-no">NONE</span>';
   if(v === 'Yes') return `<span class="pill-yes">Declared</span>${spec ? `<div class="yn-spec">${esc(spec)}</div>` : ''}`;
   return '<span class="pill-no">—</span>';
 }
@@ -3000,7 +3002,11 @@ function viewDetailHtml(a){
   const langs = (a.language_ability||[]).filter(l => (l.language||'').trim() && !/^Others \(please state\)$/i.test(l.language));
   const exp = (a.working_experience||[]).filter(w => (w.employer||'').trim() || (w.position||'').trim());
   const docs = WCT.docsByCategory(a.attachments);
-  const kids = [...(fam('children_below_18')||[]).map(c => ['Below 18', c]), ...(fam('children_18_to_23')||[]).map(c => ['18 and above', c])];
+  const kid = (k) => ((ob[k]||[]).length ? ob[k] : a[k]) || [];
+  const kids = [...kid('children_below_18').map(c => ['Below 18', c]), ...kid('children_18_to_23').map(c => ['18 and above', c])];
+  const nKids = (k, list) => a[k] != null ? a[k] : (list.length ? list.length : null);
+  const nBelow = nKids('children_below_18_count', kid('children_below_18'));
+  const nAbove = nKids('children_18_to_23_count', kid('children_18_to_23'));
   const listRow = applications.find(x => x.id === a.id) || {};
   const remind = a.status === 'hired' && (!selectedOnboarding || selectedOnboarding.status !== 'completed');
   const lastReminder = listRow.last_onboarding_reminder_at || a.last_onboarding_reminder_at;
@@ -3045,10 +3051,10 @@ function viewDetailHtml(a){
         : exp.map(w => `<div class="tl-item"><span class="pt work"></span><div><div class="t">${esc(w.position || 'Position')}</div><div class="s">${esc(w.employer)}${w.remuneration ? ` · Last drawn ${esc(fmtMoney(w.remuneration))}` : ''}</div>${w.responsibilities ? `<div class="s" style="margin-top:2px;">${esc(w.responsibilities)}</div>` : ''}</div><span class="yr">${esc(w.from||'')} – ${w.is_current ? 'Present' : esc(w.to||'')}</span></div>`).join('') || '<div class="tl-item"><span class="pt grey"></span><div><div class="t muted">No working experience entered</div></div><span></span></div>'}
     </div>`)}
 
-    ${dcard('sec-family', 'family', 'Family details', (fam('spouse_name') || kids.length) ? `<div class="kv">
-      ${kv('Spouse', esc(fam('spouse_name')))}${kv('Spouse NRIC', esc(fam('spouse_nric')))}
-      ${kv('Spouse date of birth', esc(fmtDate(fam('spouse_date_of_birth'))))}${kv('Spouse working', esc(fam('spouse_working')))}
-    </div>${kids.length ? `<table class="dtable"><thead><tr><th>Child</th><th>Age group</th><th>NRIC</th><th>Tax relief</th></tr></thead><tbody>
+    ${dcard('sec-family', 'family', 'Family details', (fam('spouse_name') || kids.length || nBelow != null || nAbove != null) ? `<div class="kv">
+      ${fam('spouse_name') ? `${kv('Spouse', esc(fam('spouse_name')))}${kv('Spouse occupation', esc(fam('spouse_occupation')))}${kv('Spouse working', esc(fam('spouse_working')))}` : ''}
+      ${kv('Children below 18', nBelow == null ? '' : String(nBelow))}${kv('Children 18 and above', nAbove == null ? '' : String(nAbove))}
+    </div>${kids.length ? '<div class="dcard-pad muted" style="padding-bottom:0">Children details (from onboarding)</div>' : ''}${kids.length ? `<table class="dtable"><thead><tr><th>Child</th><th>Age group</th><th>NRIC</th><th>Tax relief</th></tr></thead><tbody>
       ${kids.map(([g, c]) => `<tr><td><b>${esc(c.name||'—')}</b><div class="muted">${esc([c.gender, c.course_name].filter(Boolean).join(' · '))}</div></td><td>${g}</td><td>${esc(c.nric||'—')}</td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
     </tbody></table>` : ''}` : '<div class="dcard-pad muted">Not provided (optional section).</div>')}
 
@@ -3169,9 +3175,14 @@ async function openOnboardingView(applicationId){
     const app = appRes.data || {};
     onboardingData = obRes.data ? { ...obRes.data } : null;
     if(onboardingData){
-      ['spouse_name','spouse_nric','spouse_date_of_birth','spouse_working','children_below_18','children_18_to_23'].forEach(k => {
+      // Spouse from the application; children details are filled in onboarding
+      // (older applications carried them, used only when onboarding has none).
+      ['spouse_name','spouse_occupation','spouse_working'].forEach(k => {
         const v = app[k];
-        if(v != null && v !== '' && !(Array.isArray(v) && !v.length)) onboardingData[k] = v;
+        if(v != null && v !== '') onboardingData[k] = v;
+      });
+      ['children_below_18','children_18_to_23'].forEach(k => {
+        if(!(onboardingData[k]||[]).length && (app[k]||[]).length) onboardingData[k] = app[k];
       });
     }
     onboardingAppInfo = app;
@@ -3258,8 +3269,7 @@ function renderOnboardingModal(){
         </div>`)}
 
         ${dcard('ob-family', 'family', 'Family details', (o.spouse_name || kids.length) ? `${o.spouse_name ? `<div class="kv">
-          ${kv('Spouse', esc(o.spouse_name))}${kv('Spouse NRIC', esc(o.spouse_nric))}
-          ${kv('Spouse date of birth', esc(fmtDate(o.spouse_date_of_birth)))}${kv('Spouse working', esc(o.spouse_working))}
+          ${kv('Spouse', esc(o.spouse_name))}${kv('Spouse occupation', esc(o.spouse_occupation))}${kv('Spouse working', esc(o.spouse_working))}
         </div>` : ''}${kids.length ? `<table class="dtable"><thead><tr><th>Child</th><th>Age group</th><th>NRIC · DOB</th><th>Tax relief</th></tr></thead><tbody>
           ${kids.map(([g, c]) => `<tr><td><b>${esc(c.name||'—')}</b><div class="muted">${esc([c.gender, c.course_name].filter(Boolean).join(' · '))}</div></td><td>${g}</td><td>${esc(c.nric||'—')}<div class="muted">${esc(fmtDate(c.date_of_birth))}</div></td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
         </tbody></table>` : ''}` : '<div class="dcard-pad muted">No spouse or children declared.</div>', kids.length ? `${kids.length} child${kids.length===1?'':'ren'}` : '')}
