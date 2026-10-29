@@ -208,24 +208,6 @@ dialog.wx-pal[open]{animation:wx-pal-in .2s var(--wx-ease-out) both;}
 .wx-wave{display:inline-block;transform-origin:70% 70%;animation:wx-wave 1.6s ease-in-out .4s 1;}
 @keyframes wx-wave{10%,30%{transform:rotate(14deg);}20%{transform:rotate(-8deg);}40%{transform:rotate(-4deg);}50%,100%{transform:none;}}
 
-/* --- Candidate: application status tracker ----------------------------- */
-.wx-track{list-style:none;margin:18px 0 22px;padding:0;display:grid;grid-template-columns:repeat(var(--n, 4), 1fr);gap:0;counter-reset:wx;}
-.wx-track li{position:relative;text-align:center;padding-top:44px;font-size:13px;color:var(--ink-soft, #475569);}
-.wx-track li b{display:block;color:var(--ink, #0F172A);font-size:13.5px;}
-.wx-track li::before{content:"";position:absolute;z-index:0;top:17px;left:-50%;right:50%;height:3px;background:var(--wct-slate-200, #E2E8F0);}
-.wx-track li:first-child::before{display:none;}
-.wx-track li.is-done::before, .wx-track li.is-now::before{background:var(--wct-blue, #0369A1);transform-origin:left;animation:wx-line .5s var(--wx-ease-out) both;animation-delay:calc(var(--wx-i, 0) * 160ms);}
-.wx-track .dot{position:absolute;top:4px;left:50%;transform:translateX(-50%);width:30px;height:30px;border-radius:50%;background:#fff;border:3px solid var(--wct-slate-200, #E2E8F0);display:flex;align-items:center;justify-content:center;z-index:2;}
-.wx-track .dot svg{width:14px;height:14px;fill:none;stroke:#fff;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;}
-.wx-track li.is-done .dot{background:var(--wct-blue, #0369A1);border-color:var(--wct-blue, #0369A1);animation:wx-dot .4s var(--wx-ease-spring) both;animation-delay:calc(var(--wx-i, 0) * 160ms);}
-.wx-track li.is-now .dot{border-color:var(--wct-blue, #0369A1);box-shadow:0 0 0 0 rgba(3,105,161,.4);animation:wx-now 2s ease-out infinite;}
-.wx-track li.is-now .dot::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--wct-blue, #0369A1);}
-.wx-track li.is-end .dot{background:var(--wct-slate-500, #64748B);border-color:var(--wct-slate-500, #64748B);}
-.wx-track li.is-hired .dot{background:var(--ok, #15803D);border-color:var(--ok, #15803D);}
-@keyframes wx-line{from{transform:scaleX(0);}}
-@keyframes wx-dot{from{transform:translateX(-50%) scale(.4);opacity:0;}}
-@keyframes wx-now{0%{box-shadow:0 0 0 0 rgba(3,105,161,.35);}70%,100%{box-shadow:0 0 0 10px rgba(3,105,161,0);}}
-@media (max-width:560px){ .wx-track li{font-size:12px;} .wx-track li b{font-size:12.5px;} }
 
 /* Candidate: success check on submission */
 .wx-check{width:84px;height:84px;margin:0 auto 14px;display:block;}
@@ -244,5 +226,5 @@ dialog.wx-pal[open]{animation:wx-pal-in .2s var(--wx-ease-out) both;}
 select:disabled{opacity:.75;cursor:not-allowed;}
 
 @media (prefers-reduced-motion: reduce){
-  .wx-in, .wx-view, .wx-tour-spot::after, .wx-track li.is-now .dot, .wx-wave{animation:none !important;}
+  .wx-in, .wx-view, .wx-tour-spot::after, .wx-wave{animation:none !important;}
 }
