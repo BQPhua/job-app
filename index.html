@@ -37,10 +37,18 @@
   .progress:empty{display:none;}
   .progress-caption{font-size:13px;color:var(--ink-soft);margin-bottom:8px;}
   .progress-caption strong{color:var(--navy);font-weight:600;}
-  .progress-segs{display:flex;gap:4px;flex-wrap:wrap;}
-  .progress .seg{flex:1;min-width:14px;height:5px;border-radius:3px;background:var(--line);}
-  .progress .seg.done{background:var(--accent);}
-  .progress .seg.active{background:var(--navy-2);}
+  .progress-segs{display:flex;gap:4px;}
+  /* Each step is a 28px-tall target with a 5px bar; completed steps can be clicked. */
+  .progress .pstep{flex:1;min-width:14px;height:28px;margin:-11px 0;padding:0;border:0;background:none;position:relative;display:block;}
+  .progress .pstep::before{content:"";position:absolute;left:0;right:0;top:50%;height:5px;margin-top:-2.5px;border-radius:3px;background:var(--line);transition:height .15s ease,margin .15s ease,background-color .15s ease;}
+  .progress .pstep.done::before{background:var(--wct-navy, #0F172A);}
+  .progress .pstep.active::before{background:var(--wct-red, #D7141A);}
+  .progress button.pstep{cursor:pointer;}
+  .progress button.pstep:hover::before,.progress button.pstep:focus-visible::before{height:9px;margin-top:-4.5px;}
+  .progress button.pstep:not(.done)::before{background:#CBD5E1;}
+  .progress button.pstep:focus-visible{outline:2px solid var(--wct-blue, #0369A1);outline-offset:2px;border-radius:4px;}
+  .progress-tip{color:var(--ink-soft);}
+  @media (max-width:560px){ .progress-tip{display:none;} }
   .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:32px;box-shadow:0 1px 3px rgba(18,37,63,.04);}
   .step-eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-weight:600;margin-bottom:6px;}
   .step-desc{color:var(--ink-soft);font-size:14px;margin-bottom:24px;}
@@ -113,6 +121,17 @@
      instead of a native alert() popup so it can't cover or shift other
      controls on the page. */
   .inline-error{background:#FBEAE8;border:1px solid #EBBAB4;color:var(--danger);padding:8px 12px;border-radius:7px;font-size:12.5px;margin-top:8px;line-height:1.5;}
+  .edu-list{display:grid;gap:12px;margin:0 0 12px;}
+  .edu-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px 4px;background:#fff;}
+  .edu-card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+  .edu-card-h .edu-type{width:auto;min-width:200px;font-weight:700;color:var(--navy);}
+  .edu-remove{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;color:var(--danger);font:inherit;font-size:13px;font-weight:600;border-radius:8px;padding:7px 12px;cursor:pointer;min-height:36px;}
+  .edu-remove:hover{background:#FEF2F2;border-color:#FECACA;}
+  .edu-grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:0 12px;}
+  .edu-grid > .field:nth-child(4){grid-column:1 / 2;}
+  .edu-grid > .field:nth-child(5){grid-column:2 / 4;}
+  @media (max-width:640px){ .edu-grid{grid-template-columns:1fr 1fr;} .edu-grid .edu-wide{grid-column:1 / -1;} .edu-grid > .field:nth-child(4), .edu-grid > .field:nth-child(5){grid-column:1 / -1;} .edu-card-h .edu-type{min-width:0;flex:1;} }
+  .info-banner{background:#EFF6FF;border:1px solid #BFDBFE;color:#1E3A8A;padding:10px 14px;border-radius:7px;font-size:13.5px;line-height:1.5;margin:0 0 16px;}
   .success-banner{background:#EAF3EC;border:1px solid #BEDACB;color:var(--ok);padding:10px 14px;border-radius:7px;font-size:13px;margin-bottom:18px;}
   .toggle-tabs{display:flex;gap:8px;margin-bottom:24px;}
   .toggle-tabs button{flex:1;padding:12px;border-radius:8px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:14px;color:var(--ink-soft);cursor:pointer;}
@@ -155,7 +174,7 @@
   }
   .review-block{margin-bottom:18px;}
   .review-block h4{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin:0 0 8px;display:flex;justify-content:space-between;align-items:center;}
-  .review-block h4 .edit-link{font-size:12px;color:var(--navy-2);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:600;}
+  .review-block h4 .edit-link{font:inherit;font-size:12px;color:var(--navy-2);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:600;background:none;border:0;padding:6px 4px;text-decoration:underline;text-underline-offset:3px;}
   .review-row{display:flex;font-size:13.5px;padding:4px 0;border-bottom:1px dashed #ECE7DB;}
   .review-row .k{width:44%;color:var(--ink-soft);}
   .review-row .v{width:56%;font-weight:500;}
