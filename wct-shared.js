@@ -344,6 +344,7 @@
   /**
    * Full printable HTML for an application row. Options:
    *   statusLabel   text for the status box (default from the status code)
+   *   hideStatus    leave the status out (the candidate's own copy)
    *   includePdpa   add the PDPA consent page (default: when consent recorded)
    *   onboarding    the onboarding record, for family details on older records
    */
@@ -385,7 +386,7 @@
         <div><div class="k">Reference no.</div><div class="v">${dash(a.reference_no)}</div></div>
         <div><div class="k">Business unit</div><div class="v">${dash(buName(a.business_unit))}</div></div>
         <div><div class="k">Submitted</div><div class="v">${dmyTime(a.submitted_at)}</div></div>
-        <div><div class="k">Status</div><div class="v">${dash(status)}</div></div>
+        ${opts.hideStatus ? `<div><div class="k">Position</div><div class="v">${dash(a.position_applying)}</div></div>` : `<div><div class="k">Status</div><div class="v">${dash(status)}</div></div>`}
       </div>
       ${sec('Personal particulars', `<div class="grid">
         ${cell('Position applying for', dash(a.position_applying))}${cell('Name (per NRIC / passport)', dash(a.name_nric))}
