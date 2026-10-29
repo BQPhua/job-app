@@ -253,11 +253,9 @@ let linkBusinessUnit = null; // which business unit this candidate is applying
 // under, derived from the URL (?bu=Mall etc.) rather than a dropdown —
 // see boot() below.
 
-const CANDIDATE_STATUS_LABELS = { submitted:'Submitted', kiv:'KIV', rejected:'Not successful', shortlisted:'Shortlisted', hired:'Hired' };
-function statusBadgeHtml(status){
-  const label = CANDIDATE_STATUS_LABELS[status] || (status||'').replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase());
-  return `<span class="status-badge ${esc(status)}">${esc(label)}</span>`;
-}
+// Candidates don't see their application status (stakeholder feedback
+// 29 Oct 2026): HR contacts them about the outcome. Hired candidates still
+// get the Onboarding Details button.
 
 function tplStart(){
   const drafts = myApplications.filter(a=>a.status==='draft');
@@ -290,15 +288,14 @@ function tplStart(){
     ${others.length ? `
       <div class="section-title" style="margin-top:${drafts.length?'22px':'0'};">Your Previous Applications</div>
       <table class="history-table">
-        <thead><tr><th>Reference</th><th>Unit</th><th>Position</th><th>Status</th><th>Submitted</th><th style="width:160px;">Actions</th></tr></thead>
+        <thead><tr><th>Reference</th><th>Unit</th><th>Position</th><th>Submitted</th><th style="width:160px;">Actions</th></tr></thead>
         <tbody>
           ${others.map(a=>`
             <tr>
               <td><strong><a href="#" onclick="viewMyApplication('${a.id}'); return false;" style="color:var(--navy-2);text-decoration:underline;">${esc(a.reference_no)}</a></strong></td>
               <td>${esc(WCT.buName(a.business_unit))}</td>
               <td>${esc(a.position_applying)||'—'}</td>
-              <td>${statusBadgeHtml(a.status)}</td>
-              <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString() : '—'}</td>
+              <td>${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString('en-GB') : '—'}</td>
               <td>
                 <div class="history-actions">
                   ${a.status==='hired' ? `<button class="btn btn-primary btn-sm" onclick="openOnboarding('${a.id}')">Onboarding Details</button>` : ''}
@@ -370,8 +367,7 @@ function tplMyApplicationDetail(){
   return `
     <div class="step-eyebrow">${esc(a.reference_no)}</div>
     <h2>Application Details</h2>
-    <p class="step-desc">${esc(WCT.buName(a.business_unit))} · ${statusBadgeHtml(a.status)} · Submitted ${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString('en-GB') : '—'}</p>
-    ${window.WXC ? WXC.trackerHtml(a.status) : ''}
+    <p class="step-desc">${esc(WCT.buName(a.business_unit))} · Submitted ${a.submitted_at ? new Date(a.submitted_at).toLocaleDateString('en-GB') : '—'}</p>
     ${applicationSummaryHtml(a, false)}
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="goStep('start')">← Back to My Applications</button>
@@ -2121,7 +2117,7 @@ function exportMyApplicationPdfById(id){
   exportMyApplicationPdf(row);
 }
 function exportMyApplicationPdf(a){
-  WCT.openPrint(WCT.applicationPdfHtml(a, { statusLabel: CANDIDATE_STATUS_LABELS[a.status] }));
+  WCT.openPrint(WCT.applicationPdfHtml(a, { hideStatus: true }));
 }
 
 // Family details now live on the application; older onboarding records
