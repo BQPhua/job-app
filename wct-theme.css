@@ -298,7 +298,7 @@ tbody tr:hover td{background:#FBFCFE;}
 /* ---- photo & supporting documents ---- */
 .photo-row{display:grid;grid-template-columns:150px 1fr;gap:20px;align-items:center;border:1px solid var(--wct-slate-200);border-radius:14px;padding:16px;}
 .photo-row .photo-frame{width:150px;height:170px;display:flex;align-items:center;justify-content:center;}
-.photo-row .photo-frame img{width:132px;height:160px;object-fit:cover;border-radius:14px;border:1px solid var(--wct-slate-200);transform:rotate(-2deg);box-shadow:var(--shadow-md);}
+.photo-row .photo-frame img{width:132px;height:160px;object-fit:cover;border-radius:14px;border:1px solid var(--wct-slate-200);box-shadow:var(--shadow-md);}
 .photo-row .photo-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
 .doc-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .doc-sec{border:1px solid var(--wct-slate-200);border-radius:14px;padding:14px 16px;background:#fff;}
