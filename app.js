@@ -28,7 +28,7 @@ let state = {
     {language:'English', spoken:'', written:''},
     {language:'', spoken:'', written:''}
   ],
-  education: [ {type:'School', name:'', from_year:'', to_year:'', qualification:'', course_name:''} ],
+  education: [], // tplEducation() fills in one row per type (EDU_TYPES)
   working_experience: [ {employer:'', from:'', to:'', is_current:false, position:'', remuneration:'', responsibilities:''} ],
   no_working_experience: false,
   spouse_name:'', spouse_nric:'', spouse_date_of_birth:'', spouse_working:'',
@@ -43,11 +43,20 @@ let state = {
   arrested_convicted:'', arrested_convicted_specify:'',
   referee1:{name:'',designation:'',company:'',relationship:'',contact:''},
   referee2:{name:'',designation:'',company:'',relationship:'',contact:''},
+  no_referees:false,
   declaration_lawsuit:'', declaration_lawsuit_specify:'',
   declaration_other_matters:'', declaration_other_matters_specify:'',
   profile_picture_url:'', attachments:[],
   language_choice:'', jts_agreed:false, pdpa_agreed:false
 };
+
+// Education starts with one row per type, like the manual form (Malls
+// feedback, 29 Oct 2026); candidates delete the ones that don't apply.
+// 'School' is the stored value for secondary school (older records).
+const EDU_TYPES = [['School','Secondary School'],['College/University','College / University'],['Professional Body','Professional Body']];
+function blankEdu(type){ return {type, name:'', from_year:'', to_year:'', qualification:'', course_name:''}; }
+function defaultEducationRows(){ return EDU_TYPES.map(([v]) => blankEdu(v)); }
+function eduRowBlank(r){ return !(r.name||'').trim() && !r.from_year && !r.to_year && !r.qualification && !(r.course_name||'').trim(); }
 
 const HIGHEST_EDUCATION_OPTIONS = [
   'No Formal Education','Pre-Primary Education','Primary Education','Middle School',
@@ -207,10 +216,18 @@ function renderProgress(){
     progressBar.setAttribute('aria-valuemax', String(visibleSteps.length));
     progressBar.setAttribute('aria-valuenow', String(idx + 1));
     progressBar.setAttribute('aria-valuetext', `Step ${idx + 1} of ${visibleSteps.length}: ${STEP_LABELS[state.step] || ''}`);
-    progressBar.innerHTML = `<div class="progress-caption">Step ${idx + 1} of ${visibleSteps.length} · <strong>${esc(STEP_LABELS[state.step] || '')}</strong></div>
+    // Form steps are buttons (Malls feedback, 29 Oct 2026): jump to any step
+    // already completed, plus the first one still to do.
+    const reach = FORM_STEPS.indexOf(firstIncompleteStep());
+    progressBar.innerHTML = `<div class="progress-caption">Step ${idx + 1} of ${visibleSteps.length} · <strong>${esc(STEP_LABELS[state.step] || '')}</strong><span class="progress-tip"> · Select a step to jump to it</span></div>
       <div class="progress-segs">${visibleSteps.map((s,i)=>{
-        let cls='seg'; if(i<idx) cls+=' done'; if(i===idx) cls+=' active';
-        return `<div class="${cls}" title="${esc(STEP_LABELS[s]||'')}"></div>`;
+        let cls='pstep'; if(i<idx) cls+=' done'; if(i===idx) cls+=' active';
+        const f = FORM_STEPS.indexOf(s);
+        const open = f >= 0 && f <= reach && i !== idx;
+        const label = `Step ${i + 1}: ${STEP_LABELS[s] || ''}`;
+        return open
+          ? `<button type="button" class="${cls}" title="${esc(label)}" aria-label="Go to ${esc(label)}" onclick="jumpToStep('${s}')"></button>`
+          : `<span class="${cls}" title="${esc(label)}"${i === idx ? ' aria-current="step"' : ''}></span>`;
       }).join('')}</div>`;
   }
   const refPart = state.reference_no ? `<span style="margin-right:14px;">Ref: ${state.reference_no}</span>` : '';
@@ -345,7 +362,8 @@ async function continueDraft(id){
   if(!row) return;
   pdpaDraft = { name: '', nric: '', agreed: false }; // never carry a signature over from another application
   loadStateFromRow(row);
-  goStep('personal');
+  reachedReview = firstIncompleteStep() === 'review';
+  goStep(reachedReview ? 'review' : 'personal');
 }
 
 let viewingApplicationId = null;
@@ -395,6 +413,7 @@ async function startNewApplication(){
     const { data, error } = await apiTry(() => api.post('/applications', { business_unit: linkBusinessUnit }));
     if(error) throw error;
     state.id = data.id; state.reference_no = data.reference_no;
+    reachedReview = false;
     state.business_unit = linkBusinessUnit;
     // Pre-fill from the signed-in account
     if(currentUser){
@@ -423,6 +442,7 @@ function loadStateFromRow(row){
   state.language_ability = normalizeLanguages(state.language_ability);
   ['referee1','referee2'].forEach(k => { state[k] = {name:'',designation:'',company:'',relationship:'',contact:'', ...(state[k]||{})}; });
   state.no_working_experience = !!state.no_working_experience;
+  state.no_referees = !!state.no_referees;
   corrSameAsPermanent = WCT.sameAddress(state);
   // If the saved SOCSO number differs from the NRIC, treat it as intentionally
   // edited so we don't silently overwrite it if they revisit the NRIC field.
@@ -436,7 +456,7 @@ function tplPersonal(){
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Personal Particulars</h2>
-    <p class="step-desc">Applying with <strong>${esc(state.business_unit)}</strong></p>
+    <p class="step-desc">Applying with <strong>${esc(WCT.buName(state.business_unit))}</strong></p>
 
     <div class="field" id="field-position_applying"><label>Position Applying For <span class="req-star">*</span></label><input type="text" placeholder="e.g. Site Engineer" value="${esc(state.position_applying)}" oninput="updateField('position_applying', this.value)"></div>
 
@@ -1146,7 +1166,7 @@ function tplLanguage(){
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Language Ability <span class="tag-req" style="vertical-align:middle;">COMPULSORY</span></h2>
-    <p class="step-desc">Rate your spoken and written ability for each language. Bahasa Malaysia and English are required.</p>
+    <p class="step-desc">Rate your spoken and written ability for each language. Bahasa Malaysia and English are required. Choose <strong>N/A</strong> if it doesn't apply (for example, a dialect you speak but don't write).</p>
     <table class="dyn lang-table">
       <thead><tr><th>Language / Dialect</th><th>Spoken <span class="req-star">*</span></th><th>Written <span class="req-star">*</span></th><th style="width:48px;"></th></tr></thead>
       <tbody>${fixed}</tbody>
@@ -1160,7 +1180,7 @@ function tplLanguage(){
   `;
 }
 function selectGFS(val, onchangeFn, label){
-  return `<select ${label ? `aria-label="${label}"` : ''} onchange="${onchangeFn}"><option value="">—</option>${['Good','Fair','Slight'].map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
+  return `<select ${label ? `aria-label="${label}"` : ''} onchange="${onchangeFn}"><option value="">—</option>${['Good','Fair','Slight','N/A'].map(o=>`<option ${val===o?'selected':''}>${o}</option>`).join('')}</select>`;
 }
 function addLangRow(){ state.language_ability.push({language:'',spoken:'',written:''}); render(); }
 function removeLangRow(i){
@@ -1197,47 +1217,60 @@ function yearOptionsHtml(selected){
   return opts;
 }
 
+const EDU_PLACEHOLDER = {
+  'School': ['e.g. SMK Damansara Jaya', 'e.g. SPM, Science stream'],
+  'College/University': ['e.g. Universiti Malaya', 'e.g. Civil Engineering'],
+  'Professional Body': ['e.g. Board of Engineers Malaysia', 'e.g. Graduate Engineer'],
+};
 function tplEducation(){
-  const rows = state.education.map((r,i)=>`
-    <tr>
-      <td style="min-width:130px;">
-        <select onchange="updateArrayField('education',${i},'type',this.value)">
-          ${['School','College/University','Professional Body'].map(o=>`<option ${r.type===o?'selected':''}>${o}</option>`).join('')}
+  // A brand-new (or untouched) list shows all three types to fill in.
+  if(!state.education.length || (state.education.length < EDU_TYPES.length && state.education.every(eduRowBlank))) state.education = defaultEducationRows();
+  const canRemove = state.education.length > 1;
+  const cards = state.education.map((r,i)=>{
+    const ph = EDU_PLACEHOLDER[r.type] || ['Institution name', 'e.g. Civil Engineering'];
+    const lbl = (EDU_TYPES.find(([v]) => v === r.type) || [0, 'Education'])[1];
+    return `
+    <div class="edu-card">
+      <div class="edu-card-h">
+        <select class="edu-type" aria-label="Type of education ${i+1}" onchange="updateArrayField('education',${i},'type',this.value);render();">
+          ${EDU_TYPES.map(([v, label])=>`<option value="${v}" ${r.type===v?'selected':''}>${label}</option>`).join('')}
         </select>
-      </td>
-      <td><input type="text" id="field-edu-name-${i}" placeholder="Institution name" value="${esc(r.name)}" oninput="updateArrayField('education',${i},'name',this.value)"></td>
-      <td style="width:110px;min-width:110px;" id="field-edu-from-${i}"><select aria-label="From year" style="min-width:96px;" onchange="updateArrayField('education',${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></td>
-      <td style="width:110px;min-width:110px;" id="field-edu-to-${i}"><select aria-label="To year" style="min-width:96px;" onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></td>
-      <td style="min-width:170px;"><select id="field-edu-qualification-${i}" onchange="updateArrayField('education',${i},'qualification',this.value)">${educationOptionsHtml(r.qualification)}</select></td>
-      <td style="min-width:150px;"><input type="text" value="${esc(r.course_name)}" oninput="updateArrayField('education',${i},'course_name',this.value)"></td>
-      <td>${state.education.length > 1 ? `<button class="remove-x" type="button" aria-label="Remove this row" onclick="removeRowConfirm('education',${i})">${UI_ICON.x}</button>` : ''}</td>
-    </tr>`).join('');
+        ${canRemove ? `<button class="edu-remove" type="button" aria-label="Remove ${esc(lbl)} (row ${i+1})" onclick="removeRowConfirm('education',${i})">${UI_ICON.x} Remove</button>` : ''}
+      </div>
+      <div class="edu-grid">
+        <div class="field edu-wide" id="field-edu-name-${i}"><label for="edu-name-${i}">Institution <span class="req-star">*</span></label><input type="text" id="edu-name-${i}" placeholder="${esc(ph[0])}" value="${esc(r.name)}" oninput="updateArrayField('education',${i},'name',this.value)"></div>
+        <div class="field" id="field-edu-from-${i}"><label for="edu-from-${i}">From <span class="req-star">*</span></label><select id="edu-from-${i}" onchange="updateArrayField('education',${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></div>
+        <div class="field" id="field-edu-to-${i}"><label for="edu-to-${i}">To <span class="req-star">*</span></label><select id="edu-to-${i}" onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></div>
+        <div class="field" id="field-edu-qualification-${i}"><label for="edu-qual-${i}">Qualification <span class="req-star">*</span></label><select id="edu-qual-${i}" onchange="updateArrayField('education',${i},'qualification',this.value)">${educationOptionsHtml(r.qualification)}</select></div>
+        <div class="field" id="field-edu-course-${i}"><label for="edu-course-${i}">Course name <span class="req-star">*</span></label><input type="text" id="edu-course-${i}" placeholder="${esc(ph[1])}" value="${esc(r.course_name)}" oninput="updateArrayField('education',${i},'course_name',this.value)"></div>
+      </div>
+    </div>`; }).join('');
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Education <span class="tag-req" style="vertical-align:middle;">COMPULSORY</span></h2>
-    <p class="step-desc">Add your school, college/university, and any professional body memberships. At least one entry is required.</p>
-
-    <table class="dyn">
-      <thead><tr><th>Type</th><th>Institution <span class="req-star">*</span></th><th>From <span class="req-star">*</span></th><th>To <span class="req-star">*</span></th><th>Qualification <span class="req-star">*</span></th><th>Course Name</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <p class="step-desc">Fill in your secondary school, college / university and any professional body or association you belong to.</p>
+    <div class="info-banner">Not applicable to you? Press <strong>Remove</strong> on that entry. Use <strong>+ Add education entry</strong> for more schools or qualifications. At least one entry is required.</div>
+    <div class="edu-list">${cards}</div>
     <button class="add-row-btn" onclick="addEduRow()">+ Add education entry</button>
     ${navButtonsValidated('language','experience', validateEducationStep)}
   `;
 }
 function validateEducationStep(){
   const errs = [];
-  if(!state.education.length) addEduRow();
+  if(!state.education.length) return [{field:null, message:'Please add at least one education entry.'}];
+  const label = (r) => (EDU_TYPES.find(([v]) => v === r.type) || [0, 'Education'])[1];
   state.education.forEach((r,i)=>{
-    if(!(r.name||'').trim()) errs.push({field:`field-edu-name-${i}`, message:`Education entry ${i+1}: please enter the institution name.`});
-    if(!r.from_year) errs.push({field:`field-edu-from-${i}`, message:`Education entry ${i+1}: please select the "From" year.`});
-    if(!r.to_year) errs.push({field:`field-edu-to-${i}`, message:`Education entry ${i+1}: please select the "To" year.`});
-    if(r.from_year && r.to_year && Number(r.to_year) < Number(r.from_year)) errs.push({field:`field-edu-to-${i}`, message:`Education entry ${i+1}: the "To" year can't be before the "From" year.`});
-    if(!r.qualification) errs.push({field:`field-edu-qualification-${i}`, message:`Education entry ${i+1}: please select a qualification.`});
+    const n = `${label(r)} (row ${i+1})`;
+    if(!(r.name||'').trim()) errs.push({field:`field-edu-name-${i}`, message:`${n}: please enter the institution name, or remove the row if it doesn't apply.`});
+    if(!r.from_year) errs.push({field:`field-edu-from-${i}`, message:`${n}: please select the "From" year.`});
+    if(!r.to_year) errs.push({field:`field-edu-to-${i}`, message:`${n}: please select the "To" year.`});
+    if(r.from_year && r.to_year && Number(r.to_year) < Number(r.from_year)) errs.push({field:`field-edu-to-${i}`, message:`${n}: the "To" year can't be before the "From" year.`});
+    if(!r.qualification) errs.push({field:`field-edu-qualification-${i}`, message:`${n}: please select a qualification.`});
+    if(!(r.course_name||'').trim()) errs.push({field:`field-edu-course-${i}`, message:`${n}: please enter the course name.`});
   });
   return errs;
 }
-function addEduRow(){ state.education.push({type:'School',name:'',from_year:'',to_year:'',qualification:'',course_name:''}); render(); }
+function addEduRow(){ state.education.push(blankEdu('College/University')); render(); }
 
 // ---------------------------------------------------------------------------
 // STEP: working experience
@@ -1301,7 +1334,7 @@ async function toggleNoExperience(checked){
 function validateExperienceStep(){
   const errs = [];
   if(state.no_working_experience) return errs;
-  if(!state.working_experience.length) state.working_experience.push(blankExp());
+  if(!state.working_experience.length) return [{field:null, message:'Please add your working experience, or tick "I do not have any previous working experience".'}];
   state.working_experience.forEach((r,i)=>{
     const n = state.working_experience.length > 1 ? ` ${i+1}` : '';
     if(!(r.employer||'').trim()) errs.push({field:`field-exp-employer-${i}`, message:`Work experience${n}: please enter the employer name and address (or tick "I do not have any previous working experience").`});
@@ -1523,70 +1556,72 @@ function validateFamilyStep(){
 // ---------------------------------------------------------------------------
 // STEP: referees & declarations
 // ---------------------------------------------------------------------------
+function refereeFieldsetHtml(key, n, ph){
+  const r = state[key];
+  const f = (k, label, placeholder, extra='') => `<div class="field"><label for="${key}-${k}">${label} <span class="req-star">*</span></label><input type="text" id="${key}-${k}" placeholder="${placeholder}" value="${esc(r[k])}" ${extra || `oninput="updateNested(state.${key},'${k}',this.value)"`}></div>`;
+  return `<fieldset id="field-${key}">
+    <legend>Referee ${n} <span class="req-star">*</span></legend>
+    ${f('name', 'Name', ph[0])}
+    ${f('designation', 'Designation', ph[1])}
+    ${f('company', 'Company', ph[2])}
+    ${f('relationship', 'Relationship', ph[3])}
+    ${f('contact', 'Contact No.', ph[4], `inputmode="numeric" maxlength="11" oninput="this.value=numericOnly(this.value);updateNested(state.${key},'contact',this.value)"`)}
+  </fieldset>`;
+}
+// Declarations (B) and (C) read like the manual form (Malls feedback,
+// 29 Oct 2026): one box per declaration, "NIL" if there is nothing to
+// declare. Stored as before: NIL -> 'No'; anything else -> 'Yes' + details.
+const DECL_NIL = /^\s*(nil|none|no|n\/?a|tiada|-+)\s*\.?\s*$/i;
+function declText(key){ return state[key] === 'No' ? 'NIL' : (state[`${key}_specify`] || ''); }
+function setDecl(key, text){
+  const t = String(text || '');
+  if(!t.trim()){ state[key] = ''; state[`${key}_specify`] = ''; }
+  else if(DECL_NIL.test(t)){ state[key] = 'No'; state[`${key}_specify`] = ''; }
+  else { state[key] = 'Yes'; state[`${key}_specify`] = t; }
+}
+function declBoxHtml(key, letter, statement){
+  return `<div class="field decl-box" id="field-${key}">
+      <label for="decl-${key}">(${letter}) ${statement} <span class="req-star">*</span></label>
+      <textarea id="decl-${key}" rows="3" placeholder="Write NIL if none" oninput="setDecl('${key}', this.value)">${esc(declText(key))}</textarea>
+      <div class="hint">State <strong>NIL</strong> if none. Not enough space? Attach a document under <strong>Declaration details</strong> on the next step.</div>
+    </div>`;
+}
 function tplReferees(){
+  const none = !!state.no_referees;
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Referees &amp; Declarations</h2>
     <p class="step-desc">Please give two referees whose reference can be obtained on your application.</p>
 
-    <div class="grid">
-      <fieldset id="field-referee1">
-        <legend>Referee 1 <span class="req-star">*</span></legend>
-        <div class="field"><label>Name <span class="req-star">*</span></label><input type="text" placeholder="e.g. John Tan" value="${esc(state.referee1.name)}" oninput="updateNested(state.referee1,'name',this.value)"></div>
-        <div class="field"><label>Designation <span class="req-star">*</span></label><input type="text" placeholder="e.g. Project Manager" value="${esc(state.referee1.designation)}" oninput="updateNested(state.referee1,'designation',this.value)"></div>
-        <div class="field"><label>Company <span class="req-star">*</span></label><input type="text" placeholder="e.g. ABC Engineering Sdn Bhd" value="${esc(state.referee1.company)}" oninput="updateNested(state.referee1,'company',this.value)"></div>
-        <div class="field"><label>Relationship <span class="req-star">*</span></label><input type="text" placeholder="e.g. Ex-supervisor" value="${esc(state.referee1.relationship)}" oninput="updateNested(state.referee1,'relationship',this.value)"></div>
-        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 0123456789" value="${esc(state.referee1.contact)}" maxlength="11" oninput="this.value=numericOnly(this.value);updateNested(state.referee1,'contact',this.value)"></div>
-      </fieldset>
-      <fieldset id="field-referee2">
-        <legend>Referee 2 <span class="req-star">*</span></legend>
-        <div class="field"><label>Name <span class="req-star">*</span></label><input type="text" placeholder="e.g. Jane Lim" value="${esc(state.referee2.name)}" oninput="updateNested(state.referee2,'name',this.value)"></div>
-        <div class="field"><label>Designation <span class="req-star">*</span></label><input type="text" placeholder="e.g. HR Manager" value="${esc(state.referee2.designation)}" oninput="updateNested(state.referee2,'designation',this.value)"></div>
-        <div class="field"><label>Company <span class="req-star">*</span></label><input type="text" placeholder="e.g. XYZ Holdings Berhad" value="${esc(state.referee2.company)}" oninput="updateNested(state.referee2,'company',this.value)"></div>
-        <div class="field"><label>Relationship <span class="req-star">*</span></label><input type="text" placeholder="e.g. Colleague" value="${esc(state.referee2.relationship)}" oninput="updateNested(state.referee2,'relationship',this.value)"></div>
-        <div class="field"><label>Contact No. <span class="req-star">*</span></label><input type="text" inputmode="numeric" placeholder="e.g. 0129876543" value="${esc(state.referee2.contact)}" maxlength="11" oninput="this.value=numericOnly(this.value);updateNested(state.referee2,'contact',this.value)"></div>
-      </fieldset>
-    </div>
+    <label class="no-exp" id="field-no_referees"><input type="checkbox" ${none ? 'checked' : ''} onchange="updateField('no_referees', this.checked); render();">
+      <span><strong>I have no referee to provide</strong><br><span class="hint">For example, if you are applying for an internship or your first job.</span></span></label>
+
+    ${none ? '' : `<div class="grid">
+      ${refereeFieldsetHtml('referee1', 1, ['e.g. John Tan', 'e.g. Project Manager', 'e.g. ABC Engineering Sdn Bhd', 'e.g. Ex-supervisor', 'e.g. 0123456789'])}
+      ${refereeFieldsetHtml('referee2', 2, ['e.g. Jane Lim', 'e.g. HR Manager', 'e.g. XYZ Holdings Berhad', 'e.g. Colleague', 'e.g. 0129876543'])}
+    </div>`}
 
     <div class="section-title">Declarations</div>
     <p class="decl-text">(A) ${esc(WCT.DECLARATION_A)}</p>
-
-    <div class="field" id="field-declaration_lawsuit">
-      <label>(B) I declare that save and except for the following I am not involved in, a party to nor the subject of any law suits, arbitral proceedings, disciplinary proceedings, criminal inquiry, investigation and/or conviction and/or any other legal or quasi-legal proceedings. <span class="req-star">*</span></label>
-      <div class="radio-row">
-        <label class="radio-opt"><input type="radio" name="declaration_lawsuit" value="Yes" ${state.declaration_lawsuit==='Yes'?'checked':''} onchange="updateField('declaration_lawsuit', this.value); render();"> Yes</label>
-        <label class="radio-opt"><input type="radio" name="declaration_lawsuit" value="No" ${state.declaration_lawsuit==='No'?'checked':''} onchange="updateField('declaration_lawsuit', this.value); render();"> No</label>
-      </div>
-    </div>
-    ${state.declaration_lawsuit==='Yes' ? `<div class="field" id="field-declaration_lawsuit_specify"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('declaration_lawsuit_specify', this.value)">${esc(state.declaration_lawsuit_specify)}</textarea><div class="hint">Add an attachment on the next step if you need more space.</div></div>` : ''}
-
-    <div class="field" id="field-declaration_other_matters">
-      <label>(C) I declare that save and except for the following I am not aware of any matter or information that may affect my personal and/or professional public standing or repute or that might adversely affect your consideration of my application for employment. <span class="req-star">*</span></label>
-      <div class="radio-row">
-        <label class="radio-opt"><input type="radio" name="declaration_other_matters" value="Yes" ${state.declaration_other_matters==='Yes'?'checked':''} onchange="updateField('declaration_other_matters', this.value); render();"> Yes</label>
-        <label class="radio-opt"><input type="radio" name="declaration_other_matters" value="No" ${state.declaration_other_matters==='No'?'checked':''} onchange="updateField('declaration_other_matters', this.value); render();"> No</label>
-      </div>
-    </div>
-    ${state.declaration_other_matters==='Yes' ? `<div class="field" id="field-declaration_other_matters_specify"><label>Please specify <span class="req-star">*</span></label><textarea oninput="updateField('declaration_other_matters_specify', this.value)">${esc(state.declaration_other_matters_specify)}</textarea><div class="hint">Add an attachment on the next step if you need more space.</div></div>` : ''}
+    ${declBoxHtml('declaration_lawsuit', 'B', esc(WCT.DECLARATION_B).replace(/\.$/, ':'))}
+    ${declBoxHtml('declaration_other_matters', 'C', esc(WCT.DECLARATION_C).replace(/\.$/, ':'))}
 
     ${navButtonsValidated('family','attachments', validateRefereesStep)}
   `;
 }
 function validateRefereesStep(){
   const errs = [];
-  ['referee1','referee2'].forEach((key, idx)=>{
+  if(!state.no_referees) ['referee1','referee2'].forEach((key, idx)=>{
     const r = state[key];
-    if(!r.name.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a name.`});
-    if(!r.designation.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a designation.`});
+    if(!(r.name||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a name (or tick "I have no referee to provide").`});
+    if(!(r.designation||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a designation.`});
     if(!(r.company||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter the company.`});
-    if(!r.relationship.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter your relationship to them.`});
-    if(!r.contact.trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a contact number.`});
+    if(!(r.relationship||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter your relationship to them.`});
+    if(!(r.contact||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a contact number.`});
     else if(!WCT.isValidPhone(r.contact)) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: the contact number must be 10–11 digits.`});
   });
-  if(!state.declaration_lawsuit) errs.push({field:'field-declaration_lawsuit', message:'Please answer declaration (B) — lawsuits, proceedings, and investigations.'});
-  if(state.declaration_lawsuit==='Yes' && !state.declaration_lawsuit_specify.trim()) errs.push({field:'field-declaration_lawsuit_specify', message:'Please specify the details for declaration (B).'});
-  if(!state.declaration_other_matters) errs.push({field:'field-declaration_other_matters', message:'Please answer declaration (C) — matters affecting your standing.'});
-  if(state.declaration_other_matters==='Yes' && !state.declaration_other_matters_specify.trim()) errs.push({field:'field-declaration_other_matters_specify', message:'Please specify the details for declaration (C).'});
+  if(!state.declaration_lawsuit) errs.push({field:'field-declaration_lawsuit', message:'Declaration (B): please give the details, or write NIL if none.'});
+  if(!state.declaration_other_matters) errs.push({field:'field-declaration_other_matters', message:'Declaration (C): please give the details, or write NIL if none.'});
   return errs;
 }
 
@@ -1598,6 +1633,7 @@ const DOC_ICONS = {
   resume: ['#FEE2E2','#B91016','<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>'],
   academic: ['#F3E8FF','#7E22CE','<path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>'],
   payslip: ['#DCFCE7','#15803D','<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>'],
+  declaration: ['#FEF3C7','#B45309','<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="M9 12h6M9 15h4"/>'],
   other: ['#F1F5F9','#475569','<path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/>'],
 };
 function docFileRowHtml(f){
@@ -1612,7 +1648,7 @@ function docFileRowHtml(f){
 }
 // Files uploaded before the document sections existed have no category and
 // show under "Other documents"; the candidate can say what each one is.
-const DOC_MOVE_OPTIONS = [['ic_front','IC — front / passport'],['ic_back','IC — back'],['resume','Resume / CV'],['academic','Academic certificate'],['payslip','Payslip'],['other','Other document']];
+const DOC_MOVE_OPTIONS = [['ic_front','IC — front / passport'],['ic_back','IC — back'],['resume','Resume / CV'],['academic','Academic certificate'],['payslip','Payslip'],['declaration','Declaration details'],['other','Other document']];
 async function moveAttachment(i, category){
   const f = state.attachments[i];
   if(!f || !category) return;
@@ -1781,7 +1817,7 @@ async function handleProfileUpload(file){
 // STEP: review
 // ---------------------------------------------------------------------------
 function rrow(k,v){ return `<div class="review-row"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
-function reviewHeader(title, step){ return `<h4>${title} <span class="edit-link" onclick="goStep('${step}')">Edit</span></h4>`; }
+function reviewHeader(title, step){ return `<h4>${title} <button type="button" class="edit-link" onclick="goStep('${step}')" aria-label="Edit ${title.replace(/&amp;/g,'and')}">Edit</button></h4>`; }
 
 // One read-only summary of an application, used by the Review step (with
 // Edit links) and by "My Applications" → details (without).
@@ -1818,7 +1854,7 @@ function applicationSummaryHtml(a, editable){
     </div>
     <div class="review-block">
       ${h('Education', 'education')}
-      ${(a.education||[]).map(r=>rrow(r.type, `${r.name} (${r.from_year}–${r.to_year}) — ${r.qualification}${r.course_name?' — '+r.course_name:''}`)).join('') || rrow('Education','None provided')}
+      ${(a.education||[]).map(r=>rrow(WCT.eduTypeLabel(r.type), `${r.name} (${r.from_year}–${r.to_year}) — ${r.qualification}${r.course_name?' — '+r.course_name:''}`)).join('') || rrow('Education','None provided')}
     </div>
     <div class="review-block">
       ${h('Working Experience', 'experience')}
@@ -1843,9 +1879,9 @@ function applicationSummaryHtml(a, editable){
     </div>
     <div class="review-block">
       ${h('Referees &amp; Declarations', 'referees')}
-      ${refs.map((r,i)=>rrow(`Referee ${i+1}`, `${r.name} — ${r.designation}${r.company ? ', '+r.company : ''} · ${r.relationship} · ${r.contact}`)).join('') || rrow('Referees', 'None provided')}
-      ${rrow('Declaration (B) — Lawsuits/Proceedings', a.declaration_lawsuit==='Yes' ? `Yes — ${a.declaration_lawsuit_specify}` : a.declaration_lawsuit)}
-      ${rrow('Declaration (C) — Other Matters', a.declaration_other_matters==='Yes' ? `Yes — ${a.declaration_other_matters_specify}` : a.declaration_other_matters)}
+      ${a.no_referees ? rrow('Referees', 'No referee to provide') : (refs.map((r,i)=>rrow(`Referee ${i+1}`, `${r.name} — ${r.designation}${r.company ? ', '+r.company : ''} · ${r.relationship} · ${r.contact}`)).join('') || rrow('Referees', 'None provided'))}
+      ${rrow('Declaration (B) — Lawsuits/Proceedings', WCT.declAnswer(a.declaration_lawsuit, a.declaration_lawsuit_specify))}
+      ${rrow('Declaration (C) — Other Matters', WCT.declAnswer(a.declaration_other_matters, a.declaration_other_matters_specify))}
     </div>
     <div class="review-block">
       ${h('Photo &amp; Documents', 'attachments')}
@@ -1855,11 +1891,13 @@ function applicationSummaryHtml(a, editable){
       ${fileRow('Resume / CV', docs.resume)}
       ${fileRow('Academic certificates', docs.academic)}
       ${fileRow('Payslip', docs.payslip)}
+      ${docs.declaration.length ? fileRow('Declaration details', docs.declaration) : ''}
       ${fileRow('Other documents', docs.other)}
     </div>`;
 }
 
 function tplReview(){
+  reachedReview = true;
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Review Your Application</h2>
@@ -1873,8 +1911,10 @@ function tplReview(){
 }
 
 async function proceedToConsent(){
-  await saveDraft();
-  goStep('consent-lang');
+  const stop = firstIncompleteStep();
+  if(stop !== 'review'){ goStep(stop); return; }
+  const ok = await saveDraft();
+  if(ok) goStep('consent-lang');
 }
 
 // ---------------------------------------------------------------------------
@@ -1978,11 +2018,15 @@ function tplFinal(){
   `;
 }
 
+let submittedApplication = null;
 async function finalSubmit(){
   showLoading('Submitting your application...');
   try{
-    const { error } = await apiTry(() => api.post(`/applications/${state.id}/submit`, { reference_no: state.reference_no }));
+    const { data, error } = await apiTry(() => api.post(`/applications/${state.id}/submit`, { reference_no: state.reference_no }));
     if(error) throw error;
+    // The submitted record carries the PDPA signature (name, NRIC, time),
+    // which the form state doesn't, so the PDF on the next page is complete.
+    submittedApplication = data || null;
     hideLoading();
     goStep('done');
     if(window.WX) setTimeout(() => WX.celebrate(), 250);
@@ -2005,7 +2049,7 @@ function tplDone(){
       <div class="ref-box">${state.reference_no}</div>
       <p class="step-desc">Please keep this reference number for your records. For enquiries, please contact your HR Representative.</p>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-        <button class="btn btn-ghost" onclick="exportMyApplicationPdf(state)">${UI_ICON.pdf} Download as PDF</button>
+        <button class="btn btn-ghost" onclick="exportMyApplicationPdf(submittedApplication || state)">${UI_ICON.pdf} Download as PDF</button>
         <button class="btn btn-ghost" onclick="backToMyApplications()">Back to My Applications</button>
       </div>
     </div>
@@ -2029,16 +2073,45 @@ function navButtons(backStep, nextStep){
 async function goStepWithSave(next){ const ok = await saveDraft(); if(ok) goStep(next); }
 
 function navButtonsValidated(backStep, nextStep, validatorFn){
+  const toReview = reachedReview && nextStep !== 'review';
   return `
     <div id="stepErr"></div>
     <div class="btn-row">
       ${backStep ? `<button class="btn btn-ghost" onclick="goStepWithSave('${backStep}')">← Back</button>` : '<div></div>'}
       <div class="right">
         <button class="btn btn-ghost" onclick="saveAndExit()">Save &amp; Exit</button>
+        ${toReview ? `<button class="btn btn-ghost" onclick="goStepWithValidation('review', ${validatorFn.name})">Save &amp; back to Review</button>` : ''}
         <button class="btn btn-primary" onclick="goStepWithValidation('${nextStep}', ${validatorFn.name})">Next →</button>
       </div>
     </div>
   `;
+}
+
+// ---------------------------------------------------------------------------
+// Jumping between steps (Malls feedback, 29 Oct 2026). A step can be opened
+// once every step before it is complete, so Review is only reachable with a
+// complete form; going back to fix something is always allowed.
+// ---------------------------------------------------------------------------
+const FORM_STEPS = ['personal','language','education','experience','questions','family','referees','attachments','review'];
+const STEP_VALIDATORS = {
+  personal: () => validatePersonalStep(), language: () => validateLanguageStep(), education: () => validateEducationStep(),
+  experience: () => validateExperienceStep(), questions: () => validateQuestionsStep(), family: () => validateFamilyStep(),
+  referees: () => validateRefereesStep(), attachments: () => validateAttachmentsStep(),
+};
+let reachedReview = false; // shows "Save & back to Review" once the candidate has seen Review
+function firstIncompleteStep(){
+  for(const st of FORM_STEPS.slice(0, -1)){ if(STEP_VALIDATORS[st]().length) return st; }
+  return 'review';
+}
+async function jumpToStep(target){
+  if(target === state.step) return;
+  const stop = firstIncompleteStep();
+  if(FORM_STEPS.indexOf(target) > FORM_STEPS.indexOf(stop)){
+    if(window.WX) WX.toast(`Please complete ${STEP_LABELS[stop]} first.`, { timeout: 2600 });
+    return;
+  }
+  const ok = await saveDraft();
+  if(ok) goStep(target);
 }
 async function goStepWithValidation(next, validatorFn){
   clearAllInvalidFields();
@@ -2063,7 +2136,16 @@ async function goStepWithValidation(next, validatorFn){
     return;
   }
   const ok = await saveDraft();
-  if(ok) goStep(next);
+  if(!ok) return;
+  if(next === 'review'){
+    const stop = firstIncompleteStep();
+    if(stop !== 'review'){
+      if(window.WX) WX.toast(`${STEP_LABELS[stop]} still needs some details.`, { timeout: 2600 });
+      goStep(stop);
+      return;
+    }
+  }
+  goStep(next);
 }
 async function saveAndExit(){
   await saveDraft();
