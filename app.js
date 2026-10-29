@@ -25,14 +25,14 @@ let state = {
   // can add or remove. See normalizeLanguages().
   language_ability: [
     {language:'Bahasa Malaysia', spoken:'', written:''},
-    {language:'English', spoken:'', written:''},
-    {language:'', spoken:'', written:''}
+    {language:'English', spoken:'', written:''}
   ],
   education: [], // tplEducation() fills in one row per type (EDU_TYPES)
   working_experience: [ {employer:'', from:'', to:'', is_current:false, position:'', remuneration:'', responsibilities:''} ],
   no_working_experience: false,
-  spouse_name:'', spouse_nric:'', spouse_date_of_birth:'', spouse_working:'',
-  children_below_18: [], children_18_to_23: [],
+  spouse_name:'', spouse_occupation:'', spouse_working:'',
+  children_below_18_count: null, children_18_to_23_count: null,
+  children_below_18: [], children_18_to_23: [], // older applications only; details are now given at onboarding
   resignation_notice_required:'', notice_period:'', date_available_to_start:'',
   expected_basic_salary:'',
   relatives_in_company:'', relatives_name:'', relatives_relationship:'',
@@ -50,17 +50,29 @@ let state = {
   language_choice:'', jts_agreed:false, pdpa_agreed:false
 };
 
-// Education starts with one row per type, like the manual form (Malls
-// feedback, 29 Oct 2026); candidates delete the ones that don't apply.
+// Education entries (feedback 30 Oct 2026): the form starts with one entry
+// whose type the candidate chooses; any entry can be removed.
 // 'School' is the stored value for secondary school (older records).
-const EDU_TYPES = [['School','Secondary School'],['College/University','College / University'],['Professional Body','Professional Body']];
-function blankEdu(type){ return {type, name:'', from_year:'', to_year:'', qualification:'', course_name:''}; }
-function defaultEducationRows(){ return EDU_TYPES.map(([v]) => blankEdu(v)); }
-function eduRowBlank(r){ return !(r.name||'').trim() && !r.from_year && !r.to_year && !r.qualification && !(r.course_name||'').trim(); }
+const EDU_TYPES = [['Primary School','Primary School'],['School','Secondary School'],['College/University','College / University'],['Professional Body','Professional Body']];
+function blankEdu(type = ''){ return {type, name:'', from_year:'', to_year:'', qualification:'', course_name:''}; }
+let eduSeededFor = null; // application whose first blank entry was already added
+// The card the candidate just added: it slides in and its first field gets focus.
+let wxJustAdded = null;
+function wxAddedClass(id){ return wxJustAdded === id ? ' wx-added' : ''; }
+function wxFocusAdded(){
+  const id = wxJustAdded; wxJustAdded = null;
+  if(!id) return;
+  requestAnimationFrame(() => {
+    const card = document.querySelector(`[data-wx-card="${id}"]`);
+    if(!card) return;
+    card.scrollIntoView({block:'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+    const f = card.querySelector('select, input'); if(f) f.focus({preventScroll:true});
+  });
+}
 
 const HIGHEST_EDUCATION_OPTIONS = [
-  'No Formal Education','Pre-Primary Education','Primary Education','Middle School',
-  'Secondary Education or High School','GED (General Educational Development)',
+  'No Formal Education','Primary Education',
+  'Secondary Education or High School',
   'Vocational Qualification','Technical Education','Certificate Program',
   'Associate Degree',"Bachelor's Degree",'Post-Graduate Diploma',
   'Professional Certification',"Master's Degree",'Doctoral Degree (Ph.D., Ed.D., etc.)',
@@ -159,7 +171,10 @@ async function saveDraft(){
     const { error } = await apiTry(() => api.patch(`/applications/${state.id}`, {
       reference_no: state.reference_no, patch: currentPatch()
     }));
-    if(error){
+    if(error && error.sessionEnded){
+      success = false;
+      showSessionEnded();
+    } else if(error){
       console.error(error);
       success = false;
       alert(`Your progress could not be saved:\n\n${error.message}\n\nPlease try again — if this keeps happening, contact support before continuing, since your latest changes have NOT been saved.`);
@@ -633,6 +648,7 @@ async function openOnboarding(applicationId){
     if(error) throw error;
     onboardingAppId = applicationId;
     onboardingState = data;
+    obSeedChildren(onboardingState);
     salaryAck = { name: '', agreed: !!data.salary_crediting_confirmed };
     personalAck = { name: data.personal_details_signed_name || '', agreed: !!data.personal_details_confirmed };
     onboardingStep = onboardingState.status === 'completed' ? 'review' : 'statutory';
@@ -677,32 +693,24 @@ async function saveOnboarding(showAlert){
     Object.keys(patch).forEach(key => {
       if(patch[key] === '') delete patch[key];
     });
-    if(obEditsFamily(onboardingState)){
-      // Sent as-is (null when blank) so a cleared value really clears.
-      ['spouse_name','spouse_nric','spouse_date_of_birth','spouse_working'].forEach(k => { patch[k] = onboardingState[k] || null; });
-      ['children_below_18','children_18_to_23'].forEach(k => {
-        patch[k] = (onboardingState[k] || []).filter(c => (c.name||'').trim() || (c.nric||'').trim());
-      });
-    }
+    // Children are always given here (sent in full, so a removed child goes).
+    ['children_below_18','children_18_to_23'].forEach(k => {
+      patch[k] = (onboardingState[k] || []).filter(c => (c.name||'').trim() || (c.nric||'').trim());
+    });
     const { data, error } = await apiTry(() => api.patch(`/onboarding/${onboardingAppId}`, { patch }));
     if(error) throw error;
-    onboardingState = { ...data, available_companies: onboardingState.available_companies, family: onboardingState.family };
+    onboardingState = { ...data, available_companies: onboardingState.available_companies, family: onboardingState.family }; obSeedChildren(onboardingState);
     if(showAlert) alert('Saved.');
     return true;
-  } catch(e){ alert('Error saving: ' + e.message); return false; }
+  } catch(e){
+    if(e.sessionEnded) showSessionEnded(); else alert('Your details could not be saved: ' + e.message + '\n\nPlease try again.');
+    return false;
+  }
 }
 
-// People hired before family details moved onto the application form have
-// none on their application; they fill them in here, on the onboarding record.
-function obEditsFamily(o){
-  const f = (o && o.family) || {};
-  return !['spouse_name','spouse_nric','spouse_date_of_birth','spouse_working','children_below_18','children_18_to_23']
-    .some(k => Array.isArray(f[k]) ? f[k].length > 0 : !!f[k]);
-}
 async function onboardingGoStep(step){
-  if(onboardingStep === 'statutory' && obEditsFamily(onboardingState)){
-    famTarget = 'ob';
-    const errs = validateFamilyStep();
+  if(onboardingStep === 'statutory'){
+    const errs = validateObChildren();
     const box = document.getElementById('obFamErr');
     if(errs.length){
       clearAllInvalidFields();
@@ -794,10 +802,7 @@ function tplObStatutory(){
       <div class="field"><label>CIDB Green Card No.</label><input type="text" id="ob_cidb_green_card_no" placeholder="e.g. N/A" value="${esc(o.cidb_green_card_no)}"></div>
     </div>
 
-    ${obEditsFamily(o) ? (() => { famTarget = 'ob'; return `
-      <div class="section-title">Family Details <span class="opt-tag">(optional — for tax relief and benefits)</span></div>
-      <div class="ob-family">${familyFieldsHtml(false)}</div>
-      <div id="obFamErr"></div>`; })() : ''}
+    ${obChildrenHtml()}
 
     <div class="section-title">Bank Details (Salary Crediting)</div>
     <div class="grid">
@@ -904,7 +909,7 @@ async function confirmPersonalAndPreview(){
       const tp3 = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section: 'tp3' }));
       if(!tp3.error) data = tp3.data;
     }
-    onboardingState = { ...data, available_companies: o.available_companies, family: o.family };
+    onboardingState = { ...data, available_companies: o.available_companies, family: o.family }; obSeedChildren(onboardingState);
     hideLoading();
     onboardingStep = 'preview'; render(); window.scrollTo(0,0);
     return;
@@ -939,11 +944,11 @@ function obSummaryPage1Html(o){
     </div>
 
 
-    ${(() => { const f = obFamily(o); const kids = [...(f.children_below_18||[]), ...(f.children_18_to_23||[])];
+    ${(() => { const f = obFamily(o); const kids = [...(f.children_below_18||[]).map(c => ['Below 18', c]), ...(f.children_18_to_23||[]).map(c => ['18 and above', c])];
       return (f.spouse_name || kids.length) ? `<div class="review-block">
-      <h4>Family Details <span class="hint" style="font-weight:400;">(from your application)</span></h4>
-      ${obReviewRow('Spouse', f.spouse_name ? `${f.spouse_name}${f.spouse_nric ? ' · '+f.spouse_nric : ''}` : '')}
-      ${kids.map(c=>obReviewRow(c.name||'Child', `${c.gender||'—'} · NRIC: ${c.nric||'—'} · Tax relief: ${c.tax_relief?'Yes':'No'}`)).join('')}
+      <h4>Family Details</h4>
+      ${f.spouse_name ? obReviewRow('Spouse', [f.spouse_name, f.spouse_occupation, f.spouse_working ? 'Working: '+f.spouse_working : ''].filter(Boolean).join(' · ')) : ''}
+      ${kids.map(([g, c])=>obReviewRow(`${c.name||'Child'} (${g})`, `${c.gender||'—'} · NRIC: ${c.nric||'—'} · Tax relief: ${c.tax_relief?'Yes':'No'}`)).join('')}
     </div>` : ''; })()}
 
     <div class="review-block">
@@ -986,7 +991,7 @@ async function submitOnboarding(){
   try{
     const { data, error } = await apiTry(() => api.post(`/onboarding/${onboardingAppId}/confirm-section`, { section: 'salary_crediting', signed_name: salaryAck.name || obApplicantName() }));
     if(error) throw error;
-    onboardingState = { ...data, available_companies: onboardingState.available_companies, family: onboardingState.family };
+    onboardingState = { ...data, available_companies: onboardingState.available_companies, family: onboardingState.family }; obSeedChildren(onboardingState);
     onboardingStep = 'review';
     render();
     window.scrollTo(0,0);
@@ -1145,7 +1150,7 @@ function normalizeLanguages(list, keepBlank){
     .map(r => /^others \(please state\)$/i.test((r.language||'').trim()) ? {...r, language:''} : r);
   const fixed = FIXED_LANGUAGES.map(name => rows.find(r => r.language === name) || {language:name, spoken:'', written:''});
   const others = rows.filter(r => !FIXED_LANGUAGES.includes(r.language) && (keepBlank || (r.language||'').trim() || r.spoken || r.written));
-  return [...fixed, ...(others.length ? others : [{language:'', spoken:'', written:''}])];
+  return [...fixed, ...others];
 }
 function tplLanguage(){
   state.language_ability = normalizeLanguages(state.language_ability, true);
@@ -1172,9 +1177,9 @@ function tplLanguage(){
       <tbody>${fixed}</tbody>
     </table>
     <div class="section-title">Other Languages / Dialects <span class="opt-tag">(optional)</span></div>
-    <table class="dyn lang-table">
+    ${others ? `<table class="dyn lang-table">
       <tbody>${others}</tbody>
-    </table>
+    </table>` : '<p class="hint" style="margin:0 0 10px;">None added. Speak or write another language or dialect? Add it below.</p>'}
     <button class="add-row-btn" onclick="addLangRow()">+ Add Another Language/Dialect</button>
     ${navButtonsValidated('personal','education', validateLanguageStep)}
   `;
@@ -1218,29 +1223,45 @@ function yearOptionsHtml(selected){
 }
 
 const EDU_PLACEHOLDER = {
+  'Primary School': ['e.g. SK Taman Megah', 'e.g. UPSR'],
   'School': ['e.g. SMK Damansara Jaya', 'e.g. SPM, Science stream'],
   'College/University': ['e.g. Universiti Malaya', 'e.g. Civil Engineering'],
   'Professional Body': ['e.g. Board of Engineers Malaysia', 'e.g. Graduate Engineer'],
 };
+// "To" offers only years from the "From" year on, so To can't be before From.
+function toYearOptionsHtml(from, selected){
+  const now = new Date().getFullYear();
+  const min = from ? Number(from) : now - 80;
+  let opts = `<option value="">Year</option>`;
+  for(let y = now + 10; y >= min; y--) opts += `<option value="${y}" ${String(selected)===String(y)?'selected':''}>${y}</option>`;
+  return opts;
+}
+function setEduYear(i, key, value){
+  const r = state.education[i];
+  r[key] = value;
+  if(r.from_year && r.to_year && Number(r.to_year) < Number(r.from_year)) r.to_year = '';
+  if(key === 'from_year') render();
+}
 function tplEducation(){
-  // A brand-new (or untouched) list shows all three types to fill in.
-  if(!state.education.length || (state.education.length < EDU_TYPES.length && state.education.every(eduRowBlank))) state.education = defaultEducationRows();
-  const canRemove = state.education.length > 1;
+  if(eduSeededFor !== state.id){ eduSeededFor = state.id; if(!state.education.length) state.education = [blankEdu()]; }
   const cards = state.education.map((r,i)=>{
-    const ph = EDU_PLACEHOLDER[r.type] || ['Institution name', 'e.g. Civil Engineering'];
-    const lbl = (EDU_TYPES.find(([v]) => v === r.type) || [0, 'Education'])[1];
+    const ph = EDU_PLACEHOLDER[r.type] || ['Name of school, college or body', 'e.g. Civil Engineering'];
+    const lbl = (EDU_TYPES.find(([v]) => v === r.type) || [0, 'education entry'])[1];
     return `
-    <div class="edu-card">
+    <div class="edu-card${wxAddedClass('edu-'+i)}" data-wx-card="edu-${i}">
       <div class="edu-card-h">
-        <select class="edu-type" aria-label="Type of education ${i+1}" onchange="updateArrayField('education',${i},'type',this.value);render();">
-          ${EDU_TYPES.map(([v, label])=>`<option value="${v}" ${r.type===v?'selected':''}>${label}</option>`).join('')}
-        </select>
-        ${canRemove ? `<button class="edu-remove" type="button" aria-label="Remove ${esc(lbl)} (row ${i+1})" onclick="removeRowConfirm('education',${i})">${UI_ICON.x} Remove</button>` : ''}
+        <div class="field" id="field-edu-type-${i}" style="margin:0;">
+          <select class="edu-type" aria-label="Type of education ${i+1}" onchange="updateArrayField('education',${i},'type',this.value);render();">
+            <option value="">Select education entry</option>
+            ${EDU_TYPES.map(([v, label])=>`<option value="${v}" ${r.type===v?'selected':''}>${label}</option>`).join('')}
+          </select>
+        </div>
+        <button class="edu-remove" type="button" aria-label="Remove ${esc(lbl)} (entry ${i+1})" onclick="removeEduEntry(${i})">${UI_ICON.x} Remove</button>
       </div>
       <div class="edu-grid">
         <div class="field edu-wide" id="field-edu-name-${i}"><label for="edu-name-${i}">Institution <span class="req-star">*</span></label><input type="text" id="edu-name-${i}" placeholder="${esc(ph[0])}" value="${esc(r.name)}" oninput="updateArrayField('education',${i},'name',this.value)"></div>
-        <div class="field" id="field-edu-from-${i}"><label for="edu-from-${i}">From <span class="req-star">*</span></label><select id="edu-from-${i}" onchange="updateArrayField('education',${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></div>
-        <div class="field" id="field-edu-to-${i}"><label for="edu-to-${i}">To <span class="req-star">*</span></label><select id="edu-to-${i}" onchange="updateArrayField('education',${i},'to_year',this.value)">${yearOptionsHtml(r.to_year)}</select></div>
+        <div class="field" id="field-edu-from-${i}"><label for="edu-from-${i}">From <span class="req-star">*</span></label><select id="edu-from-${i}" onchange="setEduYear(${i},'from_year',this.value)">${yearOptionsHtml(r.from_year)}</select></div>
+        <div class="field" id="field-edu-to-${i}"><label for="edu-to-${i}">To <span class="req-star">*</span></label><select id="edu-to-${i}" onchange="setEduYear(${i},'to_year',this.value)">${toYearOptionsHtml(r.from_year, r.to_year)}</select></div>
         <div class="field" id="field-edu-qualification-${i}"><label for="edu-qual-${i}">Qualification <span class="req-star">*</span></label><select id="edu-qual-${i}" onchange="updateArrayField('education',${i},'qualification',this.value)">${educationOptionsHtml(r.qualification)}</select></div>
         <div class="field" id="field-edu-course-${i}"><label for="edu-course-${i}">Course name <span class="req-star">*</span></label><input type="text" id="edu-course-${i}" placeholder="${esc(ph[1])}" value="${esc(r.course_name)}" oninput="updateArrayField('education',${i},'course_name',this.value)"></div>
       </div>
@@ -1248,29 +1269,37 @@ function tplEducation(){
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Education <span class="tag-req" style="vertical-align:middle;">COMPULSORY</span></h2>
-    <p class="step-desc">Fill in your secondary school, college / university and any professional body or association you belong to.</p>
-    <div class="info-banner">Not applicable to you? Press <strong>Remove</strong> on that entry. Use <strong>+ Add education entry</strong> for more schools or qualifications. At least one entry is required.</div>
-    <div class="edu-list">${cards}</div>
+    <p class="step-desc">Add your primary school, secondary school, college / university and any professional body or association you belong to, one entry each.</p>
+    <div class="info-banner">Choose the type for each entry and use <strong>+ Add education entry</strong> for more. Added one you don't need? Press <strong>Remove</strong>. At least one entry is required.</div>
+    <div class="edu-list" id="field-edu-list">${cards || '<div class="edu-empty">No education entries yet. Press <strong>+ Add education entry</strong> to add one.</div>'}</div>
     <button class="add-row-btn" onclick="addEduRow()">+ Add education entry</button>
     ${navButtonsValidated('language','experience', validateEducationStep)}
   `;
 }
+async function removeEduEntry(i){
+  const r = state.education[i];
+  if(!r) return;
+  const filled = (r.name||'').trim() || r.from_year || r.to_year || r.qualification || (r.course_name||'').trim();
+  if(filled && !(await askYesNo('Remove this entry?', 'Are you sure you want to remove this education entry?'))) return;
+  state.education.splice(i, 1);
+  render();
+}
 function validateEducationStep(){
   const errs = [];
-  if(!state.education.length) return [{field:null, message:'Please add at least one education entry.'}];
-  const label = (r) => (EDU_TYPES.find(([v]) => v === r.type) || [0, 'Education'])[1];
+  if(!state.education.length) return [{field:'field-edu-list', message:'Please add at least one education entry.'}];
   state.education.forEach((r,i)=>{
-    const n = `${label(r)} (row ${i+1})`;
-    if(!(r.name||'').trim()) errs.push({field:`field-edu-name-${i}`, message:`${n}: please enter the institution name, or remove the row if it doesn't apply.`});
+    const n = `${(EDU_TYPES.find(([v]) => v === r.type) || [0, 'Education entry'])[1]} (entry ${i+1})`;
+    if(!r.type) errs.push({field:`field-edu-type-${i}`, message:`Education entry ${i+1}: please choose the type of education.`});
+    if(!(r.name||'').trim()) errs.push({field:`field-edu-name-${i}`, message:`${n}: please enter the institution name, or remove the entry.`});
     if(!r.from_year) errs.push({field:`field-edu-from-${i}`, message:`${n}: please select the "From" year.`});
     if(!r.to_year) errs.push({field:`field-edu-to-${i}`, message:`${n}: please select the "To" year.`});
-    if(r.from_year && r.to_year && Number(r.to_year) < Number(r.from_year)) errs.push({field:`field-edu-to-${i}`, message:`${n}: the "To" year can't be before the "From" year.`});
+    if(r.from_year && r.to_year && Number(r.from_year) > Number(r.to_year)) errs.push({field:`field-edu-to-${i}`, message:`${n}: the "From" year can't be after the "To" year.`});
     if(!r.qualification) errs.push({field:`field-edu-qualification-${i}`, message:`${n}: please select a qualification.`});
     if(!(r.course_name||'').trim()) errs.push({field:`field-edu-course-${i}`, message:`${n}: please enter the course name.`});
   });
   return errs;
 }
-function addEduRow(){ state.education.push(blankEdu('College/University')); render(); }
+function addEduRow(){ state.education.push(blankEdu()); wxJustAdded = 'edu-'+(state.education.length-1); render(); wxFocusAdded(); }
 
 // ---------------------------------------------------------------------------
 // STEP: working experience
@@ -1458,96 +1487,108 @@ function tplQuestions(){
 }
 
 // ---------------------------------------------------------------------------
-// STEP: family details (optional) — spouse and children, moved here from
-// onboarding's Statutory Details (stakeholder feedback 2026-10-14).
+// STEP: family details (optional). Feedback 30 Oct 2026: the application asks
+// only the spouse's name, occupation and whether they work, plus HOW MANY
+// children; each child's details are given at onboarding, once hired.
 // ---------------------------------------------------------------------------
 const blankChild = () => ({name:'',gender:'',nric:'',date_of_birth:'',course_name:'',tax_relief:false});
-// The family block edits the application, or — for people hired before it
-// moved onto the application form — their onboarding record (famTarget 'ob').
-let famTarget = 'app';
-function fam(){
-  const o = famTarget === 'ob' ? onboardingState : state;
-  ['children_below_18','children_18_to_23'].forEach(k => { if(!Array.isArray(o[k])) o[k] = []; });
-  return o;
+function countOptionsHtml(val){
+  return `<option value="">Select</option>` + Array.from({length: 11}, (_, n) => `<option value="${n}" ${val === n ? 'selected' : ''}>${n === 10 ? '10 or more' : n}</option>`).join('');
 }
-function famSet(key, value){ fam()[key] = value; }
-function famChildSet(key, i, field, value){ fam()[key][i][field] = value; }
-function famAddChild(key){ fam()[key].push(blankChild()); render(); }
-async function famRemoveChild(key, i){
-  if(await askYesNo('Remove this entry?', 'Are you sure you want to remove this entry?')){ fam()[key].splice(i,1); render(); }
-}
-function childRowsHtml(key){
-  return fam()[key].map((c,i)=>`
-    <tr>
-      <td id="field-${key}-name-${i}"><input type="text" aria-label="Child name" value="${esc(c.name)}" oninput="famChildSet('${key}',${i},'name',this.value)"></td>
-      <td><select aria-label="Gender" onchange="famChildSet('${key}',${i},'gender',this.value)"><option value="">—</option>${['Male','Female'].map(o=>`<option ${c.gender===o?'selected':''}>${o}</option>`).join('')}</select></td>
-      <td id="field-${key}-nric-${i}"><input type="text" aria-label="NRIC" inputmode="numeric" maxlength="12" value="${esc(c.nric)}" oninput="this.value=numericOnly(this.value);familyChildNric('${key}',${i},this.value)"></td>
-      <td><input type="date" aria-label="Date of birth" id="${key}Dob${i}" value="${esc(c.date_of_birth)}" oninput="famChildSet('${key}',${i},'date_of_birth',this.value)"></td>
-      <td><select aria-label="Education" onchange="famChildSet('${key}',${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></td>
-      <td style="text-align:center;"><input type="checkbox" aria-label="Claim child tax relief" ${c.tax_relief?'checked':''} onchange="famChildSet('${key}',${i},'tax_relief',this.checked)"></td>
-      <td><button class="remove-x" type="button" aria-label="Remove this child" onclick="famRemoveChild('${key}',${i})">${UI_ICON.x}</button></td>
-    </tr>`).join('') || `<tr><td colspan="7" class="hint" style="padding:12px;">No children added.</td></tr>`;
-}
-function familyChildNric(key, i, val){
-  fam()[key][i].nric = val;
-  const dob = deriveDobFromNric(val);
-  if(dob && val.length >= 6){
-    fam()[key][i].date_of_birth = dob;
-    const el = document.getElementById(`${key}Dob${i}`);
-    if(el) el.value = dob; // in place: keeps focus while typing
-  }
-}
-function familySpouseNric(val){
-  fam().spouse_nric = val;
-  const dob = deriveDobFromNric(val);
-  if(dob){
-    fam().spouse_date_of_birth = dob;
-    const el = document.getElementById('spouseDob');
-    if(el) el.value = dob;
-  }
-}
-// Spouse + both children tables. `first` drops the top margin of the first title.
-function familyFieldsHtml(first = true){
-  const f = fam();
-  const head = `<thead><tr><th>Name (per NRIC)</th><th>Gender</th><th>NRIC No. (no dash)</th><th>Date of Birth</th><th>Education</th><th>Tax Relief</th><th></th></tr></thead>`;
-  return `
-    <div class="section-title" ${first ? 'style="margin-top:0;"' : ''}>Spouse Information</div>
-    <div class="grid">
-      <div class="field"><label for="spouseName">Name (per NRIC)</label><input type="text" id="spouseName" value="${esc(f.spouse_name)}" oninput="famSet('spouse_name', this.value)"></div>
-      <div class="field" id="field-spouse_nric"><label for="spouseNric">NRIC No. (without dash)</label><input type="text" id="spouseNric" inputmode="numeric" maxlength="12" value="${esc(f.spouse_nric)}" oninput="this.value=numericOnly(this.value);familySpouseNric(this.value)"></div>
-    </div>
-    <div class="grid">
-      <div class="field"><label for="spouseDob">Date of Birth</label><input type="date" id="spouseDob" value="${esc(f.spouse_date_of_birth)}" oninput="famSet('spouse_date_of_birth', this.value)"></div>
-      <div class="field"><label>Working?</label>
-        <div class="radio-row">${['Yes','No'].map(v=>`<label class="radio-opt"><input type="radio" name="spouse_working" ${f.spouse_working===v?'checked':''} onchange="famSet('spouse_working','${v}')"> ${v}</label>`).join('')}</div>
-      </div>
-    </div>
-
-    <div class="section-title">Children Below 18 Years Old</div>
-    <div class="table-scroll"><table class="dyn">${head}<tbody>${childRowsHtml('children_below_18')}</tbody></table></div>
-    <button type="button" class="add-row-btn" onclick="famAddChild('children_below_18')">+ Add child</button>
-
-    <div class="section-title">Children 18 Years Old and Above <span class="opt-tag">(unmarried &amp; in full-time study)</span></div>
-    <div class="table-scroll"><table class="dyn">${head}<tbody>${childRowsHtml('children_18_to_23')}</tbody></table></div>
-    <button type="button" class="add-row-btn" onclick="famAddChild('children_18_to_23')">+ Add child</button>
-    <p class="hint" style="margin-top:10px;">Tick "Tax Relief" for each child you will claim child tax relief for.</p>`;
-}
+function setChildCount(key, v){ state[key] = v === '' ? null : Number(v); }
 function tplFamily(){
-  famTarget = 'app';
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Family Details <span class="tag-opt" style="vertical-align:middle;">Optional</span></h2>
-    <p class="step-desc">Fill this in if it applies to you — HR uses it for tax relief and benefits. You can leave this page blank and continue.</p>
-    ${familyFieldsHtml(true)}
+    <p class="step-desc">Fill this in if it applies to you. HR uses it for tax relief and benefits. You can leave this page blank and continue.</p>
+
+    <div class="section-title" style="margin-top:0;">Spouse Information</div>
+    <div class="grid">
+      <div class="field"><label for="spouseName">Name (per NRIC)</label><input type="text" id="spouseName" value="${esc(state.spouse_name)}" oninput="updateField('spouse_name', this.value)"></div>
+      <div class="field"><label for="spouseOccupation">Occupation</label><input type="text" id="spouseOccupation" placeholder="e.g. Teacher" maxlength="120" value="${esc(state.spouse_occupation)}" oninput="updateField('spouse_occupation', this.value)"></div>
+    </div>
+    <div class="field"><label>Working?</label>
+      <div class="radio-row">${['Yes','No'].map(v=>`<label class="radio-opt"><input type="radio" name="spouse_working" ${state.spouse_working===v?'checked':''} onchange="updateField('spouse_working','${v}')"> ${v}</label>`).join('')}</div>
+    </div>
+
+    <div class="section-title">Children</div>
+    <div class="grid">
+      <div class="field"><label for="kidsBelow18">Number of children below 18</label><select id="kidsBelow18" onchange="setChildCount('children_below_18_count', this.value)">${countOptionsHtml(state.children_below_18_count)}</select></div>
+      <div class="field"><label for="kids18plus">Number of children 18 and above <span class="opt-tag">(unmarried, in full-time study)</span></label><select id="kids18plus" onchange="setChildCount('children_18_to_23_count', this.value)">${countOptionsHtml(state.children_18_to_23_count)}</select></div>
+    </div>
+    <p class="hint">If you join WCT, you'll give each child's details in your onboarding forms.</p>
     ${navButtonsValidated('questions','referees', validateFamilyStep)}
   `;
 }
-function validateFamilyStep(){
+function validateFamilyStep(){ return []; }
+
+// ---------------------------------------------------------------------------
+// Onboarding: each child's details (they are no longer asked on the
+// application). Cards, so the Remove button is always in view.
+// ---------------------------------------------------------------------------
+function obKids(key){ if(!Array.isArray(onboardingState[key])) onboardingState[key] = []; return onboardingState[key]; }
+// First visit: start from the application's children (older applications) or
+// from the number of children the candidate gave.
+function obSeedChildren(o){
+  const f = o.family || {};
+  [['children_below_18','children_below_18_count'],['children_18_to_23','children_18_to_23_count']].forEach(([key, countKey]) => {
+    if(Array.isArray(o[key]) && o[key].length) return;
+    if(Array.isArray(f[key]) && f[key].length) o[key] = f[key].map(c => ({...blankChild(), ...c}));
+    else o[key] = Array.from({length: Math.min(Number(f[countKey]) || 0, 10)}, blankChild);
+  });
+}
+function obChildSet(key, i, field, value){ obKids(key)[i][field] = value; }
+function obAddChild(key){ obKids(key).push(blankChild()); wxJustAdded = key+'-'+(obKids(key).length-1); render(); wxFocusAdded(); }
+async function obRemoveChild(key, i){
+  const c = obKids(key)[i];
+  const filled = c && ((c.name||'').trim() || c.nric || c.date_of_birth);
+  if(filled && !(await askYesNo('Remove this child?', `Remove ${c.name ? esc(c.name) : 'this child'} from the list?`))) return;
+  obKids(key).splice(i, 1);
+  render();
+}
+function obChildNric(key, i, val){
+  const c = obKids(key)[i];
+  c.nric = val;
+  const dob = deriveDobFromNric(val);
+  if(dob && val.length >= 6){
+    c.date_of_birth = dob;
+    const el = document.getElementById(`${key}Dob${i}`);
+    if(el) el.value = dob;
+  }
+}
+function obChildCardsHtml(key, label){
+  const kids = obKids(key);
+  return kids.map((c,i)=>`
+    <div class="kid-card${wxAddedClass(key+'-'+i)}" data-wx-card="${key}-${i}">
+      <div class="kid-card-h"><strong>${label} ${i+1}</strong>
+        <button class="edu-remove" type="button" aria-label="Remove ${label.toLowerCase()} ${i+1}" onclick="obRemoveChild('${key}',${i})">${UI_ICON.x} Remove</button></div>
+      <div class="kid-grid">
+        <div class="field kid-wide" id="field-${key}-name-${i}"><label for="${key}Name${i}">Name (per NRIC)</label><input type="text" id="${key}Name${i}" value="${esc(c.name)}" oninput="obChildSet('${key}',${i},'name',this.value)"></div>
+        <div class="field"><label for="${key}Gender${i}">Gender</label><select id="${key}Gender${i}" onchange="obChildSet('${key}',${i},'gender',this.value)"><option value="">Select</option>${['Male','Female'].map(o=>`<option ${c.gender===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="field" id="field-${key}-nric-${i}"><label for="${key}Nric${i}">NRIC No. (no dash)</label><input type="text" id="${key}Nric${i}" inputmode="numeric" maxlength="12" value="${esc(c.nric)}" oninput="this.value=numericOnly(this.value);obChildNric('${key}',${i},this.value)"></div>
+        <div class="field"><label for="${key}Dob${i}">Date of birth</label><input type="date" id="${key}Dob${i}" value="${esc(c.date_of_birth)}" oninput="obChildSet('${key}',${i},'date_of_birth',this.value)"></div>
+        <div class="field"><label for="${key}Edu${i}">Education</label><select id="${key}Edu${i}" onchange="obChildSet('${key}',${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></div>
+        <label class="kid-relief"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="obChildSet('${key}',${i},'tax_relief',this.checked)"> Claim child tax relief</label>
+      </div>
+    </div>`).join('') || `<p class="hint" style="margin:0 0 8px;">None added.</p>`;
+}
+function obChildrenHtml(){
+  return `
+    <div class="section-title">Children <span class="opt-tag">(for tax relief and benefits)</span></div>
+    <p class="hint" style="margin-top:-4px;">Give each child's details. Leave this empty if it doesn't apply to you.</p>
+    <h4 class="kid-group">Below 18 years old</h4>
+    <div class="kid-list">${obChildCardsHtml('children_below_18', 'Child')}</div>
+    <button type="button" class="add-row-btn" onclick="obAddChild('children_below_18')">+ Add child below 18</button>
+    <h4 class="kid-group">18 years old and above <span class="opt-tag">(unmarried, in full-time study)</span></h4>
+    <div class="kid-list">${obChildCardsHtml('children_18_to_23', 'Child')}</div>
+    <button type="button" class="add-row-btn" onclick="obAddChild('children_18_to_23')">+ Add child 18 or above</button>
+    <div id="obFamErr"></div>`;
+}
+function validateObChildren(){
   const errs = [];
-  const f = fam();
-  if(f.spouse_nric && f.spouse_nric.length !== 12) errs.push({field:'field-spouse_nric', message:'Spouse NRIC must be 12 digits (or leave it blank).'});
-  ['children_below_18','children_18_to_23'].forEach(key => f[key].forEach((c,i) => {
-    if(!(c.name||'').trim() && ((c.nric||'') || c.date_of_birth)) errs.push({field:`field-${key}-name-${i}`, message:'Please enter the name of each child you add (or remove the row).'});
+  ['children_below_18','children_18_to_23'].forEach(key => obKids(key).forEach((c,i) => {
+    const any = (c.name||'').trim() || c.nric || c.date_of_birth || c.gender || c.course_name;
+    if(any && !(c.name||'').trim()) errs.push({field:`field-${key}-name-${i}`, message:'Please enter the name of each child you add (or remove that child).'});
     if(c.nric && c.nric.length !== 12) errs.push({field:`field-${key}-nric-${i}`, message:`${c.name || 'Child'}: NRIC must be 12 digits (or leave it blank).`});
   }));
   return errs;
@@ -1556,11 +1597,12 @@ function validateFamilyStep(){
 // ---------------------------------------------------------------------------
 // STEP: referees & declarations
 // ---------------------------------------------------------------------------
-function refereeFieldsetHtml(key, n, ph){
+function refereeFieldsetHtml(key, n, ph, optional){
   const r = state[key];
-  const f = (k, label, placeholder, extra='') => `<div class="field"><label for="${key}-${k}">${label} <span class="req-star">*</span></label><input type="text" id="${key}-${k}" placeholder="${placeholder}" value="${esc(r[k])}" ${extra || `oninput="updateNested(state.${key},'${k}',this.value)"`}></div>`;
+  const star = optional ? '' : ' <span class="req-star">*</span>';
+  const f = (k, label, placeholder, extra='') => `<div class="field"><label for="${key}-${k}">${label}${star}</label><input type="text" id="${key}-${k}" placeholder="${placeholder}" value="${esc(r[k])}" ${extra || `oninput="updateNested(state.${key},'${k}',this.value)"`}></div>`;
   return `<fieldset id="field-${key}">
-    <legend>Referee ${n} <span class="req-star">*</span></legend>
+    <legend>Referee ${n}${optional ? ' <span class="opt-tag">(optional for fresh graduates)</span>' : star}</legend>
     ${f('name', 'Name', ph[0])}
     ${f('designation', 'Designation', ph[1])}
     ${f('company', 'Company', ph[2])}
@@ -1569,10 +1611,11 @@ function refereeFieldsetHtml(key, n, ph){
   </fieldset>`;
 }
 // Declarations (B) and (C) read like the manual form (Malls feedback,
-// 29 Oct 2026): one box per declaration, "NIL" if there is nothing to
-// declare. Stored as before: NIL -> 'No'; anything else -> 'Yes' + details.
-const DECL_NIL = /^\s*(nil|none|no|n\/?a|tiada|-+)\s*\.?\s*$/i;
-function declText(key){ return state[key] === 'No' ? 'NIL' : (state[`${key}_specify`] || ''); }
+// 29 Oct 2026): one box per declaration, "NONE" if there is nothing to
+// declare. Stored as before: NONE -> 'No'; anything else -> 'Yes' + details.
+// "NONE" in any letter case (older answers may say NIL).
+const DECL_NIL = /^\s*(none|nil|tiada)\s*\.?\s*$/i;
+function declText(key){ return state[key] === 'No' ? 'NONE' : (state[`${key}_specify`] || ''); }
 function setDecl(key, text){
   const t = String(text || '');
   if(!t.trim()){ state[key] = ''; state[`${key}_specify`] = ''; }
@@ -1581,9 +1624,9 @@ function setDecl(key, text){
 }
 function declBoxHtml(key, letter, statement){
   return `<div class="field decl-box" id="field-${key}">
-      <label for="decl-${key}">(${letter}) ${statement} <span class="req-star">*</span></label>
-      <textarea id="decl-${key}" rows="3" placeholder="Write NIL if none" oninput="setDecl('${key}', this.value)">${esc(declText(key))}</textarea>
-      <div class="hint">State <strong>NIL</strong> if none. Not enough space? Attach a document under <strong>Declaration details</strong> on the next step.</div>
+      <label for="decl-${key}" class="decl-label">(${letter}) ${statement} <span class="req-star">*</span></label>
+      <textarea id="decl-${key}" rows="3" placeholder="Write NONE if none" oninput="setDecl('${key}', this.value)">${esc(declText(key))}</textarea>
+      <div class="hint">Write <strong>NONE</strong> if none. Not enough space? Attach a document under <strong>Declaration details</strong> on the next step.</div>
     </div>`;
 }
 function tplReferees(){
@@ -1591,14 +1634,14 @@ function tplReferees(){
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Referees &amp; Declarations</h2>
-    <p class="step-desc">Please give two referees whose reference can be obtained on your application.</p>
+    <p class="step-desc">Please give two referees we can contact about your application. Fresh graduates may give one.</p>
 
     <label class="no-exp" id="field-no_referees"><input type="checkbox" ${none ? 'checked' : ''} onchange="updateField('no_referees', this.checked); render();">
       <span><strong>I have no referee to provide</strong><br><span class="hint">For example, if you are applying for an internship or your first job.</span></span></label>
 
     ${none ? '' : `<div class="grid">
       ${refereeFieldsetHtml('referee1', 1, ['e.g. John Tan', 'e.g. Project Manager', 'e.g. ABC Engineering Sdn Bhd', 'e.g. Ex-supervisor', 'e.g. 0123456789'])}
-      ${refereeFieldsetHtml('referee2', 2, ['e.g. Jane Lim', 'e.g. HR Manager', 'e.g. XYZ Holdings Berhad', 'e.g. Colleague', 'e.g. 0129876543'])}
+      ${refereeFieldsetHtml('referee2', 2, ['e.g. Jane Lim', 'e.g. HR Manager', 'e.g. XYZ Holdings Berhad', 'e.g. Colleague', 'e.g. 0129876543'], true)}
     </div>`}
 
     <div class="section-title">Declarations</div>
@@ -1611,8 +1654,10 @@ function tplReferees(){
 }
 function validateRefereesStep(){
   const errs = [];
+  const refStarted = (r) => ['name','designation','company','relationship','contact'].some(k => (r[k]||'').trim());
   if(!state.no_referees) ['referee1','referee2'].forEach((key, idx)=>{
     const r = state[key];
+    if(idx === 1 && !refStarted(r)) return; // Referee 2 is optional (fresh graduates give one)
     if(!(r.name||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a name (or tick "I have no referee to provide").`});
     if(!(r.designation||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a designation.`});
     if(!(r.company||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter the company.`});
@@ -1620,8 +1665,8 @@ function validateRefereesStep(){
     if(!(r.contact||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a contact number.`});
     else if(!WCT.isValidPhone(r.contact)) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: the contact number must be 10–11 digits.`});
   });
-  if(!state.declaration_lawsuit) errs.push({field:'field-declaration_lawsuit', message:'Declaration (B): please give the details, or write NIL if none.'});
-  if(!state.declaration_other_matters) errs.push({field:'field-declaration_other_matters', message:'Declaration (C): please give the details, or write NIL if none.'});
+  if(!state.declaration_lawsuit) errs.push({field:'field-declaration_lawsuit', message:'Declaration (B): please give the details, or write NONE if none.'});
+  if(!state.declaration_other_matters) errs.push({field:'field-declaration_other_matters', message:'Declaration (C): please give the details, or write NONE if none.'});
   return errs;
 }
 
@@ -1743,30 +1788,85 @@ async function handleDocUpload(fileList){
     }
   } catch(e){ hideLoading(); render(); showUploadError(errBox, 'Upload failed: '+e.message); return; }
   hideLoading();
-  await saveDraftQuiet();
   render();
+  if(await saveFieldsNow({ attachments: state.attachments })) saveDraftQuiet();
 }
 async function removeAttachmentConfirm(i){
   const f = state.attachments[i];
   if(!f) return;
   if(!(await askYesNo('Remove this file?', `Remove "${f.name}" from your application?`))) return;
   state.attachments.splice(i,1);
-  await saveDraftQuiet();
   render();
+  await saveFieldsNow({ attachments: state.attachments });
 }
 async function removePhoto(){
   if(!(await askYesNo('Remove your photo?', 'Are you sure you want to remove your photo?'))) return;
-  state.profile_picture_url = null;
   // '' would be skipped by the save (keeps the old value), so clear it explicitly.
-  if(state.id) await apiTry(() => api.patch(`/applications/${state.id}`, { reference_no: state.reference_no, patch: { profile_picture_url: null } }));
+  if(state.id && !(await saveFieldsNow({ profile_picture_url: null }))) return;
   state.profile_picture_url = '';
   render();
 }
 // Save without the "Saving..." overlay or toast (after an upload/removal).
+// A failed save is never silent: a bar at the bottom says so and offers
+// "Try again". Returns true when saved.
 async function saveDraftQuiet(){
-  if(!state.id) return;
-  await apiTry(() => api.patch(`/applications/${state.id}`, { reference_no: state.reference_no, patch: currentPatch() }));
+  if(!state.id) return true;
+  const { error } = await apiTry(() => api.patch(`/applications/${state.id}`, { reference_no: state.reference_no, patch: currentPatch() }));
+  if(error){ console.error(error); showSaveProblem(error, saveDraftQuiet); return false; }
+  hideNotice('save');
+  return true;
 }
+// Save just these fields (an uploaded photo or file list) straight away, so
+// they reach HR even if some other field on the form can't be saved yet.
+async function saveFieldsNow(patch){
+  if(!state.id) return true;
+  const { error } = await apiTry(() => api.patch(`/applications/${state.id}`, { reference_no: state.reference_no, patch }));
+  if(error){ console.error(error); showSaveProblem(error, () => saveFieldsNow(patch)); return false; }
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Notices: "not saved" and "session ended" bars at the bottom of the page.
+// ---------------------------------------------------------------------------
+function showNotice(kind, html, actions){
+  let bar = document.getElementById(`wctNotice-${kind}`);
+  if(!bar){
+    bar = document.createElement('div');
+    bar.id = `wctNotice-${kind}`;
+    bar.className = `wct-notice is-${kind}`;
+    bar.setAttribute('role', 'alert');
+    let host = document.getElementById('wctNotices');
+    if(!host){ host = document.createElement('div'); host.id = 'wctNotices'; host.className = 'wct-notices'; document.body.appendChild(host); }
+    host.appendChild(bar);
+  }
+  bar.innerHTML = `<div class="msg">${html}</div><div class="acts"></div>`;
+  const acts = bar.querySelector('.acts');
+  (actions || []).forEach(([label, fn, primary]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = primary ? 'btn btn-primary' : 'btn btn-ghost'; b.textContent = label;
+    b.onclick = fn; acts.appendChild(b);
+  });
+}
+function hideNotice(kind){ const bar = document.getElementById(`wctNotice-${kind}`); if(bar) bar.remove(); }
+function showSaveProblem(error, retry){
+  if(error && error.sessionEnded) return showSessionEnded();
+  showNotice('save', `<strong>Your latest changes are not saved.</strong> ${esc(error && error.message || 'Please try again.')}`, [
+    ['Try again', async (ev) => { ev.target.disabled = true; ev.target.textContent = 'Saving…'; const ok = await retry(); if(ok) { hideNotice('save'); if(window.WX) WX.toast('Saved', {kind:'ok', timeout:1600}); } else { ev.target.disabled = false; ev.target.textContent = 'Try again'; } }, true],
+    ['Dismiss', () => hideNotice('save')]
+  ]);
+}
+function showSessionEnded(){
+  hideNotice('save');
+  showNotice('session', '<strong>You have been signed out.</strong> This can happen after signing out in another tab or a long break. Sign in again to carry on — everything saved before is kept.', [
+    ['Sign in again', () => { window.location.href = 'login.html' + window.location.search; }, true]
+  ]);
+}
+window.addEventListener('wct:session-ended', (e) => { if(!(e.detail && e.detail.admin)) showSessionEnded(); });
+// Signed out (or in as someone else) in another tab: say so at once rather
+// than at the next save.
+window.addEventListener('storage', (e) => {
+  if(e.key === 'wct_token' && !e.newValue) showSessionEnded();
+});
 
 // Filename sanitization now happens server-side (backend/src/routes/uploads.js
 // sanitizeFilename()) before the blob is actually named — this client-side
@@ -1808,7 +1908,10 @@ async function handleProfileUpload(file){
     if(error) throw error;
     state.profile_picture_url = data.url;
   } catch(e){ hideLoading(); showUploadError('profileUploadErr', 'Upload failed: '+e.message); return; }
-  hideLoading(); await saveDraftQuiet(); render();
+  hideLoading(); render();
+  // The photo is saved on its own first, so HR sees it even if another field
+  // on the form can't be saved yet.
+  if(await saveFieldsNow({ profile_picture_url: state.profile_picture_url })) saveDraftQuiet();
 }
 
 
@@ -1874,8 +1977,9 @@ function applicationSummaryHtml(a, editable){
     </div>
     <div class="review-block">
       ${h('Family Details', 'family')}
-      ${rrow('Spouse', a.spouse_name ? `${a.spouse_name}${a.spouse_nric ? ' · '+a.spouse_nric : ''}${a.spouse_working ? ' · Working: '+a.spouse_working : ''}` : '')}
-      ${kids.map(([grp, c]) => rrow(`Child (${grp})`, `${c.name||'—'}${c.nric ? ' · '+c.nric : ''}${c.tax_relief ? ' · Tax relief' : ''}`)).join('') || rrow('Children', 'None')}
+      ${rrow('Spouse', a.spouse_name ? [a.spouse_name, a.spouse_occupation, a.spouse_working ? 'Working: '+a.spouse_working : ''].filter(Boolean).join(' · ') : '')}
+      ${rrow('Number of children below 18', a.children_below_18_count != null ? String(a.children_below_18_count) : (kids.filter(k => k[0] === 'Below 18').length ? String(kids.filter(k => k[0] === 'Below 18').length) : ''))}
+      ${rrow('Number of children 18 and above', a.children_18_to_23_count != null ? String(a.children_18_to_23_count) : (kids.filter(k => k[0] !== 'Below 18').length ? String(kids.filter(k => k[0] !== 'Below 18').length) : ''))}
     </div>
     <div class="review-block">
       ${h('Referees &amp; Declarations', 'referees')}
@@ -2208,8 +2312,12 @@ function obFamily(o){
   const fam = o.family || {};
   const has = (v) => Array.isArray(v) ? v.length > 0 : !!v;
   const out = {};
-  ['spouse_name','spouse_nric','spouse_date_of_birth','spouse_working','children_below_18','children_18_to_23']
+  // Spouse: the application's answer (older records: the onboarding copy).
+  ['spouse_name','spouse_occupation','spouse_nric','spouse_date_of_birth','spouse_working']
     .forEach(k => { out[k] = has(fam[k]) ? fam[k] : o[k]; });
+  // Children: given at onboarding now (older records: on the application).
+  ['children_below_18','children_18_to_23'].forEach(k => { out[k] = has(o[k]) ? o[k] : fam[k]; });
+  ['children_below_18_count','children_18_to_23_count'].forEach(k => { out[k] = fam[k]; });
   return out;
 }
 function exportMyOnboardingPdf(){
