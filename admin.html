@@ -1572,7 +1572,7 @@ function downloadApplicationsCsv(data, filename){
       'Own Transport (Car)','Own Transport (Motorcycle)','Willing Outside Klang Valley',
       'Physical Defects','Physical Defects Specify','Arrested/Convicted','Arrested/Convicted Specify',
       // -- Referees & Declarations --
-      'Referee 1 (JSON)','Referee 2 (JSON)','Declaration - Lawsuit (B)','Declaration - Lawsuit Specify','Declaration - Other Matters (C)','Declaration - Other Matters Specify',
+      'No Referee','Referee 1 (JSON)','Referee 2 (JSON)','Declaration - Lawsuit (B)','Declaration - Lawsuit Specify','Declaration - Other Matters (C)','Declaration - Other Matters Specify',
       // -- Attachments & Consent --
       'Photo URL','Attachments (JSON)','Consent Language',
       'JTS Agreed','JTS Agreed Name','JTS Agreed NRIC','JTS Agreed Mobile','JTS Agreed At',
@@ -1608,7 +1608,7 @@ function downloadApplicationsCsv(data, filename){
       a.referral_person, a.referral_name, a.referral_department,
       a.own_transport_motorcar, a.own_transport_motorcycle, a.willing_based_outside_klang_valley,
       a.physical_defects, a.physical_defects_specify, a.arrested_convicted, a.arrested_convicted_specify,
-      jsonCell(a.referee1), jsonCell(a.referee2), a.declaration_lawsuit, a.declaration_lawsuit_specify, a.declaration_other_matters, a.declaration_other_matters_specify,
+      a.no_referees ? 'Yes' : 'No', jsonCell(a.referee1), jsonCell(a.referee2), a.declaration_lawsuit, a.declaration_lawsuit_specify, a.declaration_other_matters, a.declaration_other_matters_specify,
       a.profile_picture_url, jsonCell(a.attachments), a.language_choice,
       a.jts_agreed, a.jts_agreed_name, a.jts_agreed_nric, a.jts_agreed_mobile, dt(a.jts_agreed_at),
       a.pdpa_agreed, a.pdpa_agreed_name, a.pdpa_agreed_nric, dt(a.pdpa_agreed_at),
@@ -1732,7 +1732,7 @@ function buCardHtml(u){
     <div class="bu-card${u.is_active ? '' : ' inactive'}">
       <div class="bu-card-h">
         <span class="unit-badge" style="background:${WCT.buColor(u.code)}">${esc(WCT.buInitials(u.code))}</span>
-        <div style="min-width:0;"><b>${esc(u.name)}</b>${u.is_active ? '' : ' <span class="role-tag">Inactive</span>'}
+        <div style="min-width:0;"><b>${esc(u.name)}</b>${u.merged_into ? ` <span class="role-tag">Merged into ${esc(WCT.buName(u.merged_into))}</span>` : (u.is_active ? '' : ' <span class="role-tag">Inactive</span>')}
           <div class="muted" style="font-size:12.5px;">Code ${esc(u.code)} · Ref. WCT-${esc(u.ref_code)}-… · ${u.application_count} application${u.application_count===1?'':'s'}</div></div>
       </div>
       <div class="bu-pic"><span class="muted">PIC email</span> ${u.pic_email ? esc(u.pic_email) : '<span class="muted">not set — new applications go to the unit\'s HR Admins</span>'}</div>
@@ -1741,8 +1741,8 @@ function buCardHtml(u){
       <div class="bu-actions">
         <button class="btn btn-outline btn-sm" onclick="buSettingsEdit='${esc(u.code)}';render();">Edit</button>
         <button class="btn btn-outline btn-sm" onclick="setView('companies')">Companies</button>
-        <button class="btn btn-outline btn-sm" onclick="toggleBuActive('${esc(u.code)}', ${!u.is_active})">${u.is_active ? 'Deactivate' : 'Activate'}</button>
-        ${u.application_count === 0 && u.company_count === 0 ? `<button class="btn btn-outline-danger btn-sm" onclick="deleteBu('${esc(u.code)}')">Delete</button>` : ''}
+        ${u.merged_into ? '' : `<button class="btn btn-outline btn-sm" onclick="toggleBuActive('${esc(u.code)}', ${!u.is_active})">${u.is_active ? 'Deactivate' : 'Activate'}</button>`}
+        ${!u.merged_into && u.application_count === 0 && u.company_count === 0 ? `<button class="btn btn-outline-danger btn-sm" onclick="deleteBu('${esc(u.code)}')">Delete</button>` : ''}
       </div>
     </div>`;
 }
@@ -2984,6 +2984,12 @@ function ynPill(v, spec){
   if(v === 'No') return '<span class="pill-no">No</span>';
   return '<span class="pill-no">—</span>';
 }
+// Declarations (B)/(C): NIL, or what the candidate declared.
+function declPill(v, spec){
+  if(v === 'No') return '<span class="pill-no">NIL</span>';
+  if(v === 'Yes') return `<span class="pill-yes">Declared</span>${spec ? `<div class="yn-spec">${esc(spec)}</div>` : ''}`;
+  return '<span class="pill-no">—</span>';
+}
 function docLinkHtml(f){
   const url = WCT.fileUrl(f.url);
   return `<div class="doc"><span class="th">${WCT.isImage(f) ? `<img src="${esc(url)}" alt="">` : esc(WCT.fileBadge(f))}</span><a href="${esc(url)}" target="_blank" rel="noopener">${esc(f.name)}</a></div>`;
@@ -3034,7 +3040,7 @@ function viewDetailHtml(a){
     </tbody></table>`, `${langs.length} language${langs.length===1?'':'s'}`)}
 
     ${dcard('sec-edu', 'edu', 'Education &amp; working experience', `<div class="tl">
-      ${(a.education||[]).map(e => `<div class="tl-item"><span class="pt"></span><div><div class="t">${esc(e.qualification || e.type)}${e.course_name ? ', '+esc(e.course_name) : ''}</div><div class="s">${esc(e.name)} · ${esc(e.type)}</div></div><span class="yr">${esc(e.from_year||'')}${e.to_year ? ' – '+esc(e.to_year) : ''}</span></div>`).join('')}
+      ${(a.education||[]).map(e => `<div class="tl-item"><span class="pt"></span><div><div class="t">${esc(e.qualification || WCT.eduTypeLabel(e.type))}${e.course_name ? ', '+esc(e.course_name) : ''}</div><div class="s">${esc(e.name)} · ${esc(WCT.eduTypeLabel(e.type))}</div></div><span class="yr">${esc(e.from_year||'')}${e.to_year ? ' – '+esc(e.to_year) : ''}</span></div>`).join('')}
       ${a.no_working_experience && !exp.length ? `<div class="tl-item"><span class="pt grey"></span><div><div class="t muted">No previous working experience</div><div class="s">Declared by the candidate</div></div><span></span></div>`
         : exp.map(w => `<div class="tl-item"><span class="pt work"></span><div><div class="t">${esc(w.position || 'Position')}</div><div class="s">${esc(w.employer)}${w.remuneration ? ` · Last drawn ${esc(fmtMoney(w.remuneration))}` : ''}</div>${w.responsibilities ? `<div class="s" style="margin-top:2px;">${esc(w.responsibilities)}</div>` : ''}</div><span class="yr">${esc(w.from||'')} – ${w.is_current ? 'Present' : esc(w.to||'')}</span></div>`).join('') || '<div class="tl-item"><span class="pt grey"></span><div><div class="t muted">No working experience entered</div></div><span></span></div>'}
     </div>`)}
@@ -3054,10 +3060,10 @@ function viewDetailHtml(a){
       <div class="yn"><span>Referred by anyone</span><span>${ynPill(a.referral_person, a.referral_person==='Yes' ? `${a.referral_name||''}, ${a.referral_department||''}` : '')}</span></div>
       <div class="yn"><span>Physical defects or disabilities</span><span>${ynPill(a.physical_defects, a.physical_defects_specify)}</span></div>
       <div class="yn"><span>Ever arrested or convicted</span><span>${ynPill(a.arrested_convicted, a.arrested_convicted_specify)}</span></div>
-      <div class="yn"><span>(B) Lawsuits / proceedings</span><span>${ynPill(a.declaration_lawsuit, a.declaration_lawsuit_specify)}</span></div>
-      <div class="yn"><span>(C) Matters affecting standing</span><span>${ynPill(a.declaration_other_matters, a.declaration_other_matters_specify)}</span></div>`)}
+      <div class="yn"><span>(B) Lawsuits / proceedings</span><span>${declPill(a.declaration_lawsuit, a.declaration_lawsuit_specify)}</span></div>
+      <div class="yn"><span>(C) Matters affecting standing</span><span>${declPill(a.declaration_other_matters, a.declaration_other_matters_specify)}</span></div>`)}
 
-    ${dcard('sec-referees', 'referees', 'Referees', `<div class="kv">
+    ${dcard('sec-referees', 'referees', 'Referees', a.no_referees ? '<div class="dcard-pad muted">No referee to provide (declared by the candidate).</div>' : `<div class="kv">
       ${[a.referee1, a.referee2].map((r, i) => kv(`Referee ${i+1}`, r && r.name ? `<b>${esc(r.name)}</b> · ${esc(r.designation||'—')}${r.company ? `<br>${esc(r.company)}` : ''}<br><span class="muted">${esc(r.relationship||'—')} · ${esc(r.contact||'—')}</span>` : '—')).join('')}
     </div>`)}
 
@@ -3065,7 +3071,8 @@ function viewDetailHtml(a){
       <div class="doc-grp wide"><h4>IC copy <span class="muted">front &amp; back</span></h4>
         <div class="ic-pair">${[['ic_front','Front'],['ic_back','Back']].map(([k, label]) => { const f = docs[k][0];
           return f ? `<a class="ic-card" href="${esc(WCT.fileUrl(f.url))}" target="_blank" rel="noopener">${WCT.isImage(f) ? `<img src="${esc(WCT.fileUrl(f.url))}" alt="IC ${label.toLowerCase()}">` : `<span>${esc(f.name)}</span>`}<span class="lbl">${label}</span></a>` : `<div class="ic-card empty"><span class="lbl">${label}</span>Not uploaded</div>`; }).join('')}</div></div>
-      ${[['resume','Resume / CV'],['academic','Academic certificates'],['payslip','Payslip'],['other','Other documents']].map(([k, label]) =>
+      ${[['resume','Resume / CV'],['academic','Academic certificates'],['payslip','Payslip'],['declaration','Declaration details'],['other','Other documents']]
+        .filter(([k]) => k !== 'declaration' || docs.declaration.length).map(([k, label]) =>
         `<div class="doc-grp"><h4>${label}</h4>${docs[k].length ? docs[k].map(docLinkHtml).join('') : '<div class="muted">None uploaded</div>'}</div>`).join('')}
     </div>`, `${(a.attachments||[]).length} file${(a.attachments||[]).length===1?'':'s'}`)}
 
