@@ -28,7 +28,7 @@
         <div class="auth-photo" aria-hidden="true"><img src="wct-ascent.jpg" alt="" width="1500" height="892" fetchpriority="high" decoding="async"></div>
         <div class="auth-brand-top"><span class="auth-chip"><i></i>WCT Careers</span></div>
         <div class="auth-headline">
-          <h1 id="taglineText">WCT: Building a Better Tomorrow, <em>Together</em></h1>
+          <h1 id="taglineText">WCT: Where Your Future <em>Takes Shape</em></h1>
           <p>Our growth is driven by our people. Join a team that empowers you to learn, grow and thrive in a safe, inclusive and dynamic workplace.</p>
           <ul class="auth-points">
             <li tabindex="0"><span class="pt-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span><b><span class="pt-num" data-count-key="people">2000</span>+ people</b> across engineering &amp; construction, property development, malls, hotels, aviation and F&amp;B.</span></li>
@@ -73,8 +73,8 @@
       const ICON_EYE_CLOSED = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.42 18.42 0 0 0 1 12s4 8 11 8a9.26 9.26 0 0 0 5.39-1.61"/><path d="M1 1l22 22"/></svg>';
       const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-      // One WCT recruitment tagline, the one the majority agreed on
-      // (stakeholder feedback 29 Oct 2026); it no longer rotates.
+      // One WCT recruitment tagline (stakeholder choice, 30 Oct 2026)
+      // It does not rotate.
       if (window.WX && WX.countUp) WX.countUp(document, '.pt-num');
 
 
@@ -350,7 +350,7 @@
         const { error } = await apiTry(() => api.post('/auth/reset-password/request', { email }));
         busy(btn, false);
         if (error) { showMsg('error', error.message); return; }
-        showMsg('success', 'If an account exists for that email, a reset link is on its way. Check your inbox and spam folder.');
+        showMsg('success', 'If an account exists for that email, a reset link is on its way. Check your inbox and junk folder; the link works for 1 hour.');
       }
 
       // Already signed in: go straight to the app (index.html validates the token).
