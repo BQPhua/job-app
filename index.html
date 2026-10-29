@@ -122,7 +122,11 @@
      controls on the page. */
   .inline-error{background:#FBEAE8;border:1px solid #EBBAB4;color:var(--danger);padding:8px 12px;border-radius:7px;font-size:12.5px;margin-top:8px;line-height:1.5;}
   .edu-list{display:grid;gap:12px;margin:0 0 12px;}
-  .edu-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px 4px;background:#fff;}
+  .edu-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px 4px;background:#fff;min-width:0;}
+  .edu-card-h .field{flex:1 1 auto;min-width:0;}
+  .edu-card-h .edu-type{max-width:100%;}
+  .edu-remove{flex:none;}
+  .edu-grid > .field, .kid-grid > .field{min-width:0;}
   .edu-card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
   .edu-card-h .edu-type{width:auto;min-width:200px;font-weight:700;color:var(--navy);}
   .edu-remove{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;color:var(--danger);font:inherit;font-size:13px;font-weight:600;border-radius:8px;padding:7px 12px;cursor:pointer;min-height:36px;}
@@ -131,6 +135,29 @@
   .edu-grid > .field:nth-child(4){grid-column:1 / 2;}
   .edu-grid > .field:nth-child(5){grid-column:2 / 4;}
   @media (max-width:640px){ .edu-grid{grid-template-columns:1fr 1fr;} .edu-grid .edu-wide{grid-column:1 / -1;} .edu-grid > .field:nth-child(4), .edu-grid > .field:nth-child(5){grid-column:1 / -1;} .edu-card-h .edu-type{min-width:0;flex:1;} }
+  .edu-empty{border:1px dashed #C7D0D9;border-radius:12px;padding:18px;text-align:center;color:var(--ink-soft);font-size:13.5px;background:#FBFAF7;}
+  .field label.decl-label, .decl-label{font-weight:700;color:var(--ink);}
+  .kid-group{font-size:14px;font-weight:700;color:var(--navy);margin:14px 0 8px;}
+  .kid-list{display:grid;gap:12px;margin:0 0 10px;}
+  .kid-card{border:1px solid var(--line);border-radius:12px;padding:12px 14px 6px;background:#fff;}
+  .kid-card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;color:var(--navy);}
+  .kid-grid{display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:0 12px;align-items:end;}
+  .kid-grid .kid-wide{grid-column:span 2;}
+  .kid-relief{display:flex;align-items:center;gap:8px;font-size:13.5px;margin:0 0 14px;grid-column:1 / -1;cursor:pointer;}
+  .kid-relief input{width:18px;height:18px;accent-color:var(--navy);}
+  @media (max-width:640px){ .kid-grid{grid-template-columns:1fr 1fr;} .kid-grid .kid-wide{grid-column:1 / -1;} }
+  /* A card the candidate just added slides in; removing is instant. */
+  .wx-added{animation:wx-added .32s cubic-bezier(.2,.8,.2,1) both, wx-added-ring 1.2s ease-out .1s both;}
+  @keyframes wx-added{from{opacity:0;transform:translateY(8px) scale(.985);}}
+  @keyframes wx-added-ring{from{box-shadow:0 0 0 3px rgba(3,105,161,.35);}to{box-shadow:0 0 0 0 rgba(3,105,161,0);}}
+  @media (prefers-reduced-motion: reduce){ .wx-added{animation:none;} }
+  .wct-notices{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);width:min(640px, calc(100vw - 24px));display:grid;gap:8px;z-index:450;}
+  .wct-notice{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid #EBBAB4;border-left:4px solid var(--danger);border-radius:10px;padding:12px 14px;box-shadow:0 12px 32px -10px rgba(2,6,23,.35);font-size:14px;line-height:1.5;color:var(--ink);animation:wx-added .28s cubic-bezier(.2,.8,.2,1) both;}
+  .wct-notice.is-session{border-color:#BFDBFE;border-left-color:var(--navy);}
+  .wct-notice .msg{flex:1 1 260px;}
+  .wct-notice .acts{display:flex;gap:8px;}
+  .wct-notice .btn{min-height:38px;padding:0 14px;}
+  @media (prefers-reduced-motion: reduce){ .wct-notice{animation:none;} }
   .info-banner{background:#EFF6FF;border:1px solid #BFDBFE;color:#1E3A8A;padding:10px 14px;border-radius:7px;font-size:13.5px;line-height:1.5;margin:0 0 16px;}
   .success-banner{background:#EAF3EC;border:1px solid #BEDACB;color:var(--ok);padding:10px 14px;border-radius:7px;font-size:13px;margin-bottom:18px;}
   .toggle-tabs{display:flex;gap:8px;margin-bottom:24px;}
