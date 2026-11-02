@@ -266,7 +266,8 @@
     <p><strong>Purpose and Disclosure.</strong> Your Data is being or will be processed for the purposes for which it was disclosed by you, such as to enable us to consider entering into a contract with you, to fulfil our contractual obligations to you and/or to offer or to deliver products and/or services to you. Your Data may be disclosed to another company within the WCT Group or to our agents, representatives, professional advisors and/or consultants, third party service and/or utility providers, contractors, suppliers and/or vendors as well as to relevant governmental, municipal and/or regulatory authorities.</p>
     <p><strong>Access, Correction, Inquiry and/or Complaint.</strong> You have the right to request for access to your Data and to request to update or correct the same. Please contact the Corporate Affairs Manager at 03-78066688 or email us at pdpa@wct.my.</p>
     <p><strong>Consent and Choice.</strong> Save for Data necessary for the performance of contracts between us, you may choose whether or not to provide your Data. If you wish to withdraw or limit your consent, please complete the Withdrawal Form on our website at www.wct.com.my/pdpa.</p>
-    <p><strong>Transfer of personal data to places outside Malaysia.</strong> We may transfer your Data to a place outside Malaysia and you hereby consent to the transfer.</p>`,
+    <p><strong>Transfer of personal data to places outside Malaysia.</strong> We may transfer your Data to a place outside Malaysia and you hereby consent to the transfer.</p>
+    <p>If you agree to have your Data collected and/or processed as above, please indicate your consent by signing below. Thank you.</p>`,
       confirm: 'Confirmation and consent', name: 'Name', nric: 'NRIC / Passport no.', date: 'Date of consent',
     },
     BM: {
@@ -277,7 +278,8 @@
     <p><strong>Maksud dan Penzahiran.</strong> Data anda sedang atau akan diproses untuk maksud-maksud yang mana ia telah dizahirkan oleh anda, seperti membolehkan kami membuat pertimbangan untuk memasuki kontrak dengan anda, untuk memenuhi obligasi-obligasi kontrak kami kepada anda dan/atau untuk menawarkan atau membekalkan produk dan/atau perkhidmatan kami kepada anda. Data anda mungkin akan dizahirkan kepada syarikat lain di dalam Kumpulan WCT atau ejen-ejen, wakil-wakil, penasihat-penasihat profesional dan/atau perunding-perunding kami, pemberi perkhidmatan pihak ketiga dan/atau pembekal utiliti, kontraktor, pembekal dan/atau penjual dan juga kepada pihak-pihak berkuasa kerajaan, tempatan, pengawal yang berkaitan.</p>
     <p><strong>Akses, Pembetulan, Siasatan dan/atau Aduan.</strong> Anda berhak untuk meminta akses kepada Data anda dan untuk meminta untuk mengemaskini atau membetulkan Data anda. Sila hubungi Pengurus Hal Ehwal Korporat di 03-7806688 atau menghantar e-mel kepada pdpa@wct.my.</p>
     <p><strong>Persetujuan dan Pilihan anda.</strong> Kecuali untuk Data yang perlu bagi kami melaksanakan kontrak antara kami, anda boleh memilih sama ada untuk memberi atau enggan memberi Data anda. Jika anda ingin menarik balik atau menghadkan kebenaran anda, sila melengkapkan Borang Penarikan Balik di laman web kami di www.wct.com.my/pdpa.</p>
-    <p><strong>Pemindahan data peribadi ke tempat di luar Malaysia.</strong> Kami boleh memindahkan Data anda ke tempat di luar Malaysia dan dengan ini anda telahpun bersetuju terhadap pemindahan tersebut.</p>`,
+    <p><strong>Pemindahan data peribadi ke tempat di luar Malaysia.</strong> Kami boleh memindahkan Data anda ke tempat di luar Malaysia dan dengan ini anda telahpun bersetuju terhadap pemindahan tersebut.</p>
+    <p>Jika anda bersetuju dengan kami mengumpul dan/atau memproses Data anda seperti di atas, sila nyatakan persetujuan anda dengan menandatangani di bawah.</p>`,
       confirm: 'Pengesahan dan persetujuan', name: 'Nama', nric: 'No. K/P / Pasport', date: 'Tarikh persetujuan',
     },
   };
@@ -286,8 +288,10 @@
   // Education type as shown ('School' is stored for secondary school).
   const EDU_TYPE_LABELS = { 'Primary School': 'Primary School', School: 'Secondary School', 'College/University': 'College / University', 'Professional Body': 'Professional Body' };
   const eduTypeLabel = (t) => EDU_TYPE_LABELS[t] || t || '';
-  // Declarations (B)/(C) read like the manual form: NONE, or the details.
-  const declAnswer = (v, spec) => (v === 'No' ? 'NONE' : v === 'Yes' ? (spec || 'Declared') : '');
+  // Older applications stored "Bahasa Malaysia"; it is shown as Bahasa Melayu.
+  const langName = (n) => (/^bahasa malaysia$/i.test(String(n || '').trim()) ? 'Bahasa Melayu' : (n || ''));
+  // Declarations (B)/(C) read like the manual form: NIL, or the details.
+  const declAnswer = (v, spec) => (v === 'No' ? 'NIL' : v === 'Yes' ? (spec || 'Declared') : '');
 
   const DECLARATION_A = 'I declare that the statements made by me to the foregoing questions are true, complete and correct to the best of my knowledge and belief. Permission is given to the Company to make such investigations as and when necessary on the information given above. I understand that my misrepresentation or material omission made herein or on any other documents requested by the Company, will render dismissal or termination of my employment with the Company.';
   const DECLARATION_B = 'I declare that save and except for the following I am not involved in, a party to nor the subject of any law suits, arbitral proceedings, disciplinary proceedings, criminal inquiry, investigation and/or conviction and/or any other legal or quasi-legal proceedings.';
@@ -416,7 +420,7 @@
         ${cell('Correspondence address', corr, true)}
       </div>`)}
       ${sec('Language ability', `<table class="t"><thead><tr><th>Language / dialect</th><th>Spoken</th><th>Written</th></tr></thead><tbody>
-        ${row(langs.map((l) => `<tr><td>${e(l.language)}</td><td>${dash(l.spoken)}</td><td>${dash(l.written)}</td></tr>`).join(''), 'None provided', 3)}</tbody></table>`)}
+        ${row(langs.map((l) => `<tr><td>${e(langName(l.language))}</td><td>${dash(l.spoken)}</td><td>${dash(l.written)}</td></tr>`).join(''), 'None provided', 3)}</tbody></table>`)}
       ${sec('Education', `<table class="t"><thead><tr><th>Type</th><th>Institution</th><th>Period</th><th>Qualification</th><th>Course</th></tr></thead><tbody>
         ${row(edu.map((r) => `<tr><td>${dash(eduTypeLabel(r.type))}</td><td>${dash(r.name)}</td><td>${dash(r.from_year)} – ${dash(r.to_year)}</td><td>${dash(r.qualification)}</td><td>${dash(r.course_name)}</td></tr>`).join(''), 'None provided', 5)}</tbody></table>`)}
       ${sec('Working experience', a.no_working_experience && !exp.length
@@ -525,10 +529,11 @@
       ${sec('Statutory details', `<div class="grid">
         ${cell('EPF no.', dash(o.epf_no))}${cell('SOCSO no.', dash(o.socso_no))}
         ${cell('Income tax file no.', dash(o.income_tax_no))}${cell('Income tax branch', dash(o.tax_branch))}
-        ${cell('Bank account no.', dash(o.bank_account_no))}${cell('CIDB green card no. / branch', `${dash(o.cidb_green_card_no)} / ${dash(o.cidb_branch)}`)}
+        ${cell('Bank account no.', dash(o.bank_account_no), true)}
       </div>`)}
-      ${sec('Spouse &amp; children', (o.spouse_name || kids.length) ? `${o.spouse_name ? `<div class="grid"${kids.length ? ' style="margin-bottom:6px"' : ''}>
-        ${cell('Spouse name', dash(o.spouse_name))}${cell('Spouse occupation', dash(o.spouse_occupation))}
+      ${sec('Spouse &amp; children', (o.spouse_name || o.spouse_nric || kids.length) ? `${(o.spouse_name || o.spouse_nric) ? `<div class="grid"${kids.length ? ' style="margin-bottom:6px"' : ''}>
+        ${cell('Spouse name', dash(o.spouse_name))}${cell('Spouse NRIC no.', dash(o.spouse_nric))}
+        ${cell('Spouse date of birth', dmy(o.spouse_date_of_birth))}${cell('Spouse occupation', dash(o.spouse_occupation))}
         ${cell('Spouse working', dash(o.spouse_working))}
       </div>` : ''}${kids.length ? `<table class="t"><thead><tr><th>Name</th><th>Age group</th><th>Gender</th><th>NRIC</th><th>Date of birth</th><th>Education</th><th>Child tax relief</th></tr></thead><tbody>
         ${kids.map(([g, c]) => `<tr><td>${dash(c.name)}</td><td>${g}</td><td>${dash(c.gender)}</td><td>${dash(c.nric)}</td><td>${dmy(c.date_of_birth)}</td><td>${dash(c.course_name)}</td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
@@ -581,7 +586,7 @@
 
   global.WCT = {
     esc: e, loadBusinessUnits, setBusinessUnits, businessUnits, buName, buResolve, buInitials, buColor,
-    MY_STATES, addressLines, formatAddress, sameAddress, isValidPhone, fileUrl,
+    MY_STATES, addressLines, formatAddress, sameAddress, isValidPhone, fileUrl, langName,
     DOC_SECTIONS, docsByCategory, isImage, fileBadge, photoSticker,
     sigHtml, sigValue, sigUpdate,
     STATUS_TEXT, DECLARATION_A, DECLARATION_B, DECLARATION_C, eduTypeLabel, declAnswer, applicationPdfHtml, onboardingPdfHtml, openPrint,
