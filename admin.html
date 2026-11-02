@@ -1581,7 +1581,7 @@ function downloadApplicationsCsv(data, filename){
       'Onboarding Status','Onboarding EPF No.','Onboarding Income Tax No.','Onboarding Tax Branch',
       'Onboarding SOCSO No.','Onboarding Bank Account No.',
       // -- Family (application; older records: onboarding) --
-      'Spouse Name','Spouse Occupation','Spouse Working','Spouse NRIC','Spouse Date of Birth',
+      'Spouse Name','Spouse Occupation','Spouse Working','Spouse Citizen','Spouse NRIC','Spouse Passport No.','Spouse Date of Birth',
       'No. of Children Below 18','No. of Children 18 and Above',
       'Children Below 18 (JSON)','Children 18 and Above (JSON)',
       // -- Onboarding: Emergency & Beneficiary --
@@ -1615,7 +1615,7 @@ function downloadApplicationsCsv(data, filename){
       a.pdpa_agreed, a.pdpa_agreed_name, a.pdpa_agreed_nric, dt(a.pdpa_agreed_at),
       a.ob_status, a.ob_epf_no, a.ob_income_tax_no, a.ob_tax_branch,
       a.ob_socso_no, a.ob_bank_account_no,
-      a.spouse_name || a.ob_spouse_name, a.spouse_occupation, a.spouse_working || a.ob_spouse_working, a.ob_spouse_nric || a.spouse_nric, a.ob_spouse_date_of_birth || a.spouse_date_of_birth,
+      a.spouse_name || a.ob_spouse_name, a.spouse_occupation, a.spouse_working || a.ob_spouse_working, a.ob_spouse_citizen, a.ob_spouse_nric || a.spouse_nric, a.ob_spouse_passport_no, a.ob_spouse_date_of_birth || a.spouse_date_of_birth,
       a.children_below_18_count, a.children_18_to_23_count,
       jsonCell((a.ob_children_below_18||[]).length ? a.ob_children_below_18 : a.children_below_18), jsonCell((a.ob_children_18_to_23||[]).length ? a.ob_children_18_to_23 : a.children_18_to_23),
       jsonCell(a.ob_emergency_contacts), a.ob_beneficiary_name, a.ob_beneficiary_relationship, a.ob_beneficiary_contact,
@@ -3268,11 +3268,12 @@ function renderOnboardingModal(){
           ${kv('Bank account no.', esc(o.bank_account_no))}${kv('Bank', esc(o.salary_bank))}
         </div>`)}
 
-        ${dcard('ob-family', 'family', 'Family details', (o.spouse_name || o.spouse_nric || kids.length) ? `${(o.spouse_name || o.spouse_nric) ? `<div class="kv">
-          ${kv('Spouse', esc(o.spouse_name))}${kv('Spouse NRIC', esc(o.spouse_nric))}${kv('Spouse date of birth', esc(fmtDate(o.spouse_date_of_birth)))}
-          ${kv('Spouse occupation', esc(o.spouse_occupation))}${kv('Spouse working', esc(o.spouse_working))}
-        </div>` : ''}${kids.length ? `<table class="dtable"><thead><tr><th>Child</th><th>Age group</th><th>NRIC · DOB</th><th>Tax relief</th></tr></thead><tbody>
-          ${kids.map(([g, c]) => `<tr><td><b>${esc(c.name||'—')}</b><div class="muted">${esc([c.gender, c.course_name].filter(Boolean).join(' · '))}</div></td><td>${g}</td><td>${esc(c.nric||'—')}<div class="muted">${esc(fmtDate(c.date_of_birth))}</div></td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
+        ${dcard('ob-family', 'family', 'Family details', (o.spouse_name || o.spouse_nric || o.spouse_passport_no || kids.length) ? `${(o.spouse_name || o.spouse_nric || o.spouse_passport_no) ? `<div class="kv">
+          ${kv('Spouse', esc(o.spouse_name))}${kv('Spouse citizen', esc(o.spouse_citizen))}
+          ${kv('Spouse NRIC', esc(o.spouse_nric))}${kv('Spouse passport no.', esc(o.spouse_passport_no))}
+          ${kv('Spouse date of birth', esc(fmtDate(o.spouse_date_of_birth)))}${kv('Spouse occupation', esc(o.spouse_occupation))}${kv('Spouse working', esc(o.spouse_working))}
+        </div>` : ''}${kids.length ? `<table class="dtable"><thead><tr><th>Child</th><th>Age group</th><th>Citizen · NRIC / Passport · DOB</th><th>Tax relief</th></tr></thead><tbody>
+          ${kids.map(([g, c]) => `<tr><td><b>${esc(c.name||'—')}</b><div class="muted">${esc([c.gender, c.course_name].filter(Boolean).join(' · '))}</div></td><td>${g}</td><td>${esc(c.citizen||'—')} · ${esc(c.nric || c.passport_no || '—')}<div class="muted">${esc(fmtDate(c.date_of_birth))}</div></td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
         </tbody></table>` : ''}` : '<div class="dcard-pad muted">No spouse or children declared.</div>', kids.length ? `${kids.length} child${kids.length===1?'':'ren'}` : '')}
 
         ${dcard('ob-contacts', 'referees', 'Emergency contacts &amp; beneficiary', `<table class="dtable"><thead><tr><th>Emergency contact</th><th>Relationship</th><th>Phone</th></tr></thead><tbody>
