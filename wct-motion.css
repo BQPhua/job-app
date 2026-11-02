@@ -69,11 +69,11 @@ dialog.ob-modal[open]::backdrop, dialog.wx-dialog[open]::backdrop, dialog.wx-pal
 @keyframes wx-seg{from{transform:scaleX(.3);transform-origin:left;}}
 
 /* --- Candidate form: steps slide forward/back, other pages rise in ------- */
-#cardRoot.wx-slide-fwd{animation:wx-in-right .34s var(--wx-ease-out) both;}
-#cardRoot.wx-slide-back{animation:wx-in-left .34s var(--wx-ease-out) both;}
+#cardRoot.wx-slide-fwd{animation:wx-in-right .24s var(--wx-ease-out) both;}
+#cardRoot.wx-slide-back{animation:wx-in-left .24s var(--wx-ease-out) both;}
 #cardRoot.wx-rise-in{animation:wx-rise .34s var(--wx-ease-out) both;}
-@keyframes wx-in-right{from{opacity:0;transform:translateX(28px);}}
-@keyframes wx-in-left{from{opacity:0;transform:translateX(-28px);}}
+@keyframes wx-in-right{from{opacity:.35;transform:translateX(14px);}}
+@keyframes wx-in-left{from{opacity:.35;transform:translateX(-14px);}}
 [tabindex="-1"]:focus{outline:none;}
 
 /* --- Toasts --------------------------------------------------------------- */
