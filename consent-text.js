@@ -19,6 +19,7 @@ const CONSENT_TEXT = {
       <p><strong>Access, Correction, Inquiry and/or Complaint.</strong> You have the right to request access to your Data and to request correction. Contact the Corporate Affairs Manager at 03-78066688 or email pdpa@wct.my.</p>
       <p><strong>Consent and Choice.</strong> Save for Data necessary for the performance of a contract between us, you may choose whether to provide your Data, and may withdraw or limit consent at any time by completing the Withdrawal Form at www.wct.com.my/pdpa.</p>
       <p><strong>Transfer of Personal Data.</strong> We may transfer your Data to a place outside Malaysia and, by consenting below, you agree to such transfer.</p>
+      <p>If you agree to have your Data collected and/or processed as above, please indicate your consent by signing below. Thank you.</p>
     `,
     agreeLabel: "I confirm I have read and understood the above and I give my consent."
   },
@@ -39,6 +40,7 @@ const CONSENT_TEXT = {
       <p><strong>Akses, Pembetulan, Siasatan dan/atau Aduan.</strong> Anda berhak meminta akses kepada Data anda dan meminta pembetulan. Hubungi Pengurus Hal Ehwal Korporat di 03-7806688 atau e-mel pdpa@wct.my.</p>
       <p><strong>Persetujuan dan Pilihan.</strong> Kecuali untuk Data yang perlu bagi pelaksanaan kontrak, anda boleh memilih sama ada untuk memberi Data anda, dan boleh menarik balik atau menghadkan persetujuan pada bila-bila masa melalui www.wct.com.my/pdpa.</p>
       <p><strong>Pemindahan Data Peribadi.</strong> Kami boleh memindahkan Data anda ke tempat di luar Malaysia dan, dengan bersetuju di bawah, anda bersetuju dengan pemindahan tersebut.</p>
+      <p>Jika anda bersetuju dengan kami mengumpul dan/atau memproses Data anda seperti di atas, sila nyatakan persetujuan anda dengan menandatangani di bawah.</p>
     `,
     agreeLabel: "Saya mengesahkan telah membaca dan memahami perkara di atas dan memberi persetujuan saya."
   }
