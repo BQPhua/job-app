@@ -81,7 +81,7 @@ function friendlyStatusMessage(status) {
  * anything that creates something (POST, uploads) is not, so it can't
  * happen twice.
  */
-async function apiRequest(path, { method = 'GET', body, admin = false, formData = false, timeoutMs } = {}) {
+async function apiRequest(path, { method = 'GET', body, admin = false, formData = false, timeoutMs, keepalive = false } = {}) {
   const token = admin ? getAdminToken() : getToken();
   if (!token && (admin ? /^\/admin\b/.test(path) && !/^\/admin\/auth\b/.test(path) : CANDIDATE_ONLY.test(path))) {
     const err = sessionEndedError(admin);
@@ -106,6 +106,7 @@ async function apiRequest(path, { method = 'GET', body, admin = false, formData 
         headers,
         body: body === undefined ? undefined : (formData ? body : JSON.stringify(body)),
         signal: ctrl ? ctrl.signal : undefined,
+        keepalive: keepalive || undefined, // lets a save finish while the tab closes
       });
       break;
     } catch (networkErr) {
