@@ -123,6 +123,13 @@ function updateArrayField(arrName, idx, key, value){ state[arrName][idx][key] = 
 function numericOnly(v){ return (v == null ? '' : String(v)).replace(/[^0-9]/g, ''); }
 // Phone numbers: digits and dashes only (e.g. 012-3456789 or 0123456789).
 function phoneChars(v){ return (v == null ? '' : String(v)).replace(/[^0-9-]/g, '').replace(/-{2,}/g, '-'); }
+// Contacts who may be overseas (referees, emergency contacts, beneficiary):
+// digits, dashes and spaces, with an optional + in front (e.g. +65 9123 4567).
+function intlPhoneChars(v){
+  const t = (v == null ? '' : String(v));
+  return (t.trim().startsWith('+') ? '+' : '') + t.replace(/[^0-9\- ]/g, '').replace(/([- ]){2,}/g, '$1');
+}
+function isContactNumber(v){ const t = String(v || '').trim(); return /^\+?[0-9][0-9\- ]*$/.test(t) && t.replace(/[^0-9]/g, '').length >= 6; }
 
 // A field/fieldset that failed validation gets `.invalid` added (see
 // markFieldInvalid below); this single delegated listener removes it the
@@ -937,7 +944,7 @@ function tplObEmergencyBeneficiary(){
           <tr>
             <td><input type="text" value="${esc(c.name)}" oninput="updateEmergencyContact(${i},'name',this.value)"></td>
             <td><input type="text" value="${esc(c.relationship)}" oninput="updateEmergencyContact(${i},'relationship',this.value)"></td>
-            <td><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" value="${esc(c.contact)}" oninput="this.value=numericOnly(this.value);updateEmergencyContact(${i},'contact',this.value)"></td>
+            <td><input type="tel" inputmode="tel" maxlength="24" placeholder="e.g. 012-3456789" value="${esc(c.contact)}" oninput="this.value=intlPhoneChars(this.value);updateEmergencyContact(${i},'contact',this.value)"></td>
             <td><button class="remove-x" type="button" aria-label="Remove this row" onclick="removeEmergencyContact(${i})">${UI_ICON.x}</button></td>
           </tr>
         `).join('')}
@@ -949,7 +956,7 @@ function tplObEmergencyBeneficiary(){
     <div class="grid g3">
       <div class="field"><label>Name</label><input type="text" id="ob_beneficiary_name" value="${esc(o.beneficiary_name)}"></div>
       <div class="field"><label>Relationship</label><input type="text" id="ob_beneficiary_relationship" value="${esc(o.beneficiary_relationship)}"></div>
-      <div class="field"><label>Contact No.</label><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" id="ob_beneficiary_contact" value="${esc(o.beneficiary_contact)}" oninput="this.value=numericOnly(this.value)"></div>
+      <div class="field"><label>Contact No.</label><input type="tel" inputmode="tel" maxlength="24" placeholder="e.g. 012-3456789" id="ob_beneficiary_contact" value="${esc(o.beneficiary_contact)}" oninput="this.value=intlPhoneChars(this.value)"></div>
     </div>
 
     ${WCT.sigHtml({
@@ -1754,7 +1761,7 @@ function refereeFieldsetHtml(key, n, ph, optional){
     ${f('designation', 'Designation', ph[1])}
     ${f('company', 'Company', ph[2])}
     ${f('relationship', 'Relationship', ph[3])}
-    ${f('contact', 'Contact No.', ph[4], `inputmode="numeric" maxlength="11" oninput="this.value=numericOnly(this.value);updateNested(state.${key},'contact',this.value)"`)}
+    ${f('contact', 'Contact No.', ph[4], `inputmode="tel" maxlength="24" oninput="this.value=intlPhoneChars(this.value);updateNested(state.${key},'contact',this.value)"`)}
   </fieldset>`;
 }
 // Declarations (B) and (C) read like the manual form: one box per
@@ -1786,8 +1793,8 @@ function tplReferees(){
       <span><strong>I have no referee to provide</strong><br><span class="hint">For example, if you are applying for an internship or your first job.</span></span></label>
 
     ${none ? '' : `<div class="grid">
-      ${refereeFieldsetHtml('referee1', 1, ['e.g. John Tan', 'e.g. Project Manager', 'e.g. ABC Engineering Sdn Bhd', 'e.g. Ex-supervisor', 'e.g. 0123456789'])}
-      ${refereeFieldsetHtml('referee2', 2, ['e.g. Jane Lim', 'e.g. HR Manager', 'e.g. XYZ Holdings Berhad', 'e.g. Colleague', 'e.g. 0129876543'], true)}
+      ${refereeFieldsetHtml('referee1', 1, ['e.g. John Tan', 'e.g. Project Manager', 'e.g. ABC Engineering Sdn Bhd', 'e.g. Ex-supervisor', 'e.g. 012-3456789'])}
+      ${refereeFieldsetHtml('referee2', 2, ['e.g. Jane Lim', 'e.g. HR Manager', 'e.g. XYZ Holdings Berhad', 'e.g. Colleague', 'e.g. +65 9123 4567'], true)}
     </div>`}
 
     <div class="section-title">Declarations</div>
@@ -1810,7 +1817,7 @@ function validateRefereesStep(){
     if(!(r.company||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter the company.`});
     if(!(r.relationship||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter your relationship to them.`});
     if(!(r.contact||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a contact number.`});
-    else if(!WCT.isValidPhone(r.contact)) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: the contact number must be 10–11 digits.`});
+    else if(!isContactNumber(r.contact)) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please check the contact number (numbers, dashes or spaces, with + for overseas numbers).`});
   });
   if(!state.declaration_lawsuit) errs.push({field:'field-declaration_lawsuit', message:'Declaration (B): please give the details, or write NIL if there is nothing to declare.'});
   if(!state.declaration_other_matters) errs.push({field:'field-declaration_other_matters', message:'Declaration (C): please give the details, or write NIL if there is nothing to declare.'});
