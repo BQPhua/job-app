@@ -531,12 +531,13 @@
         ${cell('Income tax file no.', dash(o.income_tax_no))}${cell('Income tax branch', dash(o.tax_branch))}
         ${cell('Bank account no.', dash(o.bank_account_no), true)}
       </div>`)}
-      ${sec('Spouse &amp; children', (o.spouse_name || o.spouse_nric || kids.length) ? `${(o.spouse_name || o.spouse_nric) ? `<div class="grid"${kids.length ? ' style="margin-bottom:6px"' : ''}>
-        ${cell('Spouse name', dash(o.spouse_name))}${cell('Spouse NRIC no.', dash(o.spouse_nric))}
-        ${cell('Spouse date of birth', dmy(o.spouse_date_of_birth))}${cell('Spouse occupation', dash(o.spouse_occupation))}
-        ${cell('Spouse working', dash(o.spouse_working))}
-      </div>` : ''}${kids.length ? `<table class="t"><thead><tr><th>Name</th><th>Age group</th><th>Gender</th><th>NRIC</th><th>Date of birth</th><th>Education</th><th>Child tax relief</th></tr></thead><tbody>
-        ${kids.map(([g, c]) => `<tr><td>${dash(c.name)}</td><td>${g}</td><td>${dash(c.gender)}</td><td>${dash(c.nric)}</td><td>${dmy(c.date_of_birth)}</td><td>${dash(c.course_name)}</td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
+      ${sec('Spouse &amp; children', (o.spouse_name || o.spouse_nric || o.spouse_passport_no || kids.length) ? `${(o.spouse_name || o.spouse_nric || o.spouse_passport_no) ? `<div class="grid"${kids.length ? ' style="margin-bottom:6px"' : ''}>
+        ${cell('Spouse name', dash(o.spouse_name))}${cell('Citizen', dash(o.spouse_citizen))}
+        ${cell('NRIC no.', dash(o.spouse_nric))}${cell('Passport no.', dash(o.spouse_passport_no))}
+        ${cell('Date of birth', dmy(o.spouse_date_of_birth))}${cell('Occupation', dash(o.spouse_occupation))}
+        ${cell('Spouse working', dash(o.spouse_working), true)}
+      </div>` : ''}${kids.length ? `<table class="t"><thead><tr><th>Name</th><th>Age group</th><th>Gender</th><th>Citizen</th><th>NRIC / Passport no.</th><th>Date of birth</th><th>Education</th><th>Child tax relief</th></tr></thead><tbody>
+        ${kids.map(([g, c]) => `<tr><td>${dash(c.name)}</td><td>${g}</td><td>${dash(c.gender)}</td><td>${dash(c.citizen)}</td><td>${dash(c.nric || c.passport_no)}</td><td>${dmy(c.date_of_birth)}</td><td>${dash(c.course_name)}</td><td>${c.tax_relief ? 'Yes' : 'No'}</td></tr>`).join('')}
       </tbody></table>` : ''}` : '<div class="note">No spouse or children declared.</div>')}
       ${sec('Emergency contacts', `<table class="t"><thead><tr><th>Name (per NRIC)</th><th>Relationship</th><th>Home / mobile no.</th></tr></thead><tbody>
         ${contacts.length ? contacts.map((c) => `<tr><td>${dash(c.name)}</td><td>${dash(c.relationship)}</td><td>${dash(c.contact)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">None provided</td></tr>'}
