@@ -20,11 +20,11 @@ let state = {
   date_of_birth: '', age: '', bumiputra: '', race: '',
   epf_no: '', income_tax_no: '', tax_branch: '', socso_no: '', bank_account_no: '',
   cidb_green_card_no: '', cidb_branch: '',
-  // Bahasa Malaysia and English are fixed rows (compulsory); every other
+  // Bahasa Melayu and English are fixed rows (compulsory); every other
   // language or dialect (Mandarin included) is an "other" row the candidate
   // can add or remove. See normalizeLanguages().
   language_ability: [
-    {language:'Bahasa Malaysia', spoken:'', written:''},
+    {language:'Bahasa Melayu', spoken:'', written:''},
     {language:'English', spoken:'', written:''}
   ],
   education: [], // tplEducation() fills in one row per type (EDU_TYPES)
@@ -49,6 +49,17 @@ let state = {
   profile_picture_url:'', attachments:[],
   language_choice:'', jts_agreed:false, pdpa_agreed:false
 };
+// A clean copy, so starting or continuing an application never carries over
+// details from another one opened earlier in the same visit.
+const BLANK_STATE = JSON.parse(JSON.stringify(state));
+function resetApplicationState(){
+  const step = state.step;
+  state = JSON.parse(JSON.stringify(BLANK_STATE));
+  state.step = step;
+  submittedApplication = null; reachedReview = false; eduSeededFor = null;
+  corrSameAsPermanent = true; socsoManuallyEdited = false;
+  pdpaDraft = { name: '', nric: '', agreed: false };
+}
 
 // Education entries (feedback 30 Oct 2026): the form starts with one entry
 // whose type the candidate chooses; any entry can be removed.
@@ -85,8 +96,18 @@ const root = document.getElementById('cardRoot');
 const progressBar = document.getElementById('progressBar');
 const topRefDisplay = document.getElementById('topRefDisplay');
 
-function showLoading(text){ document.getElementById('loadingText').innerText = text||'Working...'; document.getElementById('loadingOverlay').style.display='flex'; }
-function hideLoading(){ document.getElementById('loadingOverlay').style.display='none'; }
+// The overlay appears only if the wait passes ~350 ms, so quick steps
+// (opening a saved application, going back) don't flash the whole screen.
+let loadingTimer = null;
+// Until then it is an invisible layer that still stops double clicks.
+function showLoading(text){
+  const ov = document.getElementById('loadingOverlay');
+  document.getElementById('loadingText').innerText = text||'Working...';
+  clearTimeout(loadingTimer);
+  ov.classList.add('is-quiet'); ov.style.display='flex';
+  loadingTimer = setTimeout(() => ov.classList.remove('is-quiet'), 350);
+}
+function hideLoading(){ clearTimeout(loadingTimer); loadingTimer = null; const ov = document.getElementById('loadingOverlay'); ov.style.display='none'; ov.classList.remove('is-quiet'); }
 
 function updateField(key, value){ state[key] = value; }
 function updateNested(obj, key, value){ obj[key] = value; }
@@ -100,6 +121,8 @@ function updateArrayField(arrName, idx, key, value){ state[arrName][idx][key] = 
 // fields simply can't contain letters or symbols, rather than only
 // complaining about it after the fact.
 function numericOnly(v){ return (v == null ? '' : String(v)).replace(/[^0-9]/g, ''); }
+// Phone numbers: digits and dashes only (e.g. 012-3456789 or 0123456789).
+function phoneChars(v){ return (v == null ? '' : String(v)).replace(/[^0-9-]/g, '').replace(/-{2,}/g, '-'); }
 
 // A field/fieldset that failed validation gets `.invalid` added (see
 // markFieldInvalid below); this single delegated listener removes it the
@@ -125,11 +148,34 @@ function clearAllInvalidFields(){
   document.querySelectorAll('.invalid').forEach(el => el.classList.remove('invalid'));
 }
 
-function goStep(s){
+function goStep(s, opts = {}){
   const prev = state.step;
   state.step = s; window.scrollTo(0,0); render();
   if(window.WXC && prev !== s) WXC.stepChanged(prev, s);
+  if(state.id && FORM_STEPS.includes(s)) rememberStep(state.id, s);
+  // Each screen is a browser history entry, so the browser's Back button
+  // moves back inside the portal instead of leaving (and reloading) it.
+  if(!opts.fromHistory && prev !== s){
+    try{ history.pushState({ wct: s, id: state.id || null, ob: s === 'onboarding' ? onboardingAppId : null }, ''); } catch(e){ /* ignore */ }
+  }
 }
+function rememberStep(id, step){ try{ localStorage.setItem('wct_last_step:' + id, step); } catch(e){ /* storage off */ } }
+function lastStepFor(id){ try{ return localStorage.getItem('wct_last_step:' + id); } catch(e){ return null; } }
+window.addEventListener('popstate', async (e) => {
+  const want = e.state && e.state.wct;
+  // Leaving a form screen: keep what was typed.
+  if(state.step === 'onboarding' && onboardingState){ obCaptureFields(); await saveOnboarding(false, true); }
+  else if(state.id && state.status === 'draft' && FORM_STEPS.includes(state.step)) await saveDraftQuiet();
+  if(want && FORM_STEPS.includes(want) && state.id && state.status === 'draft' && (!e.state.id || e.state.id === state.id)){
+    goStep(want, { fromHistory: true });
+  } else if(want === 'onboarding' && e.state.ob && e.state.ob === onboardingAppId){
+    goStep('onboarding', { fromHistory: true });
+  } else {
+    if(state.step === 'onboarding') { onboardingAppId = null; onboardingState = null; onboardingStep = 'statutory'; }
+    await loadMyApplications();
+    goStep('start', { fromHistory: true });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Persistence helpers
@@ -234,7 +280,7 @@ function renderProgress(){
     // Form steps are buttons (Malls feedback, 29 Oct 2026): jump to any step
     // already completed, plus the first one still to do.
     const reach = FORM_STEPS.indexOf(firstIncompleteStep());
-    progressBar.innerHTML = `<div class="progress-caption">Step ${idx + 1} of ${visibleSteps.length} · <strong>${esc(STEP_LABELS[state.step] || '')}</strong><span class="progress-tip"> · Select a step to jump to it</span></div>
+    progressBar.innerHTML = `<div class="progress-caption">Step ${idx + 1} of ${visibleSteps.length} · <strong>${esc(STEP_LABELS[state.step] || '')}</strong><span class="progress-tip"> · Select a step to jump to it</span><span class="autosave-status" id="autosaveStatus" aria-live="polite">${autosave.at ? `Saved automatically · ${autosave.at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : ''}</span></div>
       <div class="progress-segs">${visibleSteps.map((s,i)=>{
         let cls='pstep'; if(i<idx) cls+=' done'; if(i===idx) cls+=' active';
         const f = FORM_STEPS.indexOf(s);
@@ -375,10 +421,14 @@ async function deleteDraft(id, referenceNo){
 async function continueDraft(id){
   const row = myApplications.find(a=>a.id===id);
   if(!row) return;
-  pdpaDraft = { name: '', nric: '', agreed: false }; // never carry a signature over from another application
+  resetApplicationState(); // never carry details or a signature over from another application
   loadStateFromRow(row);
   reachedReview = firstIncompleteStep() === 'review';
-  goStep(reachedReview ? 'review' : 'personal');
+  // Carry on from the step the candidate was last on, if they can reach it.
+  const last = lastStepFor(row.id);
+  const reach = FORM_STEPS.indexOf(firstIncompleteStep());
+  const target = last && FORM_STEPS.indexOf(last) >= 0 && FORM_STEPS.indexOf(last) <= reach ? last : (reachedReview ? 'review' : 'personal');
+  goStep(target);
 }
 
 let viewingApplicationId = null;
@@ -422,12 +472,21 @@ async function startNewApplication(){
     document.getElementById('startErr').innerHTML = `<div class="error-banner">This application link doesn't specify a valid business unit.</div>`;
     return;
   }
+  if(startingApplication) return; // a second click while the first is still creating
+  const existing = myApplications.find(a => a.status === 'draft' && a.business_unit === linkBusinessUnit);
+  if(existing){
+    const pick = await askStartChoice(existing);
+    if(pick === 'continue') return continueDraft(existing.id);
+    if(pick !== 'new') return; // closed the box: do nothing
+  }
+  startingApplication = true;
+  const btn = document.getElementById('beginAppBtn'); if(btn) btn.disabled = true;
   showLoading('Creating your application...');
-  pdpaDraft = { name: '', nric: '', agreed: false };
+  resetApplicationState();
   try{
     const { data, error } = await apiTry(() => api.post('/applications', { business_unit: linkBusinessUnit }));
     if(error) throw error;
-    state.id = data.id; state.reference_no = data.reference_no;
+    state.id = data.id; state.reference_no = data.reference_no; state.status = 'draft';
     reachedReview = false;
     state.business_unit = linkBusinessUnit;
     // Pre-fill from the signed-in account
@@ -435,14 +494,18 @@ async function startNewApplication(){
       state.name_nric = state.name_nric || currentUser.name || '';
       state.email = state.email || currentUser.email || '';
     }
-    await saveDraft();
+    await saveDraftQuiet();
+    await loadMyApplications();
     hideLoading();
     goStep('personal');
   } catch(e){
     hideLoading();
-    document.getElementById('startErr').innerHTML = `<div class="error-banner">Something went wrong: ${e.message}</div>`;
-  }
+    const box = document.getElementById('startErr');
+    if(box) box.innerHTML = `<div class="error-banner">Something went wrong: ${esc(e.message)}</div>`;
+    if(btn) btn.disabled = false;
+  } finally { startingApplication = false; }
 }
+let startingApplication = false;
 
 function loadStateFromRow(row){
   Object.keys(row).forEach(k=>{
@@ -488,7 +551,7 @@ function tplPersonal(){
     <div class="grid g3">
       <div class="field"><label>Tel — Residence <span class="opt-tag">(optional)</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0312345678" value="${esc(state.tel_residence)}" oninput="this.value=numericOnly(this.value);updateField('tel_residence', this.value)"></div>
       <div class="field"><label>Tel — Office <span class="opt-tag">(optional)</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0387654321" value="${esc(state.tel_office)}" oninput="this.value=numericOnly(this.value);updateField('tel_office', this.value)"></div>
-      <div class="field" id="field-mobile_phone"><label>Mobile Phone <span class="req-star">*</span></label><input type="tel" inputmode="numeric" placeholder="e.g. 0123456789" maxlength="11" value="${esc(state.mobile_phone)}" oninput="this.value=numericOnly(this.value);updateField('mobile_phone', this.value)"><div class="hint">10–11 digits, no dashes or spaces</div></div>
+      <div class="field" id="field-mobile_phone"><label>Mobile Phone <span class="req-star">*</span></label><input type="tel" inputmode="tel" placeholder="e.g. 012-3456789" maxlength="20" value="${esc(state.mobile_phone)}" oninput="this.value=phoneChars(this.value);updateField('mobile_phone', this.value)"></div>
     </div>
 
     <div class="grid">
@@ -539,10 +602,11 @@ function tplPersonal(){
       </div>
       <div class="field"><label>Age</label><input type="number" id="ageInput" value="${esc(state.age)}" readonly style="background:#F2F2F2;"></div>
       <div class="field" id="field-marital_status"><label>Marital Status <span class="req-star">*</span></label>
-        <select oninput="updateField('marital_status', this.value)">
+        <select oninput="updateField('marital_status', this.value);document.getElementById('marriedNote').hidden = this.value !== 'Married';">
           <option value="">Select</option>
           ${['Single','Married','Divorced','Widowed'].map(o=>`<option ${state.marital_status===o?'selected':''}>${o}</option>`).join('')}
         </select>
+        <div class="married-note" id="marriedNote" role="note" ${state.marital_status === 'Married' ? '' : 'hidden'}>Please provide your spouse and children (if any) information on onboarding details.</div>
       </div>
     </div>
     <div class="grid g3">
@@ -566,7 +630,7 @@ function validatePersonalStep(){
   addressErrors('permanent', 'permanent address', errs);
   if(!corrSameAsPermanent) addressErrors('correspondence', 'correspondence address', errs);
   if(!state.mobile_phone.trim()) errs.push({field:'field-mobile_phone', message:'Please enter your mobile phone number.'});
-  else if(!WCT.isValidPhone(state.mobile_phone)) errs.push({field:'field-mobile_phone', message:'Mobile phone number must be 10–11 digits.'});
+  else if(!/^[0-9][0-9-]*$/.test(state.mobile_phone.trim()) || !/[0-9]{3}/.test(state.mobile_phone.replace(/-/g,''))) errs.push({field:'field-mobile_phone', message:'Mobile phone number can only contain numbers and dashes, e.g. 012-3456789.'});
   if(!state.email.trim()) errs.push({field:'field-email', message:'Please enter your email address.'});
   if(!state.place_of_birth.trim()) errs.push({field:'field-place_of_birth', message:'Please enter your place of birth.'});
   if(!state.citizen) errs.push({field:'field-citizen', message:'Please select your citizenship.'});
@@ -660,15 +724,13 @@ async function openOnboarding(applicationId){
   }
 }
 
-async function saveOnboarding(showAlert){
-  try{
+function obBuildPatch(){
     const patch = {
       epf_no: document.getElementById('ob_epf_no')?.value.trim() || '',
       income_tax_no: document.getElementById('ob_income_tax_no')?.value.trim() || '',
       tax_branch: document.getElementById('ob_tax_branch')?.value.trim() || '',
       socso_no: document.getElementById('ob_socso_no')?.value.trim() || '',
       bank_account_no: document.getElementById('ob_bank_account_no')?.value.trim() || '',
-      cidb_green_card_no: document.getElementById('ob_cidb_green_card_no')?.value.trim() || '',
       emergency_contacts: onboardingState.emergency_contacts,
       beneficiary_name: document.getElementById('ob_beneficiary_name')?.value.trim() || '',
       beneficiary_relationship: document.getElementById('ob_beneficiary_relationship')?.value.trim() || '',
@@ -697,20 +759,40 @@ async function saveOnboarding(showAlert){
     ['children_below_18','children_18_to_23'].forEach(k => {
       patch[k] = (onboardingState[k] || []).filter(c => (c.name||'').trim() || (c.nric||'').trim());
     });
+    // Spouse NRIC and date of birth (2 Nov 2026), given here when shown.
+    if(obShowSpouse(onboardingState)){
+      patch.spouse_nric = (onboardingState.spouse_nric || '').trim() || null;
+      patch.spouse_date_of_birth = onboardingState.spouse_date_of_birth || null;
+    }
+    return patch;
+}
+// quiet: an automatic save — a problem shows in the bar at the bottom
+// (with "Try again") instead of a pop-up.
+async function saveOnboarding(showAlert, quiet){
+  if(!onboardingAppId || !onboardingState) return true;
+  try{
+    const patch = obBuildPatch();
     const { data, error } = await apiTry(() => api.patch(`/onboarding/${onboardingAppId}`, { patch }));
     if(error) throw error;
-    onboardingState = { ...data, available_companies: onboardingState.available_companies, family: onboardingState.family }; obSeedChildren(onboardingState);
+    // Keep the child cards on screen as they are (blank ones included).
+    const prev = onboardingState;
+    onboardingState = { ...data, available_companies: prev.available_companies, family: prev.family,
+      children_below_18: prev.children_below_18, children_18_to_23: prev.children_18_to_23 };
+    autosaveDone();
     if(showAlert) alert('Saved.');
     return true;
   } catch(e){
-    if(e.sessionEnded) showSessionEnded(); else alert('Your details could not be saved: ' + e.message + '\n\nPlease try again.');
+    if(e.sessionEnded) showSessionEnded();
+    else if(quiet) showSaveProblem(e, () => saveOnboarding(false, true));
+    else alert('Your details could not be saved: ' + e.message + '\n\nPlease try again.');
     return false;
   }
 }
 
 async function onboardingGoStep(step){
   if(onboardingStep === 'statutory'){
-    const errs = validateObChildren();
+    obCaptureFields();
+    const errs = [...validateObSpouse(), ...validateObChildren()];
     const box = document.getElementById('obFamErr');
     if(errs.length){
       clearAllInvalidFields();
@@ -733,8 +815,18 @@ function childEducationOptionsHtml(selected){
   return CHILD_EDUCATION_LEVELS.map(o=>`<option value="${o==='-'?'':o}" ${(selected||'')===(o==='-'?'':o)?'selected':''}>${o}</option>`).join('');
 }
 
-function addEmergencyContact(){ onboardingState.emergency_contacts = [...onboardingState.emergency_contacts, {name:'',relationship:'',contact:''}]; render(); }
-function removeEmergencyContact(i){ onboardingState.emergency_contacts.splice(i,1); render(); }
+// Fields typed on an onboarding step live only on screen until saved. Copy
+// them into onboardingState before the step is redrawn (adding or removing a
+// child or contact), so nothing typed is wiped.
+function obCaptureFields(){
+  if(!onboardingState) return;
+  document.querySelectorAll('#cardRoot [id^="ob_"]').forEach(el => {
+    if(!('value' in el) || el.type === 'checkbox' || el.type === 'radio' || el.type === 'button') return;
+    onboardingState[el.id.slice(3)] = el.value;
+  });
+}
+function addEmergencyContact(){ obCaptureFields(); onboardingState.emergency_contacts = [...onboardingState.emergency_contacts, {name:'',relationship:'',contact:''}]; render(); }
+function removeEmergencyContact(i){ obCaptureFields(); onboardingState.emergency_contacts.splice(i,1); render(); }
 function updateEmergencyContact(i, key, val){ onboardingState.emergency_contacts[i][key] = val; }
 
 function backFromOnboarding(){
@@ -746,10 +838,11 @@ function backFromOnboarding(){
 function obProgressBar(){
   const visible = ONBOARDING_STEPS.filter(s=>s!=='review');
   const idx = visible.indexOf(onboardingStep);
-  return `<div class="progress" style="margin-bottom:22px;">${visible.map((s,i)=>{
+  return `<div class="progress" style="margin-bottom:8px;">${visible.map((s,i)=>{
     let cls='seg'; if(i<idx) cls+=' done'; if(i===idx) cls+=' active';
     return `<div class="${cls}"></div>`;
-  }).join('')}</div>`;
+  }).join('')}</div>
+  <div class="autosave-line"><span class="autosave-status" id="autosaveStatus" aria-live="polite">${autosave.at ? `Saved automatically · ${autosave.at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : 'Your details save automatically as you type.'}</span></div>`;
 }
 
 function tplOnboarding(){
@@ -798,10 +891,8 @@ function tplObStatutory(){
       <div class="field"><label>Income Tax No.</label><input type="text" id="ob_income_tax_no" value="${esc(o.income_tax_no)}"></div>
       <div class="field"><label>Tax Branch</label><input type="text" id="ob_tax_branch" value="${esc(o.tax_branch)}"></div>
     </div>
-    <div class="grid">
-      <div class="field"><label>CIDB Green Card No.</label><input type="text" id="ob_cidb_green_card_no" placeholder="e.g. N/A" value="${esc(o.cidb_green_card_no)}"></div>
-    </div>
 
+    ${obSpouseHtml()}
     ${obChildrenHtml()}
 
     <div class="section-title">Bank Details (Salary Crediting)</div>
@@ -938,16 +1029,15 @@ function obSummaryPage1Html(o){
       ${obReviewRow('Tax Branch', o.tax_branch)}
       ${obReviewRow('SOCSO No.', o.socso_no)}
       ${obReviewRow('Bank Account No.', o.bank_account_no)}
-      ${obReviewRow('CIDB Green Card No.', o.cidb_green_card_no)}
       ${obReviewRow('Bank', o.salary_bank)}
       ${obReviewRow('Employing Company', o.salary_company)}
     </div>
 
 
     ${(() => { const f = obFamily(o); const kids = [...(f.children_below_18||[]).map(c => ['Below 18', c]), ...(f.children_18_to_23||[]).map(c => ['18 and above', c])];
-      return (f.spouse_name || kids.length) ? `<div class="review-block">
+      return (f.spouse_name || f.spouse_nric || kids.length) ? `<div class="review-block">
       <h4>Family Details</h4>
-      ${f.spouse_name ? obReviewRow('Spouse', [f.spouse_name, f.spouse_occupation, f.spouse_working ? 'Working: '+f.spouse_working : ''].filter(Boolean).join(' · ')) : ''}
+      ${(f.spouse_name || f.spouse_nric) ? obReviewRow('Spouse', [f.spouse_name, f.spouse_nric ? 'NRIC: '+f.spouse_nric : '', f.spouse_date_of_birth ? 'DOB: '+String(f.spouse_date_of_birth).slice(0,10).split('-').reverse().join('/') : '', f.spouse_occupation, f.spouse_working ? 'Working: '+f.spouse_working : ''].filter(Boolean).join(' · ')) : ''}
       ${kids.map(([g, c])=>obReviewRow(`${c.name||'Child'} (${g})`, `${c.gender||'—'} · NRIC: ${c.nric||'—'} · Tax relief: ${c.tax_relief?'Yes':'No'}`)).join('')}
     </div>` : ''; })()}
 
@@ -1142,12 +1232,13 @@ function handleDobChange(val){
 // ---------------------------------------------------------------------------
 // STEP: language ability
 // ---------------------------------------------------------------------------
-const FIXED_LANGUAGES = ['Bahasa Malaysia', 'English'];
+const FIXED_LANGUAGES = ['Bahasa Melayu', 'English'];
 // Old drafts carried "Others (please state)" as a real row value; it is only
 // a hint now. BM and English always come first.
 function normalizeLanguages(list, keepBlank){
   const rows = (list||[]).map(r => ({language:'', spoken:'', written:'', ...r}))
-    .map(r => /^others \(please state\)$/i.test((r.language||'').trim()) ? {...r, language:''} : r);
+    .map(r => /^others \(please state\)$/i.test((r.language||'').trim()) ? {...r, language:''} : r)
+    .map(r => /^bahasa malaysia$/i.test((r.language||'').trim()) ? {...r, language:'Bahasa Melayu'} : r); // older answers
   const fixed = FIXED_LANGUAGES.map(name => rows.find(r => r.language === name) || {language:name, spoken:'', written:''});
   const others = rows.filter(r => !FIXED_LANGUAGES.includes(r.language) && (keepBlank || (r.language||'').trim() || r.spoken || r.written));
   return [...fixed, ...others];
@@ -1171,7 +1262,7 @@ function tplLanguage(){
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Language Ability <span class="tag-req" style="vertical-align:middle;">COMPULSORY</span></h2>
-    <p class="step-desc">Rate your spoken and written ability for each language. Bahasa Malaysia and English are required. Choose <strong>N/A</strong> if it doesn't apply (for example, a dialect you speak but don't write).</p>
+    <p class="step-desc">Rate your spoken and written ability for each language. Bahasa Melayu and English are required. Choose <strong>N/A</strong> if it doesn't apply (for example, a dialect you speak but don't write).</p>
     <table class="dyn lang-table">
       <thead><tr><th>Language / Dialect</th><th>Spoken <span class="req-star">*</span></th><th>Written <span class="req-star">*</span></th><th style="width:48px;"></th></tr></thead>
       <tbody>${fixed}</tbody>
@@ -1192,6 +1283,7 @@ function removeLangRow(i){
   if(i < 2) return;
   state.language_ability.splice(i,1);
   render();
+  autosaveSchedule();
 }
 function validateLanguageStep(){
   const errs = [];
@@ -1283,6 +1375,7 @@ async function removeEduEntry(i){
   if(filled && !(await askYesNo('Remove this entry?', 'Are you sure you want to remove this education entry?'))) return;
   state.education.splice(i, 1);
   render();
+  autosaveSchedule();
 }
 function validateEducationStep(){
   const errs = [];
@@ -1382,12 +1475,27 @@ async function removeRowConfirm(arr, idx){
   if(await askYesNo('Remove this entry?', 'Are you sure you want to remove this entry?')) removeRow(arr, idx);
 }
 // Yes/No question in the site's own dialog (falls back to the browser's).
-function askYesNo(title, message){
+// "Begin Application" while a saved one exists: continue it, start a new
+// one, or (box closed) neither.
+function askStartChoice(existing){
+  const msg = `You already have a saved application (${existing.reference_no}) for ${WCT.buName(existing.business_unit)}. Would you like to continue it instead of starting a new one?`;
+  if(!window.WX || !WX.dialog) return Promise.resolve(window.confirm(msg) ? 'continue' : 'new');
+  return new Promise((resolve) => {
+    let answer = null;
+    const dlg = WX.dialog({ title: 'You have a saved application', html: `<p style="margin:0 0 18px;">${esc(msg)}</p>
+      <div class="btn-row" style="margin:0;border:0;padding:0;"><button type="button" class="btn btn-ghost" data-a="new">Start a new one</button><div class="right"><button type="button" class="btn btn-primary" data-a="continue">Continue saved application</button></div></div>`,
+      onClose: () => resolve(answer) });
+    dlg.querySelector('[data-a="continue"]').addEventListener('click', () => { answer = 'continue'; dlg.close(); });
+    dlg.querySelector('[data-a="new"]').addEventListener('click', () => { answer = 'new'; dlg.close(); });
+    dlg.querySelector('[data-a="continue"]').focus();
+  });
+}
+function askYesNo(title, message, yesLabel = 'Yes', noLabel = 'No'){
   if(!window.WX || !WX.dialog) return Promise.resolve(window.confirm(message));
   return new Promise((resolve) => {
     let answer = false;
     const dlg = WX.dialog({ title, html: `<p style="margin:0 0 18px;">${esc(message)}</p>
-      <div class="btn-row" style="margin:0;border:0;padding:0;"><button type="button" class="btn btn-ghost" data-a="no">No</button><div class="right"><button type="button" class="btn btn-primary" data-a="yes">Yes</button></div></div>`,
+      <div class="btn-row" style="margin:0;border:0;padding:0;"><button type="button" class="btn btn-ghost" data-a="no">${esc(noLabel)}</button><div class="right"><button type="button" class="btn btn-primary" data-a="yes">${esc(yesLabel)}</button></div></div>`,
       onClose: () => resolve(answer) });
     dlg.querySelector('[data-a="yes"]').addEventListener('click', () => { answer = true; dlg.close(); });
     dlg.querySelector('[data-a="no"]').addEventListener('click', () => dlg.close());
@@ -1501,6 +1609,7 @@ function tplFamily(){
     <div class="step-eyebrow">Application Form</div>
     <h2>Family Details <span class="tag-opt" style="vertical-align:middle;">Optional</span></h2>
     <p class="step-desc">Fill this in if it applies to you. HR uses it for tax relief and benefits. You can leave this page blank and continue.</p>
+    ${state.marital_status === 'Married' ? `<div class="warn-banner" role="note">Please provide your spouse and children (if any) information on onboarding details.</div>` : ''}
 
     <div class="section-title" style="margin-top:0;">Spouse Information</div>
     <div class="grid">
@@ -1538,12 +1647,14 @@ function obSeedChildren(o){
   });
 }
 function obChildSet(key, i, field, value){ obKids(key)[i][field] = value; }
-function obAddChild(key){ obKids(key).push(blankChild()); wxJustAdded = key+'-'+(obKids(key).length-1); render(); wxFocusAdded(); }
+function obAddChild(key){ obCaptureFields(); obKids(key).push(blankChild()); wxJustAdded = key+'-'+(obKids(key).length-1); render(); wxFocusAdded(); }
 async function obRemoveChild(key, i){
   const c = obKids(key)[i];
   const filled = c && ((c.name||'').trim() || c.nric || c.date_of_birth);
+  obCaptureFields();
   if(filled && !(await askYesNo('Remove this child?', `Remove ${c.name ? esc(c.name) : 'this child'} from the list?`))) return;
   obKids(key).splice(i, 1);
+  setTimeout(autosaveSchedule, 0);
   render();
 }
 function obChildNric(key, i, val){
@@ -1555,6 +1666,42 @@ function obChildNric(key, i, val){
     const el = document.getElementById(`${key}Dob${i}`);
     if(el) el.value = dob;
   }
+}
+// Spouse NRIC and date of birth are given at onboarding (2 Nov 2026); the
+// name, occupation and "working" answer come from the application.
+function obShowSpouse(o){
+  const f = (o && o.family) || {};
+  return !!((f.spouse_name || '').trim() || /^married$/i.test(f.marital_status || '') || (o && (o.spouse_nric || o.spouse_name)));
+}
+function obSpouseNric(val){
+  onboardingState.spouse_nric = val;
+  const dob = /^\d{12}$/.test(val) ? deriveDobFromNric(val) : null;
+  if(dob){
+    onboardingState.spouse_date_of_birth = dob;
+    const el = document.getElementById('obSpouseDob');
+    if(el) el.value = dob;
+  }
+}
+function obSpouseHtml(){
+  const o = onboardingState;
+  if(!obShowSpouse(o)) return '';
+  const f = obFamily(o);
+  return `
+    <div class="section-title">Spouse <span class="opt-tag">(for tax relief)</span></div>
+    ${f.spouse_name ? `<p class="hint" style="margin-top:-4px;">${esc(f.spouse_name)}${f.spouse_occupation ? ` · ${esc(f.spouse_occupation)}` : ''} — from your application.</p>` : ''}
+    <div class="grid">
+      <div class="field" id="field-ob-spouse-nric"><label for="obSpouseNric">Spouse NRIC / Passport No. (no dash)</label>
+        <input type="text" id="obSpouseNric" maxlength="20" placeholder="e.g. 900101101234" value="${esc(o.spouse_nric)}" oninput="this.value=this.value.replace(/[^A-Za-z0-9]/g,'');obSpouseNric(this.value)"></div>
+      <div class="field" id="field-ob-spouse-dob"><label for="obSpouseDob">Spouse date of birth</label>
+        <input type="date" id="obSpouseDob" value="${esc(o.spouse_date_of_birth ? String(o.spouse_date_of_birth).slice(0,10) : '')}" oninput="onboardingState.spouse_date_of_birth=this.value">
+        <div class="hint">Filled in automatically from a 12-digit NRIC, or choose the date.</div></div>
+    </div>`;
+}
+function validateObSpouse(){
+  const n = (onboardingState.spouse_nric || '').trim();
+  if(n && /^\d+$/.test(n) && n.length !== 12) return [{field:'field-ob-spouse-nric', message:'Spouse NRIC must be 12 digits (or leave it blank).'}];
+  if(n && n.length < 5) return [{field:'field-ob-spouse-nric', message:'Please check the spouse NRIC / passport no.'}];
+  return [];
 }
 function obChildCardsHtml(key, label){
   const kids = obKids(key);
@@ -1610,12 +1757,12 @@ function refereeFieldsetHtml(key, n, ph, optional){
     ${f('contact', 'Contact No.', ph[4], `inputmode="numeric" maxlength="11" oninput="this.value=numericOnly(this.value);updateNested(state.${key},'contact',this.value)"`)}
   </fieldset>`;
 }
-// Declarations (B) and (C) read like the manual form (Malls feedback,
-// 29 Oct 2026): one box per declaration, "NONE" if there is nothing to
-// declare. Stored as before: NONE -> 'No'; anything else -> 'Yes' + details.
-// "NONE" in any letter case (older answers may say NIL).
+// Declarations (B) and (C) read like the manual form: one box per
+// declaration, "NIL" if there is nothing to declare (2 Nov 2026). Stored as
+// before: NIL -> 'No'; anything else -> 'Yes' + details. NIL, NONE or TIADA
+// in any letter case all mean nothing to declare.
 const DECL_NIL = /^\s*(none|nil|tiada)\s*\.?\s*$/i;
-function declText(key){ return state[key] === 'No' ? 'NONE' : (state[`${key}_specify`] || ''); }
+function declText(key){ return state[key] === 'No' ? 'NIL' : (state[`${key}_specify`] || ''); }
 function setDecl(key, text){
   const t = String(text || '');
   if(!t.trim()){ state[key] = ''; state[`${key}_specify`] = ''; }
@@ -1625,8 +1772,7 @@ function setDecl(key, text){
 function declBoxHtml(key, letter, statement){
   return `<div class="field decl-box" id="field-${key}">
       <label for="decl-${key}" class="decl-label">(${letter}) ${statement} <span class="req-star">*</span></label>
-      <textarea id="decl-${key}" rows="3" placeholder="Write NONE if none" oninput="setDecl('${key}', this.value)">${esc(declText(key))}</textarea>
-      <div class="hint">Write <strong>NONE</strong> if none. Not enough space? Attach a document under <strong>Declaration details</strong> on the next step.</div>
+      <textarea id="decl-${key}" rows="3" placeholder="Write NIL if nothing to declare" oninput="setDecl('${key}', this.value)">${esc(declText(key))}</textarea>
     </div>`;
 }
 function tplReferees(){
@@ -1634,7 +1780,7 @@ function tplReferees(){
   return `
     <div class="step-eyebrow">Application Form</div>
     <h2>Referees &amp; Declarations</h2>
-    <p class="step-desc">Please give two referees we can contact about your application. Fresh graduates may give one.</p>
+    <p class="step-desc">Please provide two referees we can contact about your application. Fresh graduates may provide one.</p>
 
     <label class="no-exp" id="field-no_referees"><input type="checkbox" ${none ? 'checked' : ''} onchange="updateField('no_referees', this.checked); render();">
       <span><strong>I have no referee to provide</strong><br><span class="hint">For example, if you are applying for an internship or your first job.</span></span></label>
@@ -1646,6 +1792,7 @@ function tplReferees(){
 
     <div class="section-title">Declarations</div>
     <p class="decl-text">(A) ${esc(WCT.DECLARATION_A)}</p>
+    <div class="info-banner">Input <strong>NIL</strong> if you have nothing to declare on both declaration B and C.</div>
     ${declBoxHtml('declaration_lawsuit', 'B', esc(WCT.DECLARATION_B).replace(/\.$/, ':'))}
     ${declBoxHtml('declaration_other_matters', 'C', esc(WCT.DECLARATION_C).replace(/\.$/, ':'))}
 
@@ -1665,8 +1812,8 @@ function validateRefereesStep(){
     if(!(r.contact||'').trim()) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: please enter a contact number.`});
     else if(!WCT.isValidPhone(r.contact)) errs.push({field:`field-${key}`, message:`Referee ${idx+1}: the contact number must be 10–11 digits.`});
   });
-  if(!state.declaration_lawsuit) errs.push({field:'field-declaration_lawsuit', message:'Declaration (B): please give the details, or write NONE if none.'});
-  if(!state.declaration_other_matters) errs.push({field:'field-declaration_other_matters', message:'Declaration (C): please give the details, or write NONE if none.'});
+  if(!state.declaration_lawsuit) errs.push({field:'field-declaration_lawsuit', message:'Declaration (B): please give the details, or write NIL if there is nothing to declare.'});
+  if(!state.declaration_other_matters) errs.push({field:'field-declaration_other_matters', message:'Declaration (C): please give the details, or write NIL if there is nothing to declare.'});
   return errs;
 }
 
@@ -1814,6 +1961,7 @@ async function saveDraftQuiet(){
   const { error } = await apiTry(() => api.patch(`/applications/${state.id}`, { reference_no: state.reference_no, patch: currentPatch() }));
   if(error){ console.error(error); showSaveProblem(error, saveDraftQuiet); return false; }
   hideNotice('save');
+  autosaveDone();
   return true;
 }
 // Save just these fields (an uploaded photo or file list) straight away, so
@@ -1861,6 +2009,70 @@ function showSessionEnded(){
     ['Sign in again', () => { window.location.href = 'login.html' + window.location.search; }, true]
   ]);
 }
+// ---------------------------------------------------------------------------
+// Autosave: the application form and onboarding details save themselves a
+// moment after the candidate stops typing, and once more when the tab is
+// hidden or closed, so closing the browser by mistake loses nothing.
+// ---------------------------------------------------------------------------
+const AUTOSAVE_MS = 1500;
+const autosave = { timer: null, dirty: false, running: null, at: null };
+function autosaveTarget(){
+  if(state.step === 'onboarding' && onboardingAppId && onboardingState && onboardingState.status !== 'completed'
+     && ['statutory','emergency_beneficiary'].includes(onboardingStep)) return 'onboarding';
+  if(state.id && state.status === 'draft' && FORM_STEPS.includes(state.step)) return 'application';
+  return null;
+}
+function autosaveSchedule(){
+  if(!autosaveTarget()) return;
+  autosave.dirty = true;
+  autosaveShow('Saving…');
+  clearTimeout(autosave.timer);
+  autosave.timer = setTimeout(autosaveRun, AUTOSAVE_MS);
+}
+async function autosaveRun(){
+  clearTimeout(autosave.timer);
+  const target = autosaveTarget();
+  if(!target || !autosave.dirty) return;
+  if(autosave.running){ await autosave.running; }
+  autosave.dirty = false;
+  autosave.running = (async () => {
+    if(target === 'onboarding'){ obCaptureFields(); await saveOnboarding(false, true); }
+    else await saveDraftQuiet();
+  })();
+  try{ await autosave.running; } finally { autosave.running = null; }
+}
+function autosaveDone(){
+  autosave.at = new Date();
+  autosaveShow(`Saved automatically · ${autosave.at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`);
+}
+function autosaveShow(text){
+  const el = document.getElementById('autosaveStatus');
+  if(el) el.textContent = autosaveTarget() ? text : '';
+}
+// Tab hidden or closing: send what is pending straight away. keepalive lets
+// the request finish even while the page is being closed.
+function autosaveFlush(){
+  const target = autosaveTarget();
+  if(!target || !autosave.dirty) return;
+  clearTimeout(autosave.timer);
+  autosave.dirty = false;
+  try{
+    if(target === 'onboarding'){ obCaptureFields(); api.patch(`/onboarding/${onboardingAppId}`, { patch: obBuildPatch() }, { keepalive: true }).catch(() => {}); }
+    else api.patch(`/applications/${state.id}`, { reference_no: state.reference_no, patch: currentPatch() }, { keepalive: true }).catch(() => {});
+  } catch(e){ /* best effort */ }
+}
+root.addEventListener('input', autosaveSchedule);
+root.addEventListener('change', autosaveSchedule);
+// Add / remove buttons change the form without typing; the step's own
+// Back / Next / Save buttons (in .btn-row) already save.
+root.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('button');
+  if(b && !b.closest('.btn-row') && !b.closest('#progressBar')) setTimeout(autosaveSchedule, 0);
+});
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') autosaveFlush(); });
+window.addEventListener('pagehide', autosaveFlush);
+window.addEventListener('beforeunload', autosaveFlush);
+
 window.addEventListener('wct:session-ended', (e) => { if(!(e.detail && e.detail.admin)) showSessionEnded(); });
 // Signed out (or in as someone else) in another tab: say so at once rather
 // than at the next save.
@@ -2009,7 +2221,7 @@ function tplReview(){
     ${applicationSummaryHtml(state, true)}
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="goStep('attachments')">← Back</button>
-      <div class="right"><button class="btn btn-primary" onclick="proceedToConsent()">Everything looks correct → Continue to Consent Forms</button></div>
+      <div class="right"><button class="btn btn-primary" onclick="proceedToConsent()">Continue →</button></div>
     </div>
   `;
 }
@@ -2028,7 +2240,7 @@ function tplConsentLang(){
   return `
     <div class="step-eyebrow">Consent Forms</div>
     <h2>Choose Your Preferred Language</h2>
-    <p class="step-desc">The consent and data protection forms are available in Bahasa Malaysia or English. Choose the language you're most comfortable reading.</p>
+    <p class="step-desc">The consent and data protection forms are available in Bahasa Melayu or English. Choose the language you're most comfortable reading.</p>
     <div class="lang-choice">
       <div class="opt ${state.language_choice==='BM'?'selected':''}" onclick="selectLang('BM')">Bahasa Melayu</div>
       <div class="opt ${state.language_choice==='EN'?'selected':''}" onclick="selectLang('EN')">English</div>
@@ -2131,6 +2343,8 @@ async function finalSubmit(){
     // The submitted record carries the PDPA signature (name, NRIC, time),
     // which the form state doesn't, so the PDF on the next page is complete.
     submittedApplication = data || null;
+    state.status = 'submitted'; // no more saving to this application
+    autosave.dirty = false; clearTimeout(autosave.timer);
     hideLoading();
     goStep('done');
     if(window.WX) setTimeout(() => WX.celebrate(), 250);
@@ -2313,10 +2527,13 @@ function obFamily(o){
   const has = (v) => Array.isArray(v) ? v.length > 0 : !!v;
   const out = {};
   // Spouse: the application's answer (older records: the onboarding copy).
-  ['spouse_name','spouse_occupation','spouse_nric','spouse_date_of_birth','spouse_working']
+  ['spouse_name','spouse_occupation','spouse_working']
     .forEach(k => { out[k] = has(fam[k]) ? fam[k] : o[k]; });
+  // Spouse NRIC / date of birth: given at onboarding (older applications had them).
+  ['spouse_nric','spouse_date_of_birth'].forEach(k => { out[k] = has(o[k]) ? o[k] : fam[k]; });
   // Children: given at onboarding now (older records: on the application).
-  ['children_below_18','children_18_to_23'].forEach(k => { out[k] = has(o[k]) ? o[k] : fam[k]; });
+  const real = (list) => (list || []).filter(c => c && ((c.name||'').trim() || (c.nric||'').trim()));
+  ['children_below_18','children_18_to_23'].forEach(k => { out[k] = real(o[k]).length ? real(o[k]) : real(fam[k]); });
   ['children_below_18_count','children_18_to_23_count'].forEach(k => { out[k] = fam[k]; });
   return out;
 }
@@ -2411,4 +2628,5 @@ function signOut(){
   await obEmpBoot();
 
   render();
+  try{ history.replaceState({ wct: state.step, id: state.id || null, ob: state.step === 'onboarding' ? onboardingAppId : null }, ''); } catch(e){ /* ignore */ }
 })();
