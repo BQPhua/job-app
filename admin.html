@@ -524,7 +524,7 @@ const PAGE_SIZE = 20;
 let searchDebounceTimer = null;
 let selectedIds = new Set(); // batch management — ids checked on the current page
 let openStatusPanelId = null; // which row's status button panel is currently open (only one at a time)
-let openTransferPanelId = null; // which row's business-unit transfer panel is currently open (only one at a time; ALL-scope admins only)
+let openTransferPanelId = null; // which row's business-unit transfer panel is currently open (only one at a time)
 
 // Sidebar — desktop collapse state persists across page loads (real
 // localStorage, fine here since this is a deployed site, not an in-chat
@@ -1208,7 +1208,7 @@ function dashboardResultsHtml(){
         </div>
       </td>
       <td data-label="Unit" style="position:relative;">
-        ${adminScope==='ALL' ? `
+        ${canTransferUnit() ? `
           <span class="badge" style="background:var(--accent-tint);color:var(--accent-dark);cursor:pointer;" title="Click to transfer to another business unit" aria-haspopup="true" aria-expanded="${openTransferPanelId === a.id}" onclick="toggleTransferPanel('${a.id}')">${esc(buLabel(a.business_unit))} ▾</span>
           ${openTransferPanelId === a.id ? `
             <div class="status-panel">
@@ -1469,14 +1469,17 @@ function toggleStatusPanel(id){
   renderDashboardResults();
 }
 
-// Quick business-unit transfer — previously this required opening a
-// candidate's full detail modal and switching into Edit mode just to change
-// one dropdown. Now an ALL-scope admin can transfer directly from the
-// dashboard row, the same way status is already quick-changed above: click
-// the Unit badge, pick the new business unit from the panel. Only ever
-// rendered for adminScope==='ALL' (see rowActionsHtml/dashboardResultsHtml),
-// matching the existing server-side rule (admin.js PATCH /applications/:id)
-// that only an All-Units admin may reassign business_unit.
+// Quick business-unit transfer from the dashboard row: click the Unit badge,
+// pick the new unit. An All-Units admin, or (3 Nov 2026) the HR admin of the
+// application's own unit — after the move, the application leaves that
+// unit's list and goes to the new unit's team.
+function canTransferUnit(){ return !!adminScope && !['GROUP','SUPERIOR'].includes(adminScope); }
+function transferQuestion(code){
+  const name = buLabel(code) || code;
+  return adminScope === 'ALL'
+    ? `Transfer this application to ${name}? It will move to that business unit's admin team.`
+    : `Transfer this application to ${name}? It will move to that business unit's admin team, and ${buLabel(adminScope)} will no longer see it.`;
+}
 function toggleTransferPanel(id){
   openTransferPanelId = (openTransferPanelId === id) ? null : id;
   openStatusPanelId = null;
@@ -1501,13 +1504,14 @@ document.addEventListener('click', function(e){
 async function quickTransferBusinessUnit(id, businessUnit){
   const app = applications.find(a=>a.id===id);
   if(app && app.business_unit === businessUnit){ openTransferPanelId = null; renderDashboardResults(); return; }
-  if(!confirm(`Transfer this application to ${businessUnit}? It will move to that business unit's admin team.`)){
+  if(!confirm(transferQuestion(businessUnit))){
     openTransferPanelId = null; renderDashboardResults(); return;
   }
   openTransferPanelId = null;
   try{
     const { error } = await apiTry(() => api.patch(`/admin/applications/${id}`, {business_unit: businessUnit}, {admin: true}));
     if(error) throw error;
+    uiToast(`Transferred to ${buLabel(businessUnit) || businessUnit}.`);
     await Promise.all([loadApplications(), loadStats()]);
   } catch(e){ uiToast('Error transferring: '+e.message); loadApplications(); }
 }
@@ -3123,11 +3127,15 @@ async function saveEdit(){
     email: document.getElementById('editEmail').value.trim(),
     mobile_phone: document.getElementById('editMobile').value.trim()
   };
-  if(buEl) patch.business_unit = buEl.value; // only present for ALL-scope admins
+  const moving = buEl && buEl.value !== selectedApp.business_unit;
+  if(buEl) patch.business_unit = buEl.value;
+  if(moving && !confirm(transferQuestion(buEl.value))) return;
   try{
     const { error } = await apiTry(() => api.patch(`/admin/applications/${selectedApp.id}`, patch, {admin: true}));
     if(error) throw error;
     editingApp = false;
+    // A unit admin who moved it away can no longer open it.
+    if(moving && adminScope !== 'ALL'){ uiToast(`Transferred to ${buLabel(buEl.value) || buEl.value}.`); closeDetail(); await Promise.all([loadApplications(), loadStats()]); return; }
     await openDetail(selectedApp.id);
     await loadApplications();
   } catch(e){ uiToast('Error saving: '+e.message); }
