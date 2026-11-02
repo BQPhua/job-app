@@ -764,11 +764,14 @@ function obBuildPatch(){
     });
     // Children are always given here (sent in full, so a removed child goes).
     ['children_below_18','children_18_to_23'].forEach(k => {
-      patch[k] = (onboardingState[k] || []).filter(c => (c.name||'').trim() || (c.nric||'').trim());
+      patch[k] = (onboardingState[k] || []).filter(c => (c.name||'').trim() || (c.nric||'').trim() || (c.passport_no||'').trim());
     });
     // Spouse NRIC and date of birth (2 Nov 2026), given here when shown.
     if(obShowSpouse(onboardingState)){
-      patch.spouse_nric = (onboardingState.spouse_nric || '').trim() || null;
+      const sc = onboardingState.spouse_citizen || null;
+      patch.spouse_citizen = sc;
+      patch.spouse_nric = sc === 'Non-Malaysian' ? null : (String(onboardingState.spouse_nric || '').trim() || null);
+      patch.spouse_passport_no = String(onboardingState.spouse_passport_no || '').trim() || null;
       patch.spouse_date_of_birth = onboardingState.spouse_date_of_birth || null;
     }
     return patch;
@@ -837,7 +840,7 @@ function removeEmergencyContact(i){ obCaptureFields(); onboardingState.emergency
 function updateEmergencyContact(i, key, val){ onboardingState.emergency_contacts[i][key] = val; }
 
 function backFromOnboarding(){
-  onboardingAppId = null; onboardingState = null; onboardingStep = 'statutory';
+  onboardingAppId = null; onboardingState = null; onboardingStep = 'statutory'; obReturnToSummary = false;
   salaryAck = { name: '', agreed: false }; personalAck = { name: '', agreed: false };
   goStep('start');
 }
@@ -924,7 +927,7 @@ function tplObStatutory(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="backFromOnboarding()">← Back to My Applications</button>
-      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" data-sig-gate="salarySig" ${(salaryAck.agreed && (salaryAck.name || obApplicantName())) || o.salary_crediting_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('emergency_beneficiary')">Next →</button></div>
+      <div class="right">${saveExitBtnHtml()}${obBackToSummaryBtn()}<button class="btn btn-primary" data-sig-gate="salarySig" ${(salaryAck.agreed && (salaryAck.name || obApplicantName())) || o.salary_crediting_confirmed ? '' : 'disabled'} onclick="onboardingGoStep('emergency_beneficiary')">Next →</button></div>
     </div>
     <p class="hint" data-sig-hint="salarySig" style="text-align:right;margin-top:6px;" ${(salaryAck.agreed && (salaryAck.name || obApplicantName())) || o.salary_crediting_confirmed ? 'hidden' : ''}>Please sign the confirmation above to continue.</p>
   `;
@@ -970,7 +973,7 @@ function tplObEmergencyBeneficiary(){
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="onboardingGoStep('statutory')">← Back</button>
-      <div class="right">${saveExitBtnHtml()}<button class="btn btn-primary" onclick="confirmPersonalAndPreview()">Next →</button></div>
+      <div class="right">${saveExitBtnHtml()}${obBackToSummaryBtn()}<button class="btn btn-primary" onclick="confirmPersonalAndPreview()">Next →</button></div>
     </div>
   `;
 }
@@ -1027,10 +1030,32 @@ async function confirmPersonalAndPreview(){
 
 function obReviewRow(k,v){ return `<div class="review-row"><div class="k">${k}</div><div class="v">${esc(v)||'—'}</div></div>`; }
 
-function obSummaryPage1Html(o){
+// Section title on the onboarding summary; with an Edit button before the
+// onboarding is submitted (it opens that step, which then offers
+// "Save & back to Summary").
+function obReviewHeader(title, step, editable){
+  return editable
+    ? `<h4>${title} <button type="button" class="edit-link" onclick="obEditFromSummary('${step}')" aria-label="Edit ${title.replace(/&amp;/g,'and')}">Edit</button></h4>`
+    : `<h4>${title}</h4>`;
+}
+let obReturnToSummary = false;
+function obEditFromSummary(step){
+  obReturnToSummary = true;
+  onboardingStep = step;
+  render(); window.scrollTo(0,0);
+}
+function obBackToSummaryBtn(){
+  if(!obReturnToSummary) return '';
+  const go = onboardingStep === 'emergency_beneficiary' ? 'confirmPersonalAndPreview()' : "onboardingGoStep('preview')";
+  return `<button class="btn btn-ghost" onclick="${go}">Save &amp; back to Summary</button>`;
+}
+function obIdText(p){
+  return [p.citizen || p.spouse_citizen, (p.nric || p.spouse_nric) ? 'NRIC: ' + (p.nric || p.spouse_nric) : '', (p.passport_no || p.spouse_passport_no) ? 'Passport: ' + (p.passport_no || p.spouse_passport_no) : ''].filter(Boolean).join(' · ');
+}
+function obSummaryPage1Html(o, editable){
   return `
     <div class="review-block">
-      <h4>Statutory Details</h4>
+      ${obReviewHeader('Statutory Details', 'statutory', editable)}
       ${obReviewRow('EPF No.', o.epf_no)}
       ${obReviewRow('Income Tax No.', o.income_tax_no)}
       ${obReviewRow('Tax Branch', o.tax_branch)}
@@ -1042,19 +1067,20 @@ function obSummaryPage1Html(o){
 
 
     ${(() => { const f = obFamily(o); const kids = [...(f.children_below_18||[]).map(c => ['Below 18', c]), ...(f.children_18_to_23||[]).map(c => ['18 and above', c])];
-      return (f.spouse_name || f.spouse_nric || kids.length) ? `<div class="review-block">
-      <h4>Family Details</h4>
-      ${(f.spouse_name || f.spouse_nric) ? obReviewRow('Spouse', [f.spouse_name, f.spouse_nric ? 'NRIC: '+f.spouse_nric : '', f.spouse_date_of_birth ? 'DOB: '+String(f.spouse_date_of_birth).slice(0,10).split('-').reverse().join('/') : '', f.spouse_occupation, f.spouse_working ? 'Working: '+f.spouse_working : ''].filter(Boolean).join(' · ')) : ''}
-      ${kids.map(([g, c])=>obReviewRow(`${c.name||'Child'} (${g})`, `${c.gender||'—'} · NRIC: ${c.nric||'—'} · Tax relief: ${c.tax_relief?'Yes':'No'}`)).join('')}
+      const dmyS = (d) => d ? String(d).slice(0,10).split('-').reverse().join('/') : '';
+      return (f.spouse_name || f.spouse_nric || f.spouse_passport_no || kids.length) ? `<div class="review-block">
+      ${obReviewHeader('Family Details', 'statutory', editable)}
+      ${(f.spouse_name || f.spouse_nric || f.spouse_passport_no) ? obReviewRow('Spouse', [f.spouse_name, obIdText(f), f.spouse_date_of_birth ? 'DOB: '+dmyS(f.spouse_date_of_birth) : '', f.spouse_occupation, f.spouse_working ? 'Working: '+f.spouse_working : ''].filter(Boolean).join(' · ')) : ''}
+      ${kids.map(([g, c])=>obReviewRow(`${c.name||'Child'} (${g})`, [c.gender, obIdText(c), c.date_of_birth ? 'DOB: '+dmyS(c.date_of_birth) : '', 'Tax relief: '+(c.tax_relief?'Yes':'No')].filter(Boolean).join(' · '))).join('')}
     </div>` : ''; })()}
 
     <div class="review-block">
-      <h4>Emergency Contacts</h4>
+      ${obReviewHeader('Emergency Contacts', 'emergency_beneficiary', editable)}
       ${(o.emergency_contacts||[]).map(c=>obReviewRow(c.name||'Unnamed', `${c.relationship||'—'} · ${c.contact||'—'}`)).join('') || obReviewRow('Emergency Contacts','None')}
     </div>
 
     <div class="review-block">
-      <h4>Beneficiary (Next of Kin)</h4>
+      ${obReviewHeader('Beneficiary (Next of Kin)', 'emergency_beneficiary', editable)}
       ${obReviewRow('Name', o.beneficiary_name)}
       ${obReviewRow('Relationship', o.beneficiary_relationship)}
       ${obReviewRow('Contact No.', o.beneficiary_contact)}
@@ -1062,18 +1088,19 @@ function obSummaryPage1Html(o){
   `;
 }
 
-function obSummaryHtml(o){
-  return obSummaryPage1Html(o);
+function obSummaryHtml(o, editable){
+  return obSummaryPage1Html(o, editable);
 }
 
 function tplObPreview(){
   const o = onboardingState;
+  obReturnToSummary = false;
   return `
     <div class="step-eyebrow">Onboarding</div>
     <h2>Review Before Submitting</h2>
-    <p class="step-desc">Please check everything below carefully. Once you submit, your onboarding record will be marked complete and HR will be notified — you won't be able to edit it afterward.</p>
+    <p class="step-desc">Please check everything below carefully. Use <strong>Edit</strong> to change a section. Once you submit, your onboarding record will be marked complete and HR will be notified — you won't be able to edit it afterward.</p>
 
-    ${obSummaryHtml(o)}
+    ${obSummaryHtml(o, true)}
 
     <div class="btn-row">
       <button class="btn btn-ghost" onclick="onboardingGoStep('emergency_beneficiary')">← Back to Edit</button>
@@ -1606,7 +1633,7 @@ function tplQuestions(){
 // only the spouse's name, occupation and whether they work, plus HOW MANY
 // children; each child's details are given at onboarding, once hired.
 // ---------------------------------------------------------------------------
-const blankChild = () => ({name:'',gender:'',nric:'',date_of_birth:'',course_name:'',tax_relief:false});
+const blankChild = () => ({name:'',gender:'',citizen:'',nric:'',passport_no:'',date_of_birth:'',course_name:'',tax_relief:false});
 function countOptionsHtml(val){
   return `<option value="">Select</option>` + Array.from({length: 11}, (_, n) => `<option value="${n}" ${val === n ? 'selected' : ''}>${n === 10 ? '10 or more' : n}</option>`).join('');
 }
@@ -1654,6 +1681,13 @@ function obSeedChildren(o){
   });
 }
 function obChildSet(key, i, field, value){ obKids(key)[i][field] = value; }
+function obChildCitizen(key, i, val){
+  obCaptureFields();
+  const c = obKids(key)[i];
+  c.citizen = val;
+  if(val === 'Non-Malaysian') c.nric = ''; // NRIC doesn't apply
+  render();
+}
 function obAddChild(key){ obCaptureFields(); obKids(key).push(blankChild()); wxJustAdded = key+'-'+(obKids(key).length-1); render(); wxFocusAdded(); }
 async function obRemoveChild(key, i){
   const c = obKids(key)[i];
@@ -1667,6 +1701,7 @@ async function obRemoveChild(key, i){
 function obChildNric(key, i, val){
   const c = obKids(key)[i];
   c.nric = val;
+  setNricMsg(`${key}NricMsg${i}`, val);
   const dob = deriveDobFromNric(val);
   if(dob && val.length >= 6){
     c.date_of_birth = dob;
@@ -1678,36 +1713,72 @@ function obChildNric(key, i, val){
 // name, occupation and "working" answer come from the application.
 function obShowSpouse(o){
   const f = (o && o.family) || {};
-  return !!((f.spouse_name || '').trim() || /^married$/i.test(f.marital_status || '') || (o && (o.spouse_nric || o.spouse_name)));
+  return !!((f.spouse_name || '').trim() || /^married$/i.test(f.marital_status || '') || (o && (o.spouse_nric || o.spouse_passport_no || o.spouse_citizen || o.spouse_name)));
+}
+// Live NRIC check under the field, like the application form.
+function nricMsgHtml(v){
+  const d = String(v || '');
+  if(!d) return '';
+  return d.length !== 12
+    ? `<span style="color:var(--danger);">NRIC must be exactly 12 digits (currently ${d.length}).</span>`
+    : `<span style="color:var(--ok);">✓ Valid format</span>`;
+}
+function setNricMsg(id, v){ const el = document.getElementById(id); if(el) el.innerHTML = nricMsgHtml(v); }
+function passportChars(v){ return String(v || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase(); }
+function citizenSelectHtml(id, value, onchange){
+  return `<select id="${id}" onchange="${onchange}"><option value="">Select</option>${['Malaysian','Non-Malaysian'].map(o=>`<option ${value===o?'selected':''}>${o}</option>`).join('')}</select>`;
 }
 function obSpouseNric(val){
   onboardingState.spouse_nric = val;
-  const dob = /^\d{12}$/.test(val) ? deriveDobFromNric(val) : null;
+  setNricMsg('obSpouseNricMsg', val);
+  const dob = val.length >= 6 ? deriveDobFromNric(val) : null;
   if(dob){
     onboardingState.spouse_date_of_birth = dob;
     const el = document.getElementById('obSpouseDob');
     if(el) el.value = dob;
   }
 }
+function obSpouseCitizen(val){
+  obCaptureFields();
+  onboardingState.spouse_citizen = val;
+  if(val === 'Non-Malaysian') onboardingState.spouse_nric = ''; // NRIC doesn't apply
+  render();
+}
 function obSpouseHtml(){
   const o = onboardingState;
   if(!obShowSpouse(o)) return '';
   const f = obFamily(o);
+  const cz = o.spouse_citizen || '';
   return `
-    <div class="section-title">Spouse <span class="opt-tag">(for tax relief)</span></div>
+    <div class="section-title">Spouse Information</div>
     ${f.spouse_name ? `<p class="hint" style="margin-top:-4px;">${esc(f.spouse_name)}${f.spouse_occupation ? ` · ${esc(f.spouse_occupation)}` : ''} — from your application.</p>` : ''}
-    <div class="grid">
-      <div class="field" id="field-ob-spouse-nric"><label for="obSpouseNric">Spouse NRIC / Passport No. (no dash)</label>
-        <input type="text" id="obSpouseNric" maxlength="20" placeholder="e.g. 900101101234" value="${esc(o.spouse_nric)}" oninput="this.value=this.value.replace(/[^A-Za-z0-9]/g,'');obSpouseNric(this.value)"></div>
-      <div class="field" id="field-ob-spouse-dob"><label for="obSpouseDob">Spouse date of birth</label>
+    <div class="grid g3">
+      <div class="field" id="field-ob-spouse-citizen"><label for="obSpouseCitizenSel">Citizen <span class="req-star">*</span></label>
+        ${citizenSelectHtml('obSpouseCitizenSel', cz, 'obSpouseCitizen(this.value)')}</div>
+      <div class="field" id="field-ob-spouse-nric"><label for="obSpouseNric">NRIC No. (without dash) ${cz === 'Malaysian' ? '<span class="req-star">*</span>' : ''}</label>
+        <input type="text" id="obSpouseNric" inputmode="numeric" maxlength="12" placeholder="e.g. 900101101234" value="${esc(o.spouse_nric)}"
+          ${cz === 'Non-Malaysian' ? 'disabled style="background:#F2F2F1;"' : ''} oninput="this.value=numericOnly(this.value);obSpouseNric(this.value)">
+        <div id="obSpouseNricMsg" class="hint">${nricMsgHtml(o.spouse_nric)}</div></div>
+      <div class="field" id="field-ob-spouse-passport"><label for="obSpousePassport">Passport No. ${cz === 'Non-Malaysian' ? '<span class="req-star">*</span>' : '<span class="opt-tag">(optional)</span>'}</label>
+        <input type="text" id="obSpousePassport" maxlength="20" placeholder="e.g. A12345678" value="${esc(o.spouse_passport_no)}" oninput="this.value=passportChars(this.value);onboardingState.spouse_passport_no=this.value"></div>
+    </div>
+    <div class="grid g3">
+      <div class="field" id="field-ob-spouse-dob"><label for="obSpouseDob">Date of birth</label>
         <input type="date" id="obSpouseDob" value="${esc(o.spouse_date_of_birth ? String(o.spouse_date_of_birth).slice(0,10) : '')}" oninput="onboardingState.spouse_date_of_birth=this.value">
-        <div class="hint">Filled in automatically from a 12-digit NRIC, or choose the date.</div></div>
+        <div class="hint">Filled in from the NRIC, or choose the date.</div></div>
     </div>`;
 }
 function validateObSpouse(){
-  const n = (onboardingState.spouse_nric || '').trim();
-  if(n && /^\d+$/.test(n) && n.length !== 12) return [{field:'field-ob-spouse-nric', message:'Spouse NRIC must be 12 digits (or leave it blank).'}];
-  if(n && n.length < 5) return [{field:'field-ob-spouse-nric', message:'Please check the spouse NRIC / passport no.'}];
+  if(!obShowSpouse(onboardingState)) return [];
+  const o = onboardingState;
+  const n = String(o.spouse_nric || '').trim();
+  if(!o.spouse_citizen) return [{field:'field-ob-spouse-citizen', message:"Please select your spouse's citizenship."}];
+  if(o.spouse_citizen === 'Malaysian'){
+    if(!n) return [{field:'field-ob-spouse-nric', message:"Please enter your spouse's NRIC number."}];
+    if(n.length !== 12) return [{field:'field-ob-spouse-nric', message:"Spouse's NRIC number must be exactly 12 digits."}];
+  } else if(String(o.spouse_passport_no || '').trim().length < 5){
+    return [{field:'field-ob-spouse-passport', message:"Please enter your spouse's passport number."}];
+  }
   return [];
 }
 function obChildCardsHtml(key, label){
@@ -1719,7 +1790,9 @@ function obChildCardsHtml(key, label){
       <div class="kid-grid">
         <div class="field kid-wide" id="field-${key}-name-${i}"><label for="${key}Name${i}">Name (per NRIC)</label><input type="text" id="${key}Name${i}" value="${esc(c.name)}" oninput="obChildSet('${key}',${i},'name',this.value)"></div>
         <div class="field"><label for="${key}Gender${i}">Gender</label><select id="${key}Gender${i}" onchange="obChildSet('${key}',${i},'gender',this.value)"><option value="">Select</option>${['Male','Female'].map(o=>`<option ${c.gender===o?'selected':''}>${o}</option>`).join('')}</select></div>
-        <div class="field" id="field-${key}-nric-${i}"><label for="${key}Nric${i}">NRIC No. (no dash)</label><input type="text" id="${key}Nric${i}" inputmode="numeric" maxlength="12" value="${esc(c.nric)}" oninput="this.value=numericOnly(this.value);obChildNric('${key}',${i},this.value)"></div>
+        <div class="field" id="field-${key}-citizen-${i}"><label for="${key}Citizen${i}">Citizen <span class="req-star">*</span></label>${citizenSelectHtml(`${key}Citizen${i}`, c.citizen || '', `obChildCitizen('${key}',${i},this.value)`)}</div>
+        <div class="field" id="field-${key}-nric-${i}"><label for="${key}Nric${i}">NRIC No. (without dash) ${c.citizen === 'Malaysian' ? '<span class="req-star">*</span>' : ''}</label><input type="text" id="${key}Nric${i}" inputmode="numeric" maxlength="12" value="${esc(c.nric)}" ${c.citizen === 'Non-Malaysian' ? 'disabled style="background:#F2F2F1;"' : ''} oninput="this.value=numericOnly(this.value);obChildNric('${key}',${i},this.value)"><div id="${key}NricMsg${i}" class="hint">${nricMsgHtml(c.nric)}</div></div>
+        <div class="field" id="field-${key}-passport-${i}"><label for="${key}Passport${i}">Passport No. ${c.citizen === 'Non-Malaysian' ? '<span class="req-star">*</span>' : '<span class="opt-tag">(optional)</span>'}</label><input type="text" id="${key}Passport${i}" maxlength="20" value="${esc(c.passport_no)}" oninput="this.value=passportChars(this.value);obChildSet('${key}',${i},'passport_no',this.value)"></div>
         <div class="field"><label for="${key}Dob${i}">Date of birth</label><input type="date" id="${key}Dob${i}" value="${esc(c.date_of_birth)}" oninput="obChildSet('${key}',${i},'date_of_birth',this.value)"></div>
         <div class="field"><label for="${key}Edu${i}">Education</label><select id="${key}Edu${i}" onchange="obChildSet('${key}',${i},'course_name',this.value)">${childEducationOptionsHtml(c.course_name)}</select></div>
         <label class="kid-relief"><input type="checkbox" ${c.tax_relief?'checked':''} onchange="obChildSet('${key}',${i},'tax_relief',this.checked)"> Claim child tax relief</label>
@@ -1741,9 +1814,15 @@ function obChildrenHtml(){
 function validateObChildren(){
   const errs = [];
   ['children_below_18','children_18_to_23'].forEach(key => obKids(key).forEach((c,i) => {
-    const any = (c.name||'').trim() || c.nric || c.date_of_birth || c.gender || c.course_name;
-    if(any && !(c.name||'').trim()) errs.push({field:`field-${key}-name-${i}`, message:'Please enter the name of each child you add (or remove that child).'});
-    if(c.nric && c.nric.length !== 12) errs.push({field:`field-${key}-nric-${i}`, message:`${c.name || 'Child'}: NRIC must be 12 digits (or leave it blank).`});
+    const any = (c.name||'').trim() || c.nric || c.passport_no || c.citizen || c.date_of_birth || c.gender || c.course_name;
+    if(!any) return; // an empty card is ignored
+    const who = (c.name||'').trim() || 'Child';
+    if(!(c.name||'').trim()) errs.push({field:`field-${key}-name-${i}`, message:'Please enter the name of each child you add (or remove that child).'});
+    if(!c.citizen) errs.push({field:`field-${key}-citizen-${i}`, message:`${who}: please select the citizenship.`});
+    else if(c.citizen === 'Malaysian'){
+      if(!c.nric) errs.push({field:`field-${key}-nric-${i}`, message:`${who}: please enter the NRIC number.`});
+      else if(c.nric.length !== 12) errs.push({field:`field-${key}-nric-${i}`, message:`${who}: NRIC number must be exactly 12 digits.`});
+    } else if(String(c.passport_no || '').length < 5) errs.push({field:`field-${key}-passport-${i}`, message:`${who}: please enter the passport number.`});
   }));
   return errs;
 }
@@ -2538,8 +2617,9 @@ function obFamily(o){
     .forEach(k => { out[k] = has(fam[k]) ? fam[k] : o[k]; });
   // Spouse NRIC / date of birth: given at onboarding (older applications had them).
   ['spouse_nric','spouse_date_of_birth'].forEach(k => { out[k] = has(o[k]) ? o[k] : fam[k]; });
+  out.spouse_citizen = o.spouse_citizen || ''; out.spouse_passport_no = o.spouse_passport_no || '';
   // Children: given at onboarding now (older records: on the application).
-  const real = (list) => (list || []).filter(c => c && ((c.name||'').trim() || (c.nric||'').trim()));
+  const real = (list) => (list || []).filter(c => c && ((c.name||'').trim() || (c.nric||'').trim() || (c.passport_no||'').trim()));
   ['children_below_18','children_18_to_23'].forEach(k => { out[k] = real(o[k]).length ? real(o[k]) : real(fam[k]); });
   ['children_below_18_count','children_18_to_23_count'].forEach(k => { out[k] = fam[k]; });
   return out;
