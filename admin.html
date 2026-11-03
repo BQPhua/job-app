@@ -792,7 +792,9 @@ function render(){
   const titleEl = document.getElementById('pageTitle');
   const subtitleEl = document.getElementById('pageSubtitle');
   if(titleEl){
-    const t = PAGE_TITLES[currentView] || ['',''];
+    let t = PAGE_TITLES[currentView] || ['',''];
+    // Clearance and payroll switched off for now (3 Nov 2026).
+    if(currentView === 'offboarding' && typeof OB !== 'undefined' && OB.meta && OB.meta.clearance_enabled === false) t = ['Offboarding', 'Exit interviews and HR sign-off'];
     titleEl.textContent = t[0];
     if(subtitleEl) subtitleEl.textContent = (currentView === 'home' && adminToken && window.WXA) ? WXA.greeting() : t[1];
   }
