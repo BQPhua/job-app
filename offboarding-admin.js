@@ -107,6 +107,7 @@ function obApi(method, path, body) {
   if (method === 'get') return apiTry(() => api.get(url, opts));
   if (method === 'post') return apiTry(() => api.post(url, body || {}, opts));
   if (method === 'patch') return apiTry(() => api.patch(url, body || {}, opts));
+  if (method === 'delete') return apiTry(() => api.del(url, opts));
   if (method === 'put') return apiTry(() => apiRequest(url, { method: 'PUT', body: body || {}, admin: true }));
   throw new Error('bad method');
 }
@@ -206,6 +207,7 @@ function obPageHtml() {
       </div>
       <div class="ob-head-actions">
         ${(hr || payroll) && OB.view === 'all' ? `<button class="btn btn-outline btn-sm" onclick="obExportCsv()">${OB_ICON.download} Export CSV</button>` : ''}
+        ${hr ? `<button class="btn btn-outline btn-sm" onclick="obOpenReasons()">${OB_ICON.edit} Exit reasons</button>` : ''}
         ${hr ? `<button class="btn btn-primary btn-sm" onclick="obOpenInvite()">${OB_ICON.plus} Invite employee</button>` : ''}
       </div>
     </div>
@@ -693,9 +695,8 @@ function obOverviewHtml(b) {
         ${obKv('Position', esc(c.position || '—'))}
         ${obKv('Date joined', obDate(c.date_joined))}
         ${obKv('Immediate superior', `${esc(c.immediate_superior_name || '—')}${c.immediate_superior_email ? `<div class="ob-sub">${esc(c.immediate_superior_email)}</div>` : (c.flow === 'hr_only' ? '' : '<div class="ob-sub" style="color:#B42318">No superior email yet. Add one with Edit details so they can sign the Reporting Unit</div>')}`)}
-        ${obKv('Notice period', c.notice_period_days != null ? `${c.notice_period_days} days` : '—')}
-        ${obKv('Official last day', obDate(c.official_last_day))}
-        ${obKv('Actual last day', obDate(c.actual_last_day))}
+        ${obKv('Official Last Employment Date', obDate(c.official_last_day))}
+        ${obKv('Physical Last Working Date', obDate(c.actual_last_day))}
         ${obKv('Linked application', c.application_id ? 'Yes' : '—')}
       </div>
     </div>
@@ -727,11 +728,10 @@ function obEditHtml(c) {
         ${f('date_joined', 'Date joined', c.date_joined, 'date')}
         ${f('immediate_superior_name', 'Immediate superior', c.immediate_superior_name)}
         ${c.flow === 'hr_only' ? f('immediate_superior_email', 'Superior email (optional)', c.immediate_superior_email, 'email') : f('immediate_superior_email', 'Superior email (the Reporting Unit) <span class="req">*</span>', c.immediate_superior_email, 'email', 'required')}
-        ${f('notice_period_days', 'Notice period (days)', c.notice_period_days, 'number', 'min="0"')}
-        ${f('official_last_day', 'Official last day', c.official_last_day, 'date')}
-        ${f('actual_last_day', 'Actual last day', c.actual_last_day, 'date', c.official_last_day ? `min="${obAttr(c.official_last_day)}"` : '')}
+        ${f('official_last_day', 'Official Last Employment Date <span class="req">*</span>', c.official_last_day, 'date', 'required')}
+        ${f('actual_last_day', 'Physical Last Working Date <span class="req">*</span>', c.actual_last_day, 'date', 'required')}
       </div>
-      <p class="ob-note" style="margin-top:8px">The actual last day can't be before the official last day.</p>
+      <p class="ob-note" style="margin-top:8px">The Physical Last Working Date can be earlier than the Official Last Employment Date (for example, when the employee clears leave).</p>
       <div id="obEditErr"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
         <button class="btn btn-outline btn-sm" onclick="OB.drawer.editing=false;obRenderDrawer()">Cancel</button>
@@ -741,7 +741,7 @@ function obEditHtml(c) {
 }
 async function obSaveEdit() {
   const c = OB.drawer.bundle.case;
-  const keys = ['employee_name', 'employee_email', 'company_name', 'department', 'position', 'date_joined', 'immediate_superior_name', 'immediate_superior_email', 'notice_period_days', 'official_last_day', 'actual_last_day'];
+  const keys = ['employee_name', 'employee_email', 'company_name', 'department', 'position', 'date_joined', 'immediate_superior_name', 'immediate_superior_email', 'official_last_day', 'actual_last_day'];
   const body = {};
   keys.forEach((k) => {
     const el = document.getElementById(`obE_${k}`);
@@ -753,7 +753,8 @@ async function obSaveEdit() {
   if (!Object.keys(body).length) { OB.drawer.editing = false; return obRenderDrawer(); }
   const pick = (k) => (k in body ? body[k] : (c[k] == null ? '' : String(c[k]).slice(0, 10)));
   const editErr = (m) => { document.getElementById('obEditErr').innerHTML = `<div class="ob-alert err" style="margin-top:12px" role="alert">${esc(m)}</div>`; };
-  if (pick('official_last_day') && pick('actual_last_day') && pick('actual_last_day') < pick('official_last_day')) return editErr('Actual last day cannot be before the official last day.');
+  if (!pick('official_last_day')) return editErr('Official Last Employment Date is required.');
+  if (!pick('actual_last_day')) return editErr('Physical Last Working Date is required.');
   if ('immediate_superior_email' in body && !body.immediate_superior_email && OB.drawer.bundle.case.flow !== 'hr_only') return editErr('Superior email is required — the immediate superior signs the Reporting Unit checklist.');
   const { data, error } = await obApi('patch', `/cases/${c.id}`, body);
   if (error) { document.getElementById('obEditErr').innerHTML = `<div class="ob-alert err" style="margin-top:12px">${esc(error.message)}</div>`; return; }
@@ -1040,6 +1041,90 @@ function obModal({ title, subtitle, body, okLabel, okClass, onOk }) {
 }
 
 // ---------------------------------------------------------------------------
+// Exit reasons setup (3 Nov 2026): the reasons employees can tick in
+// "B. Reason(s) that contributed to your decision to leave". Shared by all
+// business units. Forms already submitted keep the reasons they chose.
+// ---------------------------------------------------------------------------
+async function obOpenReasons() {
+  const { data, error } = await obApi('get', '/reasons');
+  if (error) return obToast(error.message, 'err');
+  OB.reasonRows = data.reasons;
+  obModal({
+    title: 'Exit reasons',
+    subtitle: 'The reasons employees can tick in their Exit Interview. Changes apply to new and draft forms in every business unit; submitted forms keep their answers.',
+    body: '<div id="obReasonsErr"></div><div id="obReasonsList"></div>',
+    okLabel: 'Done',
+    onOk: (close) => close(),
+  });
+  obRenderReasons();
+}
+function obRenderReasons(focusId) {
+  const box = document.getElementById('obReasonsList');
+  if (!box) return;
+  const rows = OB.reasonRows || [];
+  box.innerHTML = `
+    <ol class="ob-reason-setup">
+      ${rows.map((r, i) => `
+        <li>
+          <span class="ob-reason-n">${i + 1}.</span>
+          <label class="ob-sr" for="obR_${r.id}">Reason ${i + 1}</label>
+          <input id="obR_${r.id}" class="ob-input" maxlength="120" value="${obAttr(r.label)}"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+            onchange="obReasonRename(${r.id}, this)">
+          <button type="button" class="btn btn-outline btn-sm" aria-label="Move ${obAttr(r.label)} up" ${i === 0 ? 'disabled' : ''} onclick="obReasonMove(${r.id}, 'up')">↑</button>
+          <button type="button" class="btn btn-outline btn-sm" aria-label="Move ${obAttr(r.label)} down" ${i === rows.length - 1 ? 'disabled' : ''} onclick="obReasonMove(${r.id}, 'down')">↓</button>
+          <button type="button" class="btn btn-outline btn-sm ob-danger-text" aria-label="Delete ${obAttr(r.label)}" ${rows.length <= 1 ? 'disabled' : ''} onclick="obReasonDelete(${r.id})">Delete</button>
+        </li>`).join('')}
+    </ol>
+    <div class="ob-reason-add">
+      <label class="ob-sr" for="obRNew">New reason</label>
+      <input id="obRNew" class="ob-input" maxlength="120" placeholder="Add a new reason"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();obReasonAdd();}">
+      <button type="button" class="btn btn-primary btn-sm" onclick="obReasonAdd()">${OB_ICON.plus} Add</button>
+    </div>`;
+  const el = focusId && document.getElementById(focusId);
+  if (el) el.focus();
+}
+function obReasonsDone(data, error, focusId) {
+  const err = document.getElementById('obReasonsErr');
+  if (error) {
+    if (err) err.innerHTML = `<div class="ob-alert err" role="alert" style="margin-bottom:12px">${esc(error.message)}</div>`;
+    obRenderReasons(focusId);
+    return false;
+  }
+  if (err) err.innerHTML = '';
+  OB.reasonRows = data.reasons;
+  if (OB.meta) OB.meta.reasons = data.reasons.map((r) => r.label);
+  obRenderReasons(focusId);
+  return true;
+}
+async function obReasonAdd() {
+  const el = document.getElementById('obRNew');
+  const label = el ? el.value.trim() : '';
+  if (!label) { if (el) el.focus(); return; }
+  const { data, error } = await obApi('post', '/reasons', { label });
+  if (obReasonsDone(data, error, 'obRNew')) obToast('Reason added.');
+  else { const again = document.getElementById('obRNew'); if (again) again.value = label; }
+}
+async function obReasonRename(id, el) {
+  const label = el.value.trim();
+  const cur = (OB.reasonRows || []).find((r) => r.id === id);
+  if (cur && cur.label === label) return;
+  const { data, error } = await obApi('patch', `/reasons/${id}`, { label });
+  if (obReasonsDone(data, error)) obToast('Reason updated.');
+}
+async function obReasonMove(id, move) {
+  const { data, error } = await obApi('patch', `/reasons/${id}`, { move });
+  obReasonsDone(data, error);
+}
+async function obReasonDelete(id) {
+  const r = (OB.reasonRows || []).find((x) => x.id === id);
+  if (!r || !confirm(`Delete “${r.label}”? Employees won't see it any more. Forms that already chose it keep it.`)) return;
+  const { data, error } = await obApi('delete', `/reasons/${id}`);
+  if (obReasonsDone(data, error)) obToast('Reason deleted.');
+}
+
+// ---------------------------------------------------------------------------
 // Invite
 // ---------------------------------------------------------------------------
 function obOpenInvite(prefill = {}) {
@@ -1072,7 +1157,8 @@ function obOpenInvite(prefill = {}) {
         ${f('department', 'Department / site', { value: prefill.department })}
         ${f('position', 'Position', { value: prefill.position })}
         ${f('date_joined', 'Date joined', { type: 'date', value: prefill.date_joined })}
-        ${f('official_last_day', 'Official last day', { type: 'date', value: prefill.official_last_day, help: 'Optional — the employee confirms it in the form.' })}
+        ${f('official_last_day', 'Official Last Employment Date', { type: 'date', req: true, value: prefill.official_last_day, help: 'The last day of employment.' })}
+        ${f('actual_last_day', 'Physical Last Working Date', { type: 'date', req: true, value: prefill.actual_last_day, help: 'The last day at work. It can be earlier than the Official Last Employment Date.' })}
         ${f('immediate_superior_name', 'Immediate superior', { value: prefill.immediate_superior_name })}
         ${obClearanceOn()
           ? f('immediate_superior_email', 'Superior email', { type: 'email', req: true, value: prefill.immediate_superior_email, attrs: 'placeholder="superior@wct.my"', help: 'The immediate superior is the Reporting Unit — they get the Reporting Unit checklist to sign.' })
@@ -1120,6 +1206,7 @@ async function obSubmitInvite(close) {
     position: val('position'),
     date_joined: val('date_joined'),
     official_last_day: val('official_last_day'),
+    actual_last_day: val('actual_last_day'),
     immediate_superior_name: val('immediate_superior_name'),
     immediate_superior_email: val('immediate_superior_email'),
     application_id: OB._inviteAppId || undefined,
@@ -1129,6 +1216,8 @@ async function obSubmitInvite(close) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.employee_email)) invalid.push(['employee_email', 'Enter a valid email address.']);
   if (!body.employee_name) invalid.push(['employee_name', 'Enter the employee’s full name.']);
   if (!body.business_unit) invalid.push(['business_unit', 'Choose a business unit.']);
+  if (!body.official_last_day) invalid.push(['official_last_day', 'Choose the Official Last Employment Date.']);
+  if (!body.actual_last_day) invalid.push(['actual_last_day', 'Choose the Physical Last Working Date.']);
   if ((obClearanceOn() || body.immediate_superior_email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.immediate_superior_email)) invalid.push(['immediate_superior_email', 'Enter the immediate superior’s email — they sign the Reporting Unit checklist.']);
   else if (body.immediate_superior_email.toLowerCase() === body.employee_email.toLowerCase()) invalid.push(['immediate_superior_email', 'The immediate superior can’t be the employee themselves.']);
   document.querySelectorAll('#obModal [aria-invalid]').forEach((el) => el.removeAttribute('aria-invalid'));
