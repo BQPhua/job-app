@@ -100,9 +100,6 @@ async function obEmpOpen(id, { silent = false } = {}) {
   const c = data.case;
   OB_EMP.draft = {
     immediate_superior_name: c.immediate_superior_name || '',
-    notice_period_days: c.notice_period_days == null ? '' : String(c.notice_period_days),
-    official_last_day: c.official_last_day || '',
-    actual_last_day: c.actual_last_day || '',
     reasons: Array.isArray(ei.reasons) ? ei.reasons.slice() : [],
     reasons_other: Array.isArray(ei.reasons_other) ? ei.reasons_other.slice() : [],
     comments: ei.comments || '',
@@ -130,7 +127,7 @@ function obEmpHomeCardHtml() {
       <div class="ob-emp-card">
         <div class="ob-emp-card-body">
           <div class="t">${esc(OB_EMP_STATUS[c.status] || c.status_label)}</div>
-          <div class="s">${esc(c.ref_no)} · ${esc(c.position || '')} · Last day ${obEmpDate(c.actual_last_day || c.official_last_day)}</div>
+          <div class="s">${esc(c.ref_no)} · ${esc(c.position || '')} · Last employment date ${obEmpDate(c.official_last_day)}</div>
         </div>
         <button class="btn ${c.status === 'invited' || c.status === 'pending_acknowledgement' ? 'btn-primary' : 'btn-ghost'} btn-sm" onclick="obEmpOpen('${c.id}')">${c.status === 'invited' ? 'Start Exit Interview →' : c.status === 'pending_acknowledgement' ? 'Review & acknowledge →' : 'View →'}</button>
       </div>`).join('')}`;
@@ -208,9 +205,10 @@ function obEmpDetailsHtml(c) {
       ${row('Name', esc(c.employee_name))}
       ${row('Position', esc(c.position || '—'))}
       ${row('Department / site', esc(c.department || '—'))}
-      ${row('Company', esc(c.company_name || c.business_unit))}
+      ${row('Company', esc(c.company_name || WCT.buName(c.business_unit)))}
       ${row('Date joined', obEmpDate(c.date_joined))}
-      ${c.status !== 'invited' ? row('Official last day', obEmpDate(c.official_last_day)) + row('Actual last day', obEmpDate(c.actual_last_day)) : ''}
+      ${row('Official Last Employment Date', c.official_last_day ? obEmpDate(c.official_last_day) : '<span class="hint">Not set by HR yet</span>')}
+      ${row('Physical Last Working Date', c.actual_last_day ? obEmpDate(c.actual_last_day) : '<span class="hint">Not set by HR yet</span>')}
     </div>
     <p class="hint" style="margin-top:6px;">These details come from HR. If something is wrong, please let HR know.</p>`;
 }
@@ -225,32 +223,12 @@ function obEmpErr(field) {
 function obEmpFormHtml(b) {
   const d = OB_EMP.draft;
   const reasons = b.reasons || [];
-  const today = b.today;
-  const notice = Number(d.notice_period_days);
-  const minOfficial = Number.isInteger(notice) && notice >= 0 && d.notice_period_days !== '' ? obEmpAddDays(today, notice) : today;
   const inv = (f) => (OB_EMP.errors[f] ? ' invalid' : '');
   return `
     <div class="grid" style="margin-top:14px;">
       <div class="field${inv('immediate_superior_name')}">
         <label for="obEmpSup">Immediate superior <span class="opt-tag">(optional)</span></label>
         <input type="text" id="obEmpSup" value="${obEmpAttr(d.immediate_superior_name)}" oninput="OB_EMP.draft.immediate_superior_name=this.value" maxlength="100" placeholder="e.g. Ahmad bin Ali">
-      </div>
-      <div class="field${inv('notice_period_days')}">
-        <label for="obEmpNotice">Notice period (days) <span class="req-star">*</span></label>
-        <input type="number" id="obEmpNotice" min="0" inputmode="numeric" value="${obEmpAttr(d.notice_period_days)}" oninput="OB_EMP.draft.notice_period_days=numericOnly(this.value);this.value=OB_EMP.draft.notice_period_days;obEmpRefreshMin()">
-        ${obEmpErr('notice_period_days')}
-      </div>
-      <div class="field${inv('official_last_day')}">
-        <label for="obEmpOfficial">Official last day <span class="req-star">*</span></label>
-        <input type="date" id="obEmpOfficial" min="${minOfficial}" value="${obEmpAttr(d.official_last_day)}" oninput="OB_EMP.draft.official_last_day=this.value;obEmpRefreshActualMin()">
-        <div class="hint" id="obEmpOfficialHint">Must be on or after ${obEmpDate(minOfficial)} (today + notice period).</div>
-        ${obEmpErr('official_last_day')}
-      </div>
-      <div class="field${inv('actual_last_day')}">
-        <label for="obEmpActual">Actual last day <span class="req-star">*</span></label>
-        <input type="date" id="obEmpActual" min="${d.official_last_day && d.official_last_day > today ? obEmpAttr(d.official_last_day) : today}" value="${obEmpAttr(d.actual_last_day)}" oninput="OB_EMP.draft.actual_last_day=this.value">
-        <div class="hint">The day you'll actually stop working. It can't be before your official last day.</div>
-        ${obEmpErr('actual_last_day')}
       </div>
     </div>
 
@@ -285,24 +263,6 @@ function obEmpFormHtml(b) {
       </div>
     </div>`;
 }
-function obEmpAddDays(iso, n) {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-function obEmpRefreshMin() {
-  const n = Number(OB_EMP.draft.notice_period_days);
-  const min = OB_EMP.draft.notice_period_days !== '' && Number.isInteger(n) ? obEmpAddDays(OB_EMP.bundle.today, n) : OB_EMP.bundle.today;
-  const el = document.getElementById('obEmpOfficial');
-  if (el) el.min = min;
-  const hint = document.getElementById('obEmpOfficialHint');
-  if (hint) hint.textContent = `Must be on or after ${obEmpDate(min)} (today + notice period).`;
-}
-function obEmpRefreshActualMin() {
-  const el = document.getElementById('obEmpActual');
-  const off = OB_EMP.draft.official_last_day;
-  if (el) el.min = off && off > OB_EMP.bundle.today ? off : OB_EMP.bundle.today;
-}
 function obEmpToggleReason(i, on) {
   const r = OB_EMP.bundle.reasons[i];
   const set = new Set(OB_EMP.draft.reasons);
@@ -324,9 +284,6 @@ function obEmpDraftPayload() {
   const d = OB_EMP.draft;
   return {
     immediate_superior_name: d.immediate_superior_name,
-    notice_period_days: d.notice_period_days === '' ? null : Number(d.notice_period_days),
-    official_last_day: d.official_last_day || null,
-    actual_last_day: d.actual_last_day || null,
     reasons: d.reasons,
     reasons_other: d.reasons_other,
     comments: d.comments,
@@ -347,16 +304,12 @@ async function obEmpSubmit() {
   const d = OB_EMP.draft;
   // Quick client-side checks (the server re-checks everything).
   const errs = {};
-  if (d.notice_period_days === '') errs.notice_period_days = 'Please enter your notice period in days.';
-  if (!d.official_last_day) errs.official_last_day = 'Please choose your official last day.';
-  if (!d.actual_last_day) errs.actual_last_day = 'Please choose your actual last day.';
-  else if (d.official_last_day && d.actual_last_day < d.official_last_day) errs.actual_last_day = 'Your actual last day cannot be before your official last day.';
   if (!d.reasons.length && !d.reasons_other.length) errs.reasons = 'Please choose at least one reason, or add your own.';
   if (!d.signature_name.trim()) errs.signature_name = 'Please type your full name to sign.';
   if (!d.declaration) errs.declaration = 'Please tick the confirmation box.';
   OB_EMP.errors = errs;
   if (Object.keys(errs).length) { render(); obEmpFocusFirstError(); return; }
-  if (!confirm('Submit your Exit Interview? You won\'t be able to change it afterwards, and HR and the departments will be notified.')) return;
+  if (!confirm(`Submit your Exit Interview? You won't be able to change it afterwards, and ${OB_EMP.bundle.case.flow === 'hr_only' ? 'HR' : 'HR and the departments'} will be notified.`)) return;
   showLoading('Submitting…');
   const { data, error } = await apiTry(() => api.post(`/offboarding/mine/${OB_EMP.caseId}/exit-interview/submit`, {
     ...obEmpDraftPayload(), signature_name: d.signature_name.trim(), declaration: true,
@@ -376,8 +329,8 @@ async function obEmpSubmit() {
   render();
 }
 function obEmpFocusFirstError() {
-  const order = ['notice_period_days', 'official_last_day', 'actual_last_day', 'reasons', 'signature_name', 'declaration'];
-  const ids = { notice_period_days: 'obEmpNotice', official_last_day: 'obEmpOfficial', actual_last_day: 'obEmpActual', reasons: 'obEmpOther', signature_name: 'obEmpSigName', declaration: 'obEmpSigAgree' };
+  const order = ['reasons', 'signature_name', 'declaration'];
+  const ids = { reasons: 'obEmpOther', signature_name: 'obEmpSigName', declaration: 'obEmpSigAgree' };
   const first = order.find((f) => OB_EMP.errors[f]);
   const el = first && document.getElementById(ids[first]);
   if (el) { el.scrollIntoView({ block: 'center' }); el.focus({ preventScroll: true }); }
