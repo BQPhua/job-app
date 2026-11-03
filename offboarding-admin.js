@@ -21,9 +21,10 @@
 // ============================================================================
 
 const OB_FILTER_KEY = 'wct_ob_filters';
-const OB_STATUS_ORDER = ['invited', 'clearance_in_progress', 'pending_acknowledgement', 'pending_payroll', 'completed', 'cancelled'];
+const OB_STATUS_ORDER = ['invited', 'pending_hr_signoff', 'clearance_in_progress', 'pending_acknowledgement', 'pending_payroll', 'completed', 'cancelled'];
 const OB_STATUS_LABELS = {
   invited: 'Invited',
+  pending_hr_signoff: 'Waiting for HR sign-off',
   clearance_in_progress: 'Clearance in progress',
   pending_acknowledgement: 'Pending acknowledgement',
   pending_payroll: 'Pending payroll',
@@ -44,6 +45,7 @@ const OB_EVENT_LABELS = {
   acknowledged: 'Employee acknowledged the clearance',
   hr_signed: 'HR signed Section D',
   payroll_done: 'Payroll marked done',
+  completed: 'Offboarding completed',
   cancelled: 'Case cancelled',
   email_failed: 'Email could not be sent',
 };
@@ -76,7 +78,7 @@ const OB = {
   data: null,             // { rows, total, counts }
   loading: false,
   selected: new Set(),
-  tasks: { sections: [], payroll: [], count: 0 },
+  tasks: { sections: [], payroll: [], signoffs: [], count: 0 },
   drawer: null,           // { id, bundle, tab, editing }
   seq: 0,
   searchTimer: null,
@@ -244,6 +246,9 @@ function obSetView(v) {
 // ---------------------------------------------------------------------------
 // KPI tiles
 // ---------------------------------------------------------------------------
+// HR-only offboarding (3 Nov 2026): department clearance and payroll are
+// switched off on the server; new cases go Exit Interview -> HR sign-off.
+function obClearanceOn() { return !(OB.meta && OB.meta.clearance_enabled === false); }
 function obKpisHtml() {
   const c = (OB.data && OB.data.counts) || {};
   const f = OB.filters;
@@ -254,11 +259,13 @@ function obKpisHtml() {
     return `<button type="button" class="ob-kpi${alert && n ? ' is-alert' : ''}" style="--kpi:${color}" aria-pressed="${!!pressed}" onclick="${click}">
       <div class="n">${n == null ? '–' : n}</div><div class="l">${label}</div></button>`;
   };
+  const full = obClearanceOn();
   return [
     tile('Invited', c.invited, { status: 'invited', color: 'var(--info)' }),
-    tile('In clearance', c.clearance_in_progress, { status: 'clearance_in_progress', color: 'var(--warn)' }),
-    tile('Pending acknowledgement', c.pending_acknowledgement, { status: 'pending_acknowledgement', color: '#5B36A8' }),
-    tile('Pending payroll', c.pending_payroll, { status: 'pending_payroll', color: '#1D6A85' }),
+    (!full || c.pending_hr_signoff) ? tile('Waiting for HR sign-off', c.pending_hr_signoff, { status: 'pending_hr_signoff', color: 'var(--warn)' }) : '',
+    (full || c.clearance_in_progress) ? tile('In clearance', c.clearance_in_progress, { status: 'clearance_in_progress', color: 'var(--warn)' }) : '',
+    (full || c.pending_acknowledgement) ? tile('Pending acknowledgement', c.pending_acknowledgement, { status: 'pending_acknowledgement', color: '#5B36A8' }) : '',
+    (full || c.pending_payroll) ? tile('Pending payroll', c.pending_payroll, { status: 'pending_payroll', color: '#1D6A85' }) : '',
     tile('Overdue', c.overdue, { due: 'overdue', color: 'var(--danger)', alert: true }),
     tile('Completed this month', c.completed_this_month, { status: 'completed', color: 'var(--ok)' }),
   ].join('');
@@ -444,7 +451,7 @@ function obResultsHtml() {
             <td><div>${esc(r.department || '—')}</div><div class="ob-sub">${esc(r.position || '')}</div></td>
             <td class="ob-date">${obDate(r.effective_last_day)}<br>${obDueHtml(r)}</td>
             <td>${obBadge(r.status)}</td>
-            <td>${r.status === 'invited' || r.status === 'cancelled' ? '<span class="ob-sub">—</span>' : obProgressHtml(r.sections_signed, r.sections_total)}</td>
+            <td>${r.status === 'invited' || r.status === 'cancelled' || r.flow === 'hr_only' ? `<span class="ob-sub">${r.flow === 'hr_only' && r.status === 'completed' ? 'HR signed' : '—'}</span>` : obProgressHtml(r.sections_signed, r.sections_total)}</td>
             <td class="ob-sub">${esc(r.waiting_on)}</td>
           </tr>`).join('')}
       </tbody>
@@ -513,11 +520,25 @@ function obDaysBadge(days) {
   return `<span class="ob-sub">${days} days left</span>`;
 }
 function obTasksHtml() {
-  const t = OB.tasks || { sections: [], payroll: [] };
-  if (!t.sections.length && !t.payroll.length) {
+  const t = OB.tasks || { sections: [], payroll: [], signoffs: [] };
+  const signoffs = t.signoffs || [];
+  if (!t.sections.length && !t.payroll.length && !signoffs.length) {
     return `<div class="ob-table-wrap"><div class="ob-empty"><h3>You're all caught up</h3><p>No checklists or payroll actions are waiting for you right now.</p></div></div>`;
   }
   return `
+    ${signoffs.length ? `
+      <div class="ob-section-title">Exit Interviews to sign (${signoffs.length})</div>
+      <div class="ob-task-list">
+        ${signoffs.map((c) => `
+          <div class="ob-task">
+            <div class="ico">${OB_ICON.clipboard}</div>
+            <div class="main">
+              <div class="t">${esc(c.employee_name)}</div>
+              <div class="s">${[c.ref_no, c.position, WCT.buName(c.business_unit), `Submitted ${obDateTime(c.submitted_at)}`].filter(Boolean).map(esc).join(' · ')} ${obDaysBadge(c.days_left)}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="obOpenCase('${c.id}', 'interview')">Review &amp; sign</button>
+          </div>`).join('')}
+      </div>` : ''}
     ${t.sections.length ? `
       <div class="ob-section-title">Clearance checklists to complete (${t.sections.length})</div>
       <div class="ob-task-list">
@@ -567,7 +588,10 @@ async function obOpenCase(id, tab, focusDept) {
   const { data, error } = await obApi('get', `/cases/${id}`);
   hideLoading();
   if (error) return obToast(error.message, 'err');
-  let startTab = tab || (data.sections.some((s) => s.can_edit) ? 'clearance' : 'overview');
+  const hrOnly = data.case.flow === 'hr_only';
+  let startTab = tab || (data.sections.some((s) => s.can_edit) ? 'clearance'
+    : (hrOnly && data.case.status === 'pending_hr_signoff' && data.can && data.can.hr_signoff ? 'interview' : 'overview'));
+  if (startTab === 'clearance' && hrOnly) startTab = 'overview';
   if (startTab === 'interview' && !(data.can && data.can.view_exit_interview)) startTab = 'overview';
   OB.drawer = { id, bundle: data, tab: startTab, editing: false, focusDept };
   const d = obDrawerEl();
@@ -594,7 +618,8 @@ function obSetTab(tab) {
 }
 function obVisibleTabs() {
   const canInterview = OB.drawer && OB.drawer.bundle.can && OB.drawer.bundle.can.view_exit_interview;
-  return canInterview ? ['overview', 'interview', 'clearance', 'timeline'] : ['overview', 'clearance', 'timeline'];
+  const hrOnly = OB.drawer && OB.drawer.bundle.case.flow === 'hr_only';
+  return ['overview', canInterview && 'interview', !hrOnly && 'clearance', 'timeline'].filter(Boolean);
 }
 function obTabKey(e) {
   const tabs = obVisibleTabs();
@@ -604,6 +629,11 @@ function obTabKey(e) {
 }
 
 function obStepsHtml(c) {
+  if (c.flow === 'hr_only') {
+    const i = { invited: 1, pending_hr_signoff: 2, completed: 4 }[c.status] ?? -1;
+    const st = ['Invited', 'Exit Interview', 'HR sign-off', 'Completed'];
+    return `<ol class="ob-steps" aria-label="Progress">${st.map((x, k) => `<li class="${k < i || c.status === 'completed' ? 'done' : (k === i && c.status !== 'cancelled' ? 'now' : '')}">${esc(x)}</li>`).join('')}</ol>`;
+  }
   const idx = { invited: 0, clearance_in_progress: 2, pending_acknowledgement: 3, pending_payroll: 4, completed: 5, cancelled: -1 }[c.status];
   const steps = ['Invited', 'Exit Interview', `Clearance ${c.sections_signed}/${c.sections_total}`, 'Acknowledged', 'Payroll done'];
   const done = (i) => (c.status === 'completed') || (i < idx) || (i === 1 && idx >= 2);
@@ -639,7 +669,7 @@ function obRenderDrawer() {
       ${c.status === 'cancelled' ? `<div class="ob-alert warn" style="margin-top:12px">Cancelled ${obDateTime(c.cancelled_at)} — ${esc(c.cancel_reason || '')}</div>` : obStepsHtml(c)}
       ${actions ? `<div class="ob-actions">${actions}</div>` : '<div style="height:10px"></div>'}
       <div class="ob-tabs" role="tablist" aria-label="Case sections">
-        ${tabBtn('overview', 'Overview')}${can.view_exit_interview ? tabBtn('interview', 'Exit Interview') : ''}${tabBtn('clearance', `Clearance (${c.sections_signed}/${c.sections_total})`)}${tabBtn('timeline', 'Timeline')}
+        ${tabBtn('overview', 'Overview')}${can.view_exit_interview ? tabBtn('interview', c.flow === 'hr_only' && c.status === 'pending_hr_signoff' ? 'Exit Interview · sign' : 'Exit Interview') : ''}${c.flow === 'hr_only' ? '' : tabBtn('clearance', `Clearance (${c.sections_signed}/${c.sections_total})`)}${tabBtn('timeline', 'Timeline')}
       </div>
     </div>
     <div class="ob-drawer-body" role="tabpanel" id="obPanel" aria-labelledby="obTab-${tab}">
@@ -662,7 +692,7 @@ function obOverviewHtml(b) {
         ${obKv('Department / site', esc(c.department || '—'))}
         ${obKv('Position', esc(c.position || '—'))}
         ${obKv('Date joined', obDate(c.date_joined))}
-        ${obKv('Immediate superior', `${esc(c.immediate_superior_name || '—')}${c.immediate_superior_email ? `<div class="ob-sub">${esc(c.immediate_superior_email)}</div>` : '<div class="ob-sub" style="color:#B42318">No superior email yet. Add one with Edit details so they can sign the Reporting Unit</div>'}`)}
+        ${obKv('Immediate superior', `${esc(c.immediate_superior_name || '—')}${c.immediate_superior_email ? `<div class="ob-sub">${esc(c.immediate_superior_email)}</div>` : (c.flow === 'hr_only' ? '' : '<div class="ob-sub" style="color:#B42318">No superior email yet. Add one with Edit details so they can sign the Reporting Unit</div>')}`)}
         ${obKv('Notice period', c.notice_period_days != null ? `${c.notice_period_days} days` : '—')}
         ${obKv('Official last day', obDate(c.official_last_day))}
         ${obKv('Actual last day', obDate(c.actual_last_day))}
@@ -674,8 +704,11 @@ function obOverviewHtml(b) {
       <div class="ob-kv">
         ${obKv('Invited', `${obDateTime(c.invited_at)}<div class="ob-sub">by ${esc(c.invited_by_email || '')}</div>`)}
         ${obKv('Exit Interview submitted', obDateTime(c.submitted_at))}
+        ${c.flow === 'hr_only' ? `
+        ${obKv('HR sign-off (Section D)', b.exitInterview && b.exitInterview.hr_signed_at ? `${obDateTime(b.exitInterview.hr_signed_at)}<div class="ob-sub">${esc(b.exitInterview.hr_signed_name || '')}</div>` : '—')}
+        ${obKv('Completed', c.completed_at ? obDateTime(c.completed_at) : '—')}` : `
         ${obKv('Acknowledged by employee', c.acknowledged_at ? `${obDateTime(c.acknowledged_at)}<div class="ob-sub">${esc(c.acknowledged_signature_name || '')}</div>` : '—')}
-        ${obKv('Payroll done', c.payroll_completed_at ? `${obDateTime(c.payroll_completed_at)}<div class="ob-sub">${esc(c.payroll_completed_by_email || '')}${c.payroll_remarks ? ` — ${esc(c.payroll_remarks)}` : ''}</div>` : '—')}
+        ${obKv('Payroll done', c.payroll_completed_at ? `${obDateTime(c.payroll_completed_at)}<div class="ob-sub">${esc(c.payroll_completed_by_email || '')}${c.payroll_remarks ? ` — ${esc(c.payroll_remarks)}` : ''}</div>` : '—')}`}
       </div>
     </div>`;
 }
@@ -693,7 +726,7 @@ function obEditHtml(c) {
         ${f('position', 'Position', c.position)}
         ${f('date_joined', 'Date joined', c.date_joined, 'date')}
         ${f('immediate_superior_name', 'Immediate superior', c.immediate_superior_name)}
-        ${f('immediate_superior_email', 'Superior email (the Reporting Unit) <span class="req">*</span>', c.immediate_superior_email, 'email', 'required')}
+        ${c.flow === 'hr_only' ? f('immediate_superior_email', 'Superior email (optional)', c.immediate_superior_email, 'email') : f('immediate_superior_email', 'Superior email (the Reporting Unit) <span class="req">*</span>', c.immediate_superior_email, 'email', 'required')}
         ${f('notice_period_days', 'Notice period (days)', c.notice_period_days, 'number', 'min="0"')}
         ${f('official_last_day', 'Official last day', c.official_last_day, 'date')}
         ${f('actual_last_day', 'Actual last day', c.actual_last_day, 'date', c.official_last_day ? `min="${obAttr(c.official_last_day)}"` : '')}
@@ -721,7 +754,7 @@ async function obSaveEdit() {
   const pick = (k) => (k in body ? body[k] : (c[k] == null ? '' : String(c[k]).slice(0, 10)));
   const editErr = (m) => { document.getElementById('obEditErr').innerHTML = `<div class="ob-alert err" style="margin-top:12px" role="alert">${esc(m)}</div>`; };
   if (pick('official_last_day') && pick('actual_last_day') && pick('actual_last_day') < pick('official_last_day')) return editErr('Actual last day cannot be before the official last day.');
-  if ('immediate_superior_email' in body && !body.immediate_superior_email) return editErr('Superior email is required — the immediate superior signs the Reporting Unit checklist.');
+  if ('immediate_superior_email' in body && !body.immediate_superior_email && OB.drawer.bundle.case.flow !== 'hr_only') return editErr('Superior email is required — the immediate superior signs the Reporting Unit checklist.');
   const { data, error } = await obApi('patch', `/cases/${c.id}`, body);
   if (error) { document.getElementById('obEditErr').innerHTML = `<div class="ob-alert err" style="margin-top:12px">${esc(error.message)}</div>`; return; }
   OB.drawer.bundle = data;
@@ -768,7 +801,8 @@ function obInterviewHtml(b) {
           <div class="ob-field full"><label for="obHrComments">Comments (optional)</label><textarea id="obHrComments">${esc(ei.hr_comments || '')}</textarea></div>
         </div>
         <div id="obHrErr"></div>
-        <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="obHrSignoff()">${hrSigned ? 'Update sign-off' : 'Sign Section D'}</button></div>
+        ${c.status === 'pending_hr_signoff' ? '<p class="ob-note" style="margin:10px 0 0">Signing completes this offboarding and emails the employee.</p>' : ''}
+        <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="obHrSignoff()">${hrSigned ? 'Update sign-off' : c.status === 'pending_hr_signoff' ? 'Sign &amp; complete offboarding' : 'Sign Section D'}</button></div>
       ` : (!hrSigned ? '<p class="ob-note">Not signed yet.</p>' : '')}
     </div>`;
 }
@@ -779,11 +813,12 @@ async function obHrSignoff() {
     comments: document.getElementById('obHrComments').value.trim(),
   };
   if (!body.name || !body.position) { document.getElementById('obHrErr').innerHTML = '<div class="ob-alert err" style="margin-top:10px">Please enter your name and position.</div>'; return; }
+  const wasWaiting = OB.drawer.bundle.case.status === 'pending_hr_signoff';
   const { data, error } = await obApi('post', `/cases/${OB.drawer.id}/hr-signoff`, body);
   if (error) return obToast(error.message, 'err');
   OB.drawer.bundle = data;
   obRenderDrawer();
-  obToast('Section D signed.');
+  obToast(wasWaiting && data.case.status === 'completed' ? 'Signed — offboarding completed and the employee has been notified.' : 'Section D signed.');
 }
 
 function obClearanceHtml(b) {
@@ -1039,7 +1074,9 @@ function obOpenInvite(prefill = {}) {
         ${f('date_joined', 'Date joined', { type: 'date', value: prefill.date_joined })}
         ${f('official_last_day', 'Official last day', { type: 'date', value: prefill.official_last_day, help: 'Optional — the employee confirms it in the form.' })}
         ${f('immediate_superior_name', 'Immediate superior', { value: prefill.immediate_superior_name })}
-        ${f('immediate_superior_email', 'Superior email', { type: 'email', req: true, value: prefill.immediate_superior_email, attrs: 'placeholder="superior@wct.my"', help: 'The immediate superior is the Reporting Unit — they get the Reporting Unit checklist to sign.' })}
+        ${obClearanceOn()
+          ? f('immediate_superior_email', 'Superior email', { type: 'email', req: true, value: prefill.immediate_superior_email, attrs: 'placeholder="superior@wct.my"', help: 'The immediate superior is the Reporting Unit — they get the Reporting Unit checklist to sign.' })
+          : f('immediate_superior_email', 'Superior email', { type: 'email', value: prefill.immediate_superior_email, attrs: 'placeholder="superior@wct.my"', help: 'Optional. For now the employee only fills the Exit Interview, then HR signs it.' })}
       </div>
       <div id="obInviteErr"></div>`,
     okLabel: 'Send invitation',
@@ -1092,7 +1129,7 @@ async function obSubmitInvite(close) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.employee_email)) invalid.push(['employee_email', 'Enter a valid email address.']);
   if (!body.employee_name) invalid.push(['employee_name', 'Enter the employee’s full name.']);
   if (!body.business_unit) invalid.push(['business_unit', 'Choose a business unit.']);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.immediate_superior_email)) invalid.push(['immediate_superior_email', 'Enter the immediate superior’s email — they sign the Reporting Unit checklist.']);
+  if ((obClearanceOn() || body.immediate_superior_email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.immediate_superior_email)) invalid.push(['immediate_superior_email', 'Enter the immediate superior’s email — they sign the Reporting Unit checklist.']);
   else if (body.immediate_superior_email.toLowerCase() === body.employee_email.toLowerCase()) invalid.push(['immediate_superior_email', 'The immediate superior can’t be the employee themselves.']);
   document.querySelectorAll('#obModal [aria-invalid]').forEach((el) => el.removeAttribute('aria-invalid'));
   if (invalid.length) {
