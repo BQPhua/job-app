@@ -228,3 +228,12 @@ dialog.ob-modal :where(button,a,summary,input,select,textarea):focus-visible{out
   .ob-head-actions{width:100%;}
   .ob-head-actions .btn{flex:1;justify-content:center;}
 }
+/* Exit reasons setup (3 Nov 2026) */
+.ob-reason-setup{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow:auto;}
+.ob-reason-setup li{display:flex;align-items:center;gap:6px;}
+.ob-reason-setup .ob-input{flex:1;min-width:0;}
+.ob-reason-n{width:22px;flex:none;color:var(--ink-soft);font-size:12.5px;text-align:right;}
+.ob-reason-add{display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding-top:12px;}
+.ob-reason-add .ob-input{flex:1;min-width:0;}
+.ob-danger-text{color:var(--danger);}
+@media (max-width:560px){.ob-reason-setup li{flex-wrap:wrap;}.ob-reason-setup .ob-input{flex-basis:calc(100% - 28px);}}
