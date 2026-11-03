@@ -27,6 +27,7 @@ const OB_EMP = {
 };
 const OB_EMP_STATUS = {
   invited: 'Exit Interview to complete',
+  pending_hr_signoff: 'Submitted · waiting for HR sign-off',
   clearance_in_progress: 'Department clearance in progress',
   pending_acknowledgement: 'Ready for your acknowledgement',
   pending_payroll: 'Final pay being processed',
@@ -140,8 +141,10 @@ function obEmpHasCases() { return OB_EMP.cases.length > 0; }
 // Page
 // ---------------------------------------------------------------------------
 function obEmpStepsHtml(c) {
-  const order = ['invited', 'clearance_in_progress', 'pending_acknowledgement', 'pending_payroll', 'completed'];
-  const labels = ['Exit Interview', 'Department clearance', 'Your acknowledgement', 'Final pay', 'Done'];
+  // HR-only flow (3 Nov 2026): Exit Interview, then HR signs it.
+  const hrOnly = c.flow === 'hr_only';
+  const order = hrOnly ? ['invited', 'pending_hr_signoff', 'completed'] : ['invited', 'clearance_in_progress', 'pending_acknowledgement', 'pending_payroll', 'completed'];
+  const labels = hrOnly ? ['Exit Interview', 'HR sign-off', 'Done'] : ['Exit Interview', 'Department clearance', 'Your acknowledgement', 'Final pay', 'Done'];
   const idx = order.indexOf(c.status);
   return `<ol class="ob-emp-steps" aria-label="Offboarding progress">${labels.map((l, i) => {
     const cls = c.status === 'completed' || i < idx ? 'done' : i === idx ? 'now' : '';
@@ -166,16 +169,19 @@ function tplMyOffboarding() {
   const c = b.case;
   const intro = {
     invited: 'HR has started your offboarding. Please complete your Exit Interview below — you can save a draft and come back later.',
+    pending_hr_signoff: 'Thank you for submitting your Exit Interview. HR will review and sign it, and we\'ll email you when that\'s done.',
     clearance_in_progress: 'Thank you for submitting your Exit Interview. Each department is now completing your exit clearance. We\'ll email you when it\'s ready for your acknowledgement.',
     pending_acknowledgement: 'All six departments have completed your exit clearance. Please review the result below and acknowledge it so Payroll can process your final pay.',
     pending_payroll: 'Thank you — Payroll is now processing your final pay. We\'ll email you once it\'s done.',
-    completed: 'Your offboarding with WCT is complete. Thank you for your contributions, and all the best for what comes next.',
+    completed: c.flow === 'hr_only'
+      ? `HR has signed your Exit Interview${b.exitInterview && b.exitInterview.hr_signed_name ? ` (${esc(b.exitInterview.hr_signed_name)}, ${obEmpDateTime(b.exitInterview.hr_signed_at)})` : ''} and your offboarding with WCT is complete. Thank you for your contributions, and all the best for what comes next.`
+      : 'Your offboarding with WCT is complete. Thank you for your contributions, and all the best for what comes next.',
     cancelled: 'HR has cancelled this offboarding. No further action is needed from you. Please contact HR if you think this is a mistake.',
   }[c.status];
   let body = '';
   if (c.status === 'invited') body = obEmpFormHtml(b);
   else if (c.status === 'pending_acknowledgement') body = obEmpAckHtml(b);
-  else if (c.status !== 'cancelled') body = obEmpProgressHtml(b);
+  else if (c.status !== 'cancelled' && c.flow !== 'hr_only') body = obEmpProgressHtml(b);
 
   return `
     <div class="step-eyebrow">Offboarding · ${esc(c.ref_no)}</div>
@@ -188,7 +194,7 @@ function tplMyOffboarding() {
       <div class="section-title">Your documents</div>
       <div class="ob-emp-docs">
         <button class="btn btn-ghost btn-sm" onclick="obEmpPdf('exit-interview')">Exit Interview Form (PDF)</button>
-        ${['pending_payroll', 'completed'].includes(c.status) ? '<button class="btn btn-ghost btn-sm" onclick="obEmpPdf(\'clearance\')">Exit Clearance Form (PDF)</button>' : ''}
+        ${c.flow !== 'hr_only' && ['pending_payroll', 'completed'].includes(c.status) ? '<button class="btn btn-ghost btn-sm" onclick="obEmpPdf(\'clearance\')">Exit Clearance Form (PDF)</button>' : ''}
       </div>` : ''}
     ${c.status !== 'invited' && c.status !== 'pending_acknowledgement' ? `
       <div class="btn-row"><button class="btn btn-ghost" onclick="obEmpBack()">← Back to home</button><div></div></div>` : ''}`;
