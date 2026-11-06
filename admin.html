@@ -11,6 +11,13 @@
 <script src="msal-browser.min.js"></script>
 <link rel="stylesheet" href="offboarding-admin.css">
 <style>
+  /* Onboarding details access per business unit (6 Nov 2026) */
+  .ga-pick.onb .ga-pick-h,.ga-pick.onb .ga-pick-row{grid-template-columns:1fr 90px 120px 90px;}
+  .pm-grant .pm-grant-r{display:flex;align-items:center;gap:14px;}
+  .pm-onb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--wct-slate-600,#475569);white-space:nowrap;}
+  .pm-onb input,.pm-add .pm-onb input{width:18px;height:18px;accent-color:var(--wct-navy,#101B2D);}
+  .role-tag .no-onb{font-weight:500;opacity:.8;}
+  @media (max-width:820px){ .ga-pick.onb .ga-pick-h,.ga-pick.onb .ga-pick-row{grid-template-columns:1fr 64px 84px 64px;} .pm-grant{flex-wrap:wrap;gap:4px;} }
   :root{
     --navy:#101B2D;
     --navy-2:#1C2C44;
@@ -2496,9 +2503,9 @@ async function loadAdminMgmtList(){
     const byId = {};
     (data||[]).forEach(row => {
       if(!byId[row.admin_user_id]){
-        byId[row.admin_user_id] = { id: row.admin_user_id, email: row.email, display_name: row.display_name, is_active: row.is_active, linked: row.linked, can_view_onboarding: row.can_view_onboarding !== false, grants: [] };
+        byId[row.admin_user_id] = { id: row.admin_user_id, email: row.email, display_name: row.display_name, is_active: row.is_active, linked: row.linked, grants: [] };
       }
-      if(row.grant_id){ byId[row.admin_user_id].grants.push({ id: row.grant_id, role: row.role, business_unit: row.business_unit, department_id: row.department_id, department_name: row.department_name }); }
+      if(row.grant_id){ byId[row.admin_user_id].grants.push({ id: row.grant_id, role: row.role, business_unit: row.business_unit, department_id: row.department_id, department_name: row.department_name, can_view_onboarding: row.can_view_onboarding !== false }); }
     });
     adminMgmtList = Object.values(byId).sort((a,b) => (a.display_name||a.email).localeCompare(b.display_name||b.email));
   } catch(e){ uiToast('Error loading admin list: '+e.message); adminMgmtList = []; }
@@ -2573,7 +2580,7 @@ function inviteFormHtml(group){
     <div class="ga-invite">
       <h3>${group.bu ? `Add a person to ${esc(group.name)}` : 'Invite a person'}</h3>
       ${group.bu && existing.length ? `<div class="field"><label for="inviteExisting">Someone already invited</label>
-        <select id="inviteExisting" class="select-clean" onchange="document.getElementById('inviteNew').hidden = !!this.value; document.getElementById('inviteOnboardingWrap').hidden = !!this.value;">
+        <select id="inviteExisting" class="select-clean" onchange="document.getElementById('inviteNew').hidden = !!this.value;">
           <option value="">— New person (enter email below) —</option>
           ${existing.map(a => `<option value="${a.id}">${esc(a.display_name || a.email)} · ${esc(a.email)}</option>`).join('')}
         </select></div>` : ''}
@@ -2581,15 +2588,16 @@ function inviteFormHtml(group){
         <div class="field"><label for="newAdminEmail">Work email <span class="req">*</span></label><input type="email" id="newAdminEmail" placeholder="name@wct.my"></div>
         <div class="field"><label for="newAdminName">Display name</label><input type="text" id="newAdminName" placeholder="Optional"></div>
       </div>
-      <div class="ga-pick">
-        <div class="ga-pick-h"><span>Business unit</span><span>HR Admin</span><span>Payroll PIC</span></div>
+      <div class="ga-pick onb">
+        <div class="ga-pick-h"><span>Business unit</span><span>HR Admin</span><span title="EPF, income tax, SOCSO, bank account, family NRICs, emergency contact, beneficiary">Onboarding details</span><span>Payroll PIC</span></div>
         ${units.map(u => `<div class="ga-pick-row"><span>${esc(u.name)}</span>
-          <label><input type="checkbox" data-bu="${esc(u.code)}" data-role="bu_admin" ${group.key===u.code?'checked':''}><span class="sr-only">HR Admin for ${esc(u.name)}</span></label>
+          <label><input type="checkbox" data-bu="${esc(u.code)}" data-role="bu_admin" ${group.key===u.code?'checked':''} onchange="if(!this.checked){const o=this.closest('.ga-pick-row').querySelector('[data-onb]'); if(o) o.checked=false;}"><span class="sr-only">HR Admin for ${esc(u.name)}</span></label>
+          <label><input type="checkbox" data-onb="${esc(u.code)}" onchange="if(this.checked){this.closest('.ga-pick-row').querySelector('[data-role=bu_admin]').checked=true;}"><span class="sr-only">Can view onboarding details in ${esc(u.name)}</span></label>
           <label><input type="checkbox" data-bu="${esc(u.code)}" data-role="payroll_pic"><span class="sr-only">Payroll PIC for ${esc(u.name)}</span></label></div>`).join('')}
         ${group.bu ? '' : `<label class="ga-extra"><input type="checkbox" id="inviteSuper" ${group.key==='super'?'checked':''}> Super Admin (every business unit, settings and access)</label>
         <label class="ga-extra"><input type="checkbox" id="invitePayAll" ${group.key==='payroll_all'?'checked':''}> Payroll PIC for all business units</label>`}
       </div>
-      <label class="ga-extra" id="inviteOnboardingWrap"><input type="checkbox" id="inviteOnboarding"> Can view onboarding details (EPF, tax, bank account, family NRICs). Leave unticked if they should only see job applications.</label>
+      <p class="hint" style="margin-top:0;">Onboarding details (EPF, income tax, SOCSO, bank account, family NRICs, emergency contact, beneficiary) are only shown in the units ticked. Without it, an HR Admin still sees the job applications.</p>
       <div id="adminMgmtErr"></div>
       <p class="hint">They sign in with Microsoft using this email. Access starts at their next sign-in.</p>
       <button class="btn btn-primary btn-sm" onclick="submitInviteAdmin()">${group.bu ? 'Add to group' : 'Send invite'}</button>
@@ -2615,8 +2623,7 @@ function adminPersonHtml(a){
         <div class="groups">
           ${!a.is_active ? '<span class="role-tag" style="background:var(--danger-tint);color:var(--danger);">Deactivated</span>' : ''}
           ${!a.linked ? '<span class="role-tag">Not signed in yet</span>' : ''}
-          ${!a.can_view_onboarding && a.grants.some(x => x.role === 'bu_admin') && !a.grants.some(x => x.role === 'super_admin') ? '<span class="role-tag" title="Can see job applications but not onboarding details">No onboarding access</span>' : ''}
-          ${here.map(x => `<span class="role-tag ${x.role==='super_admin'?'sup':x.role==='payroll_pic'?'pay':'hr'}">${esc(g === 'everyone' ? grantLabel(x) : (ROLE_LABELS[x.role] || x.role))}</span>`).join('') || (a.grants.length ? '' : '<span class="muted" style="font-size:13px;">No access yet</span>')}
+          ${here.map(x => `<span class="role-tag ${x.role==='super_admin'?'sup':x.role==='payroll_pic'?'pay':'hr'}">${esc(g === 'everyone' ? grantLabel(x) : (ROLE_LABELS[x.role] || x.role))}${x.role === 'bu_admin' && !x.can_view_onboarding ? '<span class="no-onb" title="Sees job applications but not onboarding details in this unit"> · no onboarding</span>' : ''}</span>`).join('') || (a.grants.length ? '' : '<span class="muted" style="font-size:13px;">No access yet</span>')}
           ${g !== 'everyone' && elsewhereUnits.length ? `<span class="gchip">Also in: ${esc(elsewhereUnits.join(' · '))}</span>` : ''}
         </div>
         ${open ? personManageHtml(a) : ''}
@@ -2630,10 +2637,11 @@ function personManageHtml(a){
   return `
     <div class="pmanage">
       <div class="pm-h">Access</div>
-      ${a.grants.length ? a.grants.map(g => `<div class="pm-grant"><span>${esc(grantLabel(g))}</span><button type="button" class="btn btn-link btn-sm" style="color:var(--danger);" onclick="revokeGrant('${g.id}')">Remove</button></div>`).join('') : '<div class="muted">No access yet.</div>'}
+      ${a.grants.length ? a.grants.map(g => `<div class="pm-grant"><span>${esc(grantLabel(g))}</span><span class="pm-grant-r">${g.role === 'bu_admin' ? `<label class="pm-onb"><input type="checkbox" ${g.can_view_onboarding ? 'checked' : ''} onchange="setGrantOnboarding('${g.id}', this.checked, this)"> Onboarding details</label>` : g.role === 'super_admin' ? '<span class="pm-onb">Sees onboarding</span>' : ''}<button type="button" class="btn btn-link btn-sm" style="color:var(--danger);" onclick="revokeGrant('${g.id}')">Remove</button></span></div>`).join('') : '<div class="muted">No access yet.</div>'}
+      ${a.grants.some(g => g.role === 'bu_admin') ? '<div class="muted" style="font-size:12.5px;margin-top:6px;">Tick <b>Onboarding details</b> for each business unit where this person may see EPF, income tax, SOCSO, bank account, family NRICs, emergency contact and beneficiary. Without it they still see the job applications there. Changes apply at once.</div>' : ''}
       <div class="pm-add">
         <label class="sr-only" for="newGrantRole_${a.id}">Role</label>
-        <select id="newGrantRole_${a.id}" class="select-clean" onchange="document.getElementById('newGrantBu_${a.id}').disabled = this.value==='super_admin';">
+        <select id="newGrantRole_${a.id}" class="select-clean" onchange="document.getElementById('newGrantBu_${a.id}').disabled = this.value==='super_admin'; document.getElementById('newGrantOnbWrap_${a.id}').hidden = this.value!=='bu_admin';">
           <option value="bu_admin">HR Admin</option><option value="payroll_pic">Payroll PIC</option><option value="super_admin">Super Admin</option>
         </select>
         <label class="sr-only" for="newGrantBu_${a.id}">Business unit</label>
@@ -2641,13 +2649,9 @@ function personManageHtml(a){
           ${units.map(u => `<option value="${esc(u.code)}" ${u.code===def?'selected':''}>${esc(u.name)}</option>`).join('')}
           <option value="">All business units (Payroll PIC only)</option>
         </select>
+        <label class="pm-onb" id="newGrantOnbWrap_${a.id}"><input type="checkbox" id="newGrantOnb_${a.id}"> with onboarding details</label>
         <button class="btn btn-primary btn-sm" onclick="submitAddGrant('${a.id}')">Add</button>
       </div>
-      <div class="pm-h" style="margin-top:12px;">Onboarding details</div>
-      ${a.grants.some(g => g.role === 'super_admin')
-        ? '<div class="muted" style="font-size:13px;">Super Admins always see onboarding details.</div>'
-        : `<label class="ga-extra"><input type="checkbox" ${a.can_view_onboarding ? 'checked' : ''} onchange="setOnboardingAccess('${a.id}', this.checked, this)"> Can view onboarding details</label>
-      <div class="muted" style="font-size:12.5px;margin-top:2px;">EPF, income tax, SOCSO, bank account, spouse and children NRIC, emergency contact and beneficiary. Without it they still see the job application and whether onboarding is done. Changes apply at once.</div>`}
       <div class="pm-foot"><button class="btn btn-outline btn-sm" onclick="toggleAdminActive('${a.id}', ${!a.is_active})">${a.is_active ? 'Deactivate account' : 'Reactivate account'}</button></div>
     </div>`;
 }
@@ -2662,7 +2666,14 @@ async function submitInviteAdmin(){
   const existingId = existingEl ? existingEl.value : '';
   const email = (document.getElementById('newAdminEmail') || {}).value?.trim() || '';
   const name = (document.getElementById('newAdminName') || {}).value?.trim() || '';
-  const picks = [...document.querySelectorAll('.ga-pick input[data-bu]:checked')].map(el => ({ role: el.dataset.role, business_unit: el.dataset.bu }));
+  const picks = [...document.querySelectorAll('.ga-pick input[data-bu]:checked')].map(el => {
+    const pk = { role: el.dataset.role, business_unit: el.dataset.bu };
+    if(pk.role === 'bu_admin'){
+      const onb = el.closest('.ga-pick-row').querySelector('[data-onb]');
+      pk.can_view_onboarding = !!(onb && onb.checked);
+    }
+    return pk;
+  });
   if((document.getElementById('inviteSuper') || {}).checked) picks.push({ role: 'super_admin' });
   if((document.getElementById('invitePayAll') || {}).checked) picks.push({ role: 'payroll_pic' });
   if(!existingId && !email){ errEl.innerHTML = `<div class="error-banner">Please enter their work email.</div>`; return; }
@@ -2671,8 +2682,7 @@ async function submitInviteAdmin(){
   try{
     let id = existingId;
     if(!id){
-      const viewOnboarding = !!(document.getElementById('inviteOnboarding') || {}).checked;
-      const { data, error } = await apiTry(() => api.post('/admin/admins', { email, display_name: name, can_view_onboarding: viewOnboarding }, {admin: true}));
+      const { data, error } = await apiTry(() => api.post('/admin/admins', { email, display_name: name }, {admin: true}));
       if(error) throw error;
       id = data.id;
     }
@@ -2696,7 +2706,9 @@ async function submitAddGrant(adminUserId){
   const businessUnit = role === 'super_admin' ? null : (bu || null);
   showLoading('Adding access...');
   try{
-    const { error } = await apiTry(() => api.post(`/admin/admins/${adminUserId}/grants`, { role, business_unit: businessUnit }, {admin: true}));
+    const body = { role, business_unit: businessUnit };
+    if(role === 'bu_admin') body.can_view_onboarding = !!(document.getElementById('newGrantOnb_'+adminUserId) || {}).checked;
+    const { error } = await apiTry(() => api.post(`/admin/admins/${adminUserId}/grants`, body, {admin: true}));
     if(error) throw error;
     await loadAdminMgmtList();
     hideLoading();
@@ -2716,18 +2728,18 @@ async function revokeGrant(grantId){
   } catch(e){ hideLoading(); uiToast('Error: '+e.message); }
 }
 
-async function setOnboardingAccess(adminUserId, allowed, el){
+async function setGrantOnboarding(grantId, allowed, el){
   if(el) el.disabled = true;
-  const { error } = await apiTry(() => api.patch(`/admin/admins/${adminUserId}/onboarding-access`, { can_view_onboarding: allowed }, {admin: true}));
+  const { error } = await apiTry(() => api.patch(`/admin/grants/${grantId}/onboarding-access`, { can_view_onboarding: allowed }, {admin: true}));
   if(error){
     if(el){ el.checked = !allowed; el.disabled = false; }
     uiToast('Error: ' + error.message, 'err');
     return;
   }
-  const person = adminMgmtList.find(x => x.id === adminUserId);
-  if(person) person.can_view_onboarding = allowed;
+  let unit = '';
+  adminMgmtList.forEach(p => p.grants.forEach(g => { if(g.id === grantId){ g.can_view_onboarding = allowed; unit = buLabel(g.business_unit); } }));
   renderAdminMgmtResults();
-  uiToast(allowed ? 'They can now view onboarding details.' : 'Onboarding details are now hidden from them.');
+  uiToast(allowed ? `Onboarding details now visible to them in ${unit}.` : `Onboarding details now hidden from them in ${unit}.`);
 }
 
 async function toggleAdminActive(adminUserId, newActive){
