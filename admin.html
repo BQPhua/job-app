@@ -579,6 +579,15 @@ let userMenuOpen = false;
 // Log out button would silently disappear on every refresh. GET /admin/me
 // exists purely to cover that gap: fetch it once, only when a token is
 // present but nothing has been loaded into memory yet.
+// Onboarding details access (6 Nov 2026): a Super Admin decides per admin
+// whether they may see onboarding details. The server enforces it; this only
+// hides the buttons. Defaults to true so an older backend behaves as before.
+let canViewOnboardingDetails = true;
+const NO_ONBOARDING_MSG = "You don't have access to onboarding details. Please ask a Super Admin if you need it.";
+async function loadOnboardingAccess(){
+  const { data } = await apiTry(() => api.get('/admin/me', {admin: true}));
+  canViewOnboardingDetails = !data || data.can_view_onboarding !== false;
+}
 async function loadCurrentUserProfile(){
   if(!currentUserProfile && adminToken){
     const { data } = await apiTry(() => api.get('/admin/me', {admin: true}));
@@ -699,6 +708,9 @@ function aiCardHeaderHtml(icon, color, title, subtitle){
 // see offboarding-admin.js.)
 function onboardOffboardBtnHtml(a, extraClass){
   const isHired = a.status === 'hired';
+  if(isHired && !canViewOnboardingDetails){
+    return `<button class="btn btn-icon btn-outline" title="Onboarding details — you don't have access (ask a Super Admin)" aria-label="Onboarding details — no access" disabled>${ICON_ONBOARD}</button>`;
+  }
   return `<button class="btn btn-icon ${isHired ? (extraClass||'btn-accent') : 'btn-outline'}" title="${isHired ? 'Onboarding Details' : 'Onboarding Details — available once Hired'}" ${isHired ? `onclick="openOnboardingView('${a.id}')"` : 'disabled'}>${ICON_ONBOARD}</button>`;
 }
 
@@ -1670,7 +1682,7 @@ async function openDetail(id){
       assignableCompanies = compData || [];
     } catch(e){ assignableCompanies = []; }
     selectedOnboarding = null;
-    if(data.status === 'hired'){
+    if(data.status === 'hired' && canViewOnboardingDetails){
       const { data: obRec } = await apiTry(() => api.get(`/admin/applications/${id}/onboarding`, {admin: true}));
       selectedOnboarding = obRec || null;
     }
@@ -2484,7 +2496,7 @@ async function loadAdminMgmtList(){
     const byId = {};
     (data||[]).forEach(row => {
       if(!byId[row.admin_user_id]){
-        byId[row.admin_user_id] = { id: row.admin_user_id, email: row.email, display_name: row.display_name, is_active: row.is_active, linked: row.linked, grants: [] };
+        byId[row.admin_user_id] = { id: row.admin_user_id, email: row.email, display_name: row.display_name, is_active: row.is_active, linked: row.linked, can_view_onboarding: row.can_view_onboarding !== false, grants: [] };
       }
       if(row.grant_id){ byId[row.admin_user_id].grants.push({ id: row.grant_id, role: row.role, business_unit: row.business_unit, department_id: row.department_id, department_name: row.department_name }); }
     });
@@ -2561,7 +2573,7 @@ function inviteFormHtml(group){
     <div class="ga-invite">
       <h3>${group.bu ? `Add a person to ${esc(group.name)}` : 'Invite a person'}</h3>
       ${group.bu && existing.length ? `<div class="field"><label for="inviteExisting">Someone already invited</label>
-        <select id="inviteExisting" class="select-clean" onchange="document.getElementById('inviteNew').hidden = !!this.value;">
+        <select id="inviteExisting" class="select-clean" onchange="document.getElementById('inviteNew').hidden = !!this.value; document.getElementById('inviteOnboardingWrap').hidden = !!this.value;">
           <option value="">— New person (enter email below) —</option>
           ${existing.map(a => `<option value="${a.id}">${esc(a.display_name || a.email)} · ${esc(a.email)}</option>`).join('')}
         </select></div>` : ''}
@@ -2577,6 +2589,7 @@ function inviteFormHtml(group){
         ${group.bu ? '' : `<label class="ga-extra"><input type="checkbox" id="inviteSuper" ${group.key==='super'?'checked':''}> Super Admin (every business unit, settings and access)</label>
         <label class="ga-extra"><input type="checkbox" id="invitePayAll" ${group.key==='payroll_all'?'checked':''}> Payroll PIC for all business units</label>`}
       </div>
+      <label class="ga-extra" id="inviteOnboardingWrap"><input type="checkbox" id="inviteOnboarding"> Can view onboarding details (EPF, tax, bank account, family NRICs). Leave unticked if they should only see job applications.</label>
       <div id="adminMgmtErr"></div>
       <p class="hint">They sign in with Microsoft using this email. Access starts at their next sign-in.</p>
       <button class="btn btn-primary btn-sm" onclick="submitInviteAdmin()">${group.bu ? 'Add to group' : 'Send invite'}</button>
@@ -2602,6 +2615,7 @@ function adminPersonHtml(a){
         <div class="groups">
           ${!a.is_active ? '<span class="role-tag" style="background:var(--danger-tint);color:var(--danger);">Deactivated</span>' : ''}
           ${!a.linked ? '<span class="role-tag">Not signed in yet</span>' : ''}
+          ${!a.can_view_onboarding && a.grants.some(x => x.role === 'bu_admin') && !a.grants.some(x => x.role === 'super_admin') ? '<span class="role-tag" title="Can see job applications but not onboarding details">No onboarding access</span>' : ''}
           ${here.map(x => `<span class="role-tag ${x.role==='super_admin'?'sup':x.role==='payroll_pic'?'pay':'hr'}">${esc(g === 'everyone' ? grantLabel(x) : (ROLE_LABELS[x.role] || x.role))}</span>`).join('') || (a.grants.length ? '' : '<span class="muted" style="font-size:13px;">No access yet</span>')}
           ${g !== 'everyone' && elsewhereUnits.length ? `<span class="gchip">Also in: ${esc(elsewhereUnits.join(' · '))}</span>` : ''}
         </div>
@@ -2629,6 +2643,11 @@ function personManageHtml(a){
         </select>
         <button class="btn btn-primary btn-sm" onclick="submitAddGrant('${a.id}')">Add</button>
       </div>
+      <div class="pm-h" style="margin-top:12px;">Onboarding details</div>
+      ${a.grants.some(g => g.role === 'super_admin')
+        ? '<div class="muted" style="font-size:13px;">Super Admins always see onboarding details.</div>'
+        : `<label class="ga-extra"><input type="checkbox" ${a.can_view_onboarding ? 'checked' : ''} onchange="setOnboardingAccess('${a.id}', this.checked, this)"> Can view onboarding details</label>
+      <div class="muted" style="font-size:12.5px;margin-top:2px;">EPF, income tax, SOCSO, bank account, spouse and children NRIC, emergency contact and beneficiary. Without it they still see the job application and whether onboarding is done. Changes apply at once.</div>`}
       <div class="pm-foot"><button class="btn btn-outline btn-sm" onclick="toggleAdminActive('${a.id}', ${!a.is_active})">${a.is_active ? 'Deactivate account' : 'Reactivate account'}</button></div>
     </div>`;
 }
@@ -2652,7 +2671,8 @@ async function submitInviteAdmin(){
   try{
     let id = existingId;
     if(!id){
-      const { data, error } = await apiTry(() => api.post('/admin/admins', { email, display_name: name }, {admin: true}));
+      const viewOnboarding = !!(document.getElementById('inviteOnboarding') || {}).checked;
+      const { data, error } = await apiTry(() => api.post('/admin/admins', { email, display_name: name, can_view_onboarding: viewOnboarding }, {admin: true}));
       if(error) throw error;
       id = data.id;
     }
@@ -2694,6 +2714,20 @@ async function revokeGrant(grantId){
     hideLoading();
     renderAdminMgmtResults();
   } catch(e){ hideLoading(); uiToast('Error: '+e.message); }
+}
+
+async function setOnboardingAccess(adminUserId, allowed, el){
+  if(el) el.disabled = true;
+  const { error } = await apiTry(() => api.patch(`/admin/admins/${adminUserId}/onboarding-access`, { can_view_onboarding: allowed }, {admin: true}));
+  if(error){
+    if(el){ el.checked = !allowed; el.disabled = false; }
+    uiToast('Error: ' + error.message, 'err');
+    return;
+  }
+  const person = adminMgmtList.find(x => x.id === adminUserId);
+  if(person) person.can_view_onboarding = allowed;
+  renderAdminMgmtResults();
+  uiToast(allowed ? 'They can now view onboarding details.' : 'Onboarding details are now hidden from them.');
 }
 
 async function toggleAdminActive(adminUserId, newActive){
@@ -2958,7 +2992,7 @@ function drawerFooterHtml(a){
         ${STATUS_OPTIONS.map(st => `<button type="button" class="${a.status===st?'on '+st:''}" aria-pressed="${a.status===st}" onclick="updateStatus('${st}')">${STATUS_LABELS[st]}</button>`).join('')}
       </div>
       <div class="dfoot-actions">
-        ${a.status==='hired' ? `<button class="btn btn-accent btn-sm" onclick="openOnboardingView('${a.id}')">${ICON_ONBOARD} Onboarding</button>
+        ${a.status==='hired' ? `${canViewOnboardingDetails ? `<button class="btn btn-accent btn-sm" onclick="openOnboardingView('${a.id}')">${ICON_ONBOARD} Onboarding</button>` : ''}
           <button class="btn btn-outline btn-sm" onclick="obStartInviteFromApplication('${a.id}')">${ICON_OFFBOARD} Offboard</button>` : ''}
         <button class="btn btn-outline btn-sm" onclick="startEdit()">${ICON_EDIT} Edit</button>
         <button class="btn btn-outline btn-sm" onclick="exportCandidatePdf(selectedApp.id)">${ICON_PDF} PDF</button>
@@ -3014,14 +3048,16 @@ function viewDetailHtml(a){
   const nBelow = nKids('children_below_18_count', kid('children_below_18'));
   const nAbove = nKids('children_18_to_23_count', kid('children_18_to_23'));
   const listRow = applications.find(x => x.id === a.id) || {};
-  const remind = a.status === 'hired' && (!selectedOnboarding || selectedOnboarding.status !== 'completed');
+  // Without onboarding access the record isn't loaded; the list row still says how far they are.
+  const obStatus = selectedOnboarding ? selectedOnboarding.status : (canViewOnboardingDetails ? 'not_started' : (listRow.onboarding_status || 'not_started'));
+  const remind = a.status === 'hired' && obStatus !== 'completed';
   const lastReminder = listRow.last_onboarding_reminder_at || a.last_onboarding_reminder_at;
   const companiesByBu = assignableCompanies.reduce((acc,c)=>{ const k = buLabel(c.business_unit) || 'Other'; (acc[k]=acc[k]||[]).push(c); return acc; },{});
   return `
     ${otherBuMatches.length ? `<div class="dnote warn"><strong>Also applied elsewhere:</strong> ${otherBuMatches.map(m=>`${esc(m.reference_no)} (${esc(buLabel(m.business_unit))}, ${esc(STATUS_LABELS[m.status]||m.status)})`).join('; ')}</div>` : ''}
     ${remind ? `<div class="dnote remind">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
-      <div style="flex:1;"><strong>Onboarding ${selectedOnboarding ? 'in progress' : 'not started'}.</strong> ${lastReminder ? `Last reminder sent ${esc(fmtDateTime(lastReminder))}.` : 'No reminder sent yet.'}</div>
+      <div style="flex:1;"><strong>Onboarding ${obStatus === 'not_started' ? 'not started' : 'in progress'}.</strong> ${lastReminder ? `Last reminder sent ${esc(fmtDateTime(lastReminder))}.` : 'No reminder sent yet.'}</div>
       <button class="btn btn-outline btn-sm" onclick="sendOnboardingReminder('${a.id}')">Send reminder</button></div>` : ''}
 
     ${dcard('sec-profile', 'company', 'Company assignment', `
@@ -3170,6 +3206,7 @@ let onboardingAppInfo = null; // basic application record (name/reference) for t
 // having opened the detail modal first.
 
 async function openOnboardingView(applicationId){
+  if(!canViewOnboardingDetails){ uiToast(NO_ONBOARDING_MSG, 'err'); return; }
   try{
     const needsAppFetch = !(selectedApp && selectedApp.id === applicationId);
     const [obRes, appRes] = await Promise.all([
@@ -3178,6 +3215,13 @@ async function openOnboardingView(applicationId){
         ? apiTry(() => api.get(`/admin/applications/${applicationId}`, {admin: true}))
         : Promise.resolve({ data: selectedApp, error: null })
     ]);
+    if(obRes.error && obRes.error.status === 403){
+      // Access was turned off while this page was open.
+      canViewOnboardingDetails = false;
+      uiToast(NO_ONBOARDING_MSG, 'err');
+      render();
+      return;
+    }
     if(obRes.error) throw obRes.error;
     if(appRes.error) throw appRes.error;
     // Spouse/children now live on the application (2026-10-14); older
@@ -3344,7 +3388,7 @@ async function exportCandidatePdf(id){
   }
   // Family details on older records live in the onboarding record.
   let onboarding = null;
-  if(a.status === 'hired'){
+  if(a.status === 'hired' && canViewOnboardingDetails){
     const { data: obRec } = await apiTry(() => api.get(`/admin/applications/${a.id}/onboarding`, {admin: true}));
     onboarding = obRec || null;
   }
@@ -3379,7 +3423,7 @@ async function openDeepLinkedAppIfAny(){
 // Payroll PIC / Clearance PIC / superior sessions go straight to
 // Offboarding, since every job-application endpoint refuses them.
 async function startSignedInSession(){
-  await Promise.all([WCT.loadBusinessUnits(), loadMyUnits()]);
+  await Promise.all([WCT.loadBusinessUnits(), loadMyUnits(), loadOnboardingAccess()]);
   await obLoadMeta();
   liveStart();
   if(!obIsHr() || deepLinkOffboardingId){
